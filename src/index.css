@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    background-color: #0a0e17;
+    color: #f9fafb;
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #111827;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #374151;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #4b5563;
+  }
+  select option {
+    background-color: #1f2937;
+    color: #f9fafb;
+  }
+}
+
+@layer components {
+  .mesh-card {
+    @apply bg-[#111827] border border-[#1e2d3d] rounded-xl;
+  }
+  .mesh-input {
+    @apply w-full bg-[#0d1420] border border-[#1e2d3d] rounded-lg px-3 py-2 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-emerald-400 transition-colors;
+  }
+  .mesh-select {
+    @apply w-full bg-[#0d1420] border border-[#1e2d3d] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-400 transition-colors appearance-none cursor-pointer;
+  }
+  .mesh-btn-primary {
+    @apply w-full bg-emerald-400 hover:bg-emerald-300 text-gray-900 font-semibold py-2.5 rounded-lg transition-all duration-200 text-sm;
+  }
+  .mesh-btn-ghost {
+    @apply px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-white/5;
+  }
+  .stat-card {
+    @apply mesh-card p-5 flex flex-col gap-3;
+  }
+}
