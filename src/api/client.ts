@@ -56,3 +56,10 @@ export const getInventory = () => api.get('/api/rates/inventory')
 // Tokens
 export const getTokenBalance = (asAdmin: boolean) =>
   api.get('/api/tokens/balance', { params: { as_admin: asAdmin } })
+
+// Cardano / USDA
+export const getCardanoWallet = () => api.get('/api/cardano/wallet')
+export const getCardanoTxHistory = (limit = 20) => api.get('/api/cardano/transactions', { params: { limit } })
+export const verifyCardanoDeposit = (data: object) => api.post('/api/cardano/on-ramp/verify', data)
+export const withdrawUsda = (data: object) => api.post('/api/cardano/withdraw', data)
+

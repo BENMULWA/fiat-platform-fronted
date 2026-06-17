@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { ArrowDown } from 'lucide-react'
 import { executeRamp, getRampHistory } from '../api/client'
+import { withdrawUsda, verifyCardanoDeposit } from '../api/client'
 
-const CHANNELS = ['Mobile Money', 'Bank Transfer', 'Card']
+const CHANNELS = ['Mobile Money', 'Bank Transfer', 'Card', 'Cardano Blockchain']
 const ASSETS = ['KES', 'USD', 'UGX', 'TZS', 'USDA', 'USDT']
 
 interface RampEntry {
@@ -47,12 +48,36 @@ export default function OnOffRampPage() {
   const handleExecute = async () => {
     if (!amount || parseFloat(amount) <= 0) return
     setSubmitting(true)
+    setToast('Processing network transaction...')
+
     try {
-      await executeRamp({ direction, channel, from, to, amount: parseFloat(amount), rate: parseFloat(rate), fee: parseFloat(fee), counterparty })
-      setToast('Ramp executed successfully.')
+      if (channel === 'Cardano Blockchain') {
+        if (direction === 'off') {
+          await withdrawUsda({
+            amount: parseFloat(amount),
+            to_adress: counterparty, 
+            counterparty: "Cardano off-ramp Vault",
+                     })
+          setToast('Cardano block submission success! Off-ramp broadcasted.')
+        } else {
+          await verifyCardanoDeposit({
+            amount: parseFloat(amount),
+            tx_hash: counterparty,
+            counterparty: "Cardano On Chain"
+            
+          })
+          setToast('Cardano deposit verified successfully!')
+        }
+      } else {
+        await executeRamp({ direction, channel, from, to, amount: parseFloat(amount), rate: parseFloat(rate), fee: parseFloat(fee), counterparty })
+        setToast('Ramp executed successfully.')
+      }
+
       setAmount('')
-    } catch {
-      setToast('Ramp recorded (demo mode).')
+    } catch (error) {
+      console.error(error)
+      setToast('Ramp processed via ledger pipeline (Demo Mode).')
+
       const entry: RampEntry = {
         id: String(Date.now()),
         from, to, fromAmount: parseFloat(amount), toAmount: receive,
@@ -62,7 +87,7 @@ export default function OnOffRampPage() {
       setHistory(prev => [entry, ...prev])
     } finally {
       setSubmitting(false)
-      setTimeout(() => setToast(''), 3000)
+      setTimeout(() => setToast(''), 4000)
     }
   }
 
@@ -83,13 +108,13 @@ export default function OnOffRampPage() {
           {/* Direction tabs */}
           <div className="flex mb-5 rounded-lg overflow-hidden border border-[#1e2d3d]">
             <button
-              onClick={() => setDirection('on')}
+              onClick={() => { setDirection('on'); setFrom('KES'); setTo('USDA'); }}
               className={`flex-1 py-2 text-sm font-semibold transition-colors ${direction === 'on' ? 'bg-emerald-400 text-gray-900' : 'text-gray-400 hover:text-white'}`}
             >
               On-ramp
             </button>
             <button
-              onClick={() => setDirection('off')}
+              onClick={() => { setDirection('off'); setFrom('USDA'); setTo('KES'); }}
               className={`flex-1 py-2 text-sm font-semibold transition-colors ${direction === 'off' ? 'bg-emerald-400 text-gray-900' : 'text-gray-400 hover:text-white'}`}
             >
               Off-ramp
@@ -101,9 +126,9 @@ export default function OnOffRampPage() {
               <label className="text-xs text-gray-500 mb-1.5 block">Channel</label>
               <div className="relative">
                 <select value={channel} onChange={e => setChannel(e.target.value)} className="mesh-select pr-8">
-                  {CHANNELS.map(c => <option key={c}>{c}</option>)}
+                  {CHANNELS.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
-                <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">▾</div>
+                <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">▼</div>
               </div>
             </div>
 
@@ -112,18 +137,18 @@ export default function OnOffRampPage() {
                 <label className="text-xs text-gray-500 mb-1.5 block">From</label>
                 <div className="relative">
                   <select value={from} onChange={e => setFrom(e.target.value)} className="mesh-select pr-8">
-                    {ASSETS.map(a => <option key={a}>{a}</option>)}
+                    {ASSETS.map(a => <option key={a} value={a}>{a}</option>)}
                   </select>
-                  <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">▾</div>
+                  <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">▼</div>
                 </div>
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1.5 block">To</label>
                 <div className="relative">
                   <select value={to} onChange={e => setTo(e.target.value)} className="mesh-select pr-8">
-                    {ASSETS.map(a => <option key={a}>{a}</option>)}
+                    {ASSETS.map(a => <option key={a} value={a}>{a}</option>)}
                   </select>
-                  <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">▾</div>
+                  <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">▼</div>
                 </div>
               </div>
             </div>
@@ -145,8 +170,10 @@ export default function OnOffRampPage() {
             </div>
 
             <div>
-              <label className="text-xs text-gray-500 mb-1.5 block">Counterparty (optional)</label>
-              <input value={counterparty} onChange={e => setCounterparty(e.target.value)} className="mesh-input" placeholder="Business / wallet ref" />
+              <label className="text-xs text-gray-500 mb-1.5 block">
+                {channel === 'Cardano Blockchain' ? 'Cardano Wallet Address / Tx Hash' : 'Counterparty (optional)'}
+              </label>
+              <input value={counterparty} onChange={e => setCounterparty(e.target.value)} className="mesh-input" placeholder={channel === 'Cardano Blockchain' ? 'addr1...' : 'Business / wallet ref'} />
             </div>
 
             <div className="flex justify-center py-1">
@@ -182,9 +209,8 @@ export default function OnOffRampPage() {
                     {r.type} · {r.channel} · {r.timeAgo}
                   </p>
                 </div>
-                <div className={`w-8 h-4 rounded-full flex items-center justify-center text-[9px] font-bold uppercase ${
-                  r.status === 'on' ? 'bg-emerald-400/10 text-emerald-400 border border-emerald-400/30' : 'bg-gray-700 text-gray-400'
-                }`}>
+                <div className={`w-8 h-4 rounded-full flex items-center justify-center text-[9px] font-bold uppercase ${r.status === 'on' ? 'bg-emerald-400/10 text-emerald-400 border border-emerald-400/30' : 'bg-gray-700 text-gray-400'
+                  }`}>
                   {r.status}
                 </div>
               </div>
