@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { ArrowDown } from 'lucide-react'
 import { executeRamp, getRampHistory } from '../api/client'
-import { withdrawUsda, verifyCardanoDeposit } from '../api/client'
+import { withdrawUsda, verifyCardanoDeposit, getCardanoWallet, getCardanoTxHistory, estimateCardanoFee } from '../api/client'
 
 const CHANNELS = ['Mobile Money', 'Bank Transfer', 'Card', 'Cardano Blockchain']
 const ASSETS = ['KES', 'USD', 'UGX', 'TZS', 'USDA', 'USDT']
@@ -34,14 +34,97 @@ export default function OnOffRampPage() {
   const [amount, setAmount] = useState('')
   const [rate, setRate] = useState('1')
   const [fee, setFee] = useState('0')
+  const [estimatedFee, setEstimatedFee] = useState<number | null>(null)
+  const [showWalletBalance, setShowWalletBalance] = useState(false)
+  const [walletBalances, setWalletBalances] = useState<{ ada?: number | null; usda?: number | null } | null>(null)
+  const [estimatedFeeUsd, setEstimatedFeeUsd] = useState<number | null>(null)
   const [counterparty, setCounterparty] = useState('')
   const [history, setHistory] = useState<RampEntry[]>(MOCK_HISTORY)
   const [submitting, setSubmitting] = useState(false)
   const [toast, setToast] = useState('')
+  const [cardanoAddress, setCardanoAddress] = useState('')
+  const [cardanoLoading, setCardanoLoading] = useState(false)
+  const [txHashInput, setTxHashInput] = useState('')
+  const [cardanoTxs, setCardanoTxs] = useState<any[]>([])
 
   useEffect(() => {
-    getRampHistory().then(r => setHistory(r.data.entries)).catch(() => setHistory(MOCK_HISTORY))
+    getRampHistory().then((r: any) => setHistory(r.data?.entries)).catch(() => setHistory(MOCK_HISTORY))
   }, [])
+
+  useEffect(() => {
+    if (channel === 'Cardano Blockchain' && direction === 'on') {
+      fetchDepositAddress()
+    }
+    if (channel === 'Cardano Blockchain') fetchRecentCardanoTxs()
+    // When Cardano channel selected, force destination asset to USDA
+    if (channel === 'Cardano Blockchain') {
+      setTo('USDA')
+    }
+  }, [channel, direction])
+
+  const fetchRecentCardanoTxs = async () => {
+    try {
+      const res: any = await getCardanoTxHistory(10)
+      const txs = res?.data?.transactions || res?.transactions || []
+      setCardanoTxs(txs)
+    } catch (err) {
+      const e: any = err
+      console.debug('Cardano tx fetch failed', e)
+      setCardanoTxs([])
+    }
+  }
+
+  const fetchDepositAddress = async () => {
+    setCardanoLoading(true)
+    try {
+      const res: any = await getCardanoWallet()
+      const payload = res?.data || res
+      if (payload?.address) setCardanoAddress(payload.address)
+      else if (payload?.address_str) setCardanoAddress(payload.address_str)
+      else if (payload?.address_str) setCardanoAddress(payload.address_str)
+      else setCardanoAddress('addr_demo_placeholder_active')
+
+      // pick up estimated fee and balances if returned
+      if (typeof payload?.estimated_fee_ada === 'number') setEstimatedFee(payload.estimated_fee_ada)
+      if (typeof payload?.estimated_fee_usd === 'number') setEstimatedFeeUsd(payload.estimated_fee_usd)
+      if (payload?.ada_balance !== undefined || payload?.usda_balance !== undefined) {
+        setWalletBalances({ ada: payload?.ada_balance ?? null, usda: payload?.usda_balance ?? null })
+      }
+    } catch (err) {
+      console.error(err)
+      const e: any = err
+      const msg = e?.response?.data?.detail || e?.message || 'Failed to fetch deposit address.'
+      setToast(msg)
+      setCardanoAddress('addr_error_failed_to_load_backend')
+    } finally {
+      setCardanoLoading(false)
+    }
+  }
+
+  // estimate fee when amount or recipient changes for Cardano operations
+  useEffect(() => {
+    const estimate = async () => {
+      if (channel !== 'Cardano Blockchain') return
+      if (!amount || parseFloat(amount) <= 0) return
+
+      const toAddr = direction === 'on' ? cardanoAddress : counterparty
+      if (!toAddr) return
+
+      try {
+        const res: any = await estimateCardanoFee({ to_address: toAddr, amount: parseFloat(amount), asset: 'USDA' })
+        const data = res?.data || res
+        if (typeof data?.estimated_fee_ada === 'number') setEstimatedFee(data.estimated_fee_ada)
+        if (typeof data?.estimated_fee_usd === 'number') setEstimatedFeeUsd(data.estimated_fee_usd)
+      } catch (err) {
+        console.debug('Fee estimate failed', err)
+        setEstimatedFee(null)
+        setEstimatedFeeUsd(null)
+      }
+    }
+
+    const t = setTimeout(estimate, 350)
+    return () => clearTimeout(t)
+  }, [amount, counterparty, cardanoAddress, channel, direction])
 
   const receive = (parseFloat(amount) || 0) * (parseFloat(rate) || 0) - (parseFloat(fee) || 0)
 
@@ -53,20 +136,40 @@ export default function OnOffRampPage() {
     try {
       if (channel === 'Cardano Blockchain') {
         if (direction === 'off') {
+          // Basic address validation
+          const addr = counterparty
+          const valid = addr && (addr.startsWith('addr') || addr.startsWith('Ae2'))
+          if (!valid) {
+            setToast('Invalid Cardano address. Please check and try again.')
+            setSubmitting(false)
+            return
+          }
+
+          const confirmMsg = `Confirm withdraw ${parseFloat(amount)} ${to} to ${addr}?`
+          if (!window.confirm(confirmMsg)) {
+            setToast('Withdrawal cancelled.')
+            setSubmitting(false)
+            return
+          }
+
+          const idempotencyKey = `${Date.now()}-${Math.random().toString(36).slice(2,9)}`
           await withdrawUsda({
             amount: parseFloat(amount),
-            to_adress: counterparty, 
-            counterparty: "Cardano off-ramp Vault",
-                     })
+            to_address: addr,
+            asset: to,
+            idempotency_key: idempotencyKey,
+            counterparty: 'Cardano off-ramp Vault',
+          })
           setToast('Cardano block submission success! Off-ramp broadcasted.')
         } else {
-          await verifyCardanoDeposit({
-            amount: parseFloat(amount),
-            tx_hash: counterparty,
-            counterparty: "Cardano On Chain"
-            
-          })
-          setToast('Cardano deposit verified successfully!')
+          // verify deposit by tx hash (user can paste hash) or prompt to fetch address
+          const tx = txHashInput || counterparty
+          if (!tx) {
+            setToast('No tx hash provided — fetch deposit address or paste tx hash to verify.')
+          } else {
+            await verifyCardanoDeposit({ amount: parseFloat(amount), tx_hash: tx, counterparty: 'Cardano On Chain' })
+            setToast('Cardano deposit verified successfully!')
+          }
         }
       } else {
         await executeRamp({ direction, channel, from, to, amount: parseFloat(amount), rate: parseFloat(rate), fee: parseFloat(fee), counterparty })
@@ -155,7 +258,13 @@ export default function OnOffRampPage() {
 
             <div>
               <label className="text-xs text-gray-500 mb-1.5 block">Amount ({from})</label>
-              <input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="mesh-input" placeholder="0.00" />
+              <input
+                type="number"
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+                className="mesh-input"
+                placeholder={channel === 'Cardano Blockchain' ? 'Enter amount to swap → you will receive USDA' : '0.00'}
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -166,14 +275,86 @@ export default function OnOffRampPage() {
               <div>
                 <label className="text-xs text-gray-500 mb-1.5 block">Fee ({to})</label>
                 <input type="number" value={fee} onChange={e => setFee(e.target.value)} className="mesh-input" />
+                {channel === 'Cardano Blockchain' && (
+                  <div className="mt-3 p-3 rounded-lg bg-gradient-to-r from-[#071226] to-[#0b1a2b] border border-[#1e2d3d]">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-xs text-gray-400">Network fee</div>
+                        <div className="text-white font-mono text-lg font-medium">{estimatedFee !== null ? `${estimatedFee.toFixed(6)} ADA` : '—'}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs text-gray-400">Approx. USD</div>
+                        <div className="text-emerald-400 font-medium">{estimatedFeeUsd !== null ? `$${estimatedFeeUsd.toFixed(4)}` : '—'}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
+            {/* Wallet balance check */}
+            {channel === 'Cardano Blockchain' && (
+              <div className="flex items-center gap-3">
+                <label className="inline-flex items-center gap-2 text-sm text-gray-400">
+                  <input type="checkbox" checked={showWalletBalance} onChange={e => { setShowWalletBalance(e.target.checked); if (e.target.checked) fetchDepositAddress() }} />
+                  Show my wallet balance
+                </label>
+                {showWalletBalance && walletBalances && (
+                  <div className="text-sm text-gray-300">
+                    <div>ADA: {walletBalances.ada ?? '—'}</div>
+                    <div>USDA: {walletBalances.usda ?? '—'}</div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div>
               <label className="text-xs text-gray-500 mb-1.5 block">
-                {channel === 'Cardano Blockchain' ? 'Cardano Wallet Address / Tx Hash' : 'Counterparty (optional)'}
+                {channel === 'Cardano Blockchain' ? (direction === 'on' ? 'Cardano deposit address / tx hash' : 'Destination Cardano address') : 'Counterparty (optional)'}
               </label>
-              <input value={counterparty} onChange={e => setCounterparty(e.target.value)} className="mesh-input" placeholder={channel === 'Cardano Blockchain' ? 'addr1...' : 'Business / wallet ref'} />
+              {channel === 'Cardano Blockchain' && direction === 'on' ? (
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <button type="button" onClick={fetchDepositAddress} className="mesh-btn-ghost">
+                      {cardanoLoading ? 'Fetching…' : 'Get deposit address'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (cardanoAddress) navigator.clipboard.writeText(cardanoAddress)
+                        setToast('Address copied to clipboard.')
+                        setTimeout(() => setToast(''), 2000)
+                      }}
+                      className="mesh-btn-ghost"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  {cardanoAddress && (
+                    <input value={cardanoAddress} readOnly className="mesh-input" />
+                  )}
+                  <input value={txHashInput} onChange={e => setTxHashInput(e.target.value)} className="mesh-input" placeholder="Paste tx hash here to verify" />
+
+                  {cardanoTxs.length > 0 && (
+                    <div className="mt-3">
+                      <h3 className="text-sm font-medium text-white mb-2">Recent Cardano activity</h3>
+                      <div className="space-y-2 text-sm">
+                        {cardanoTxs.map((t, i) => (
+                          <div key={i} className="flex items-center justify-between bg-[#0d1420] p-2 rounded">
+                            <div>
+                              <div className="text-white">{t.tx_hash?.slice(0, 16) || t.txHash?.slice(0,16)}…</div>
+                              <div className="text-gray-500 text-xs">{t.block_time || t.block_time || t.block_time}</div>
+                            </div>
+                            <div className="text-emerald-400 font-mono">{t.usda_amount ?? t.usda_amount}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <input value={counterparty} onChange={e => setCounterparty(e.target.value)} className="mesh-input" placeholder={channel === 'Cardano Blockchain' ? 'addr1...' : 'Business / wallet ref'} />
+              )}
             </div>
 
             <div className="flex justify-center py-1">
