@@ -65,3 +65,7 @@ export const withdrawUsda = (data: object) => api.post('/api/cardano/withdraw', 
 export const estimateCardanoFee = (data: object) => api.post('/api/cardano/estimate-fee', data)
 export const platformTopUp = (data: object) => api.post('/api/cardano/topup', data)
 
+
+// Fetch the master wallet to the dashboard to show the live vault balance for USDA
+
+export const getMasterWalletBalance = () => api.get('/api/cardano/master-wallet/balance')
