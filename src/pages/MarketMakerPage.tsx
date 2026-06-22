@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
-  ShieldAlert, AlertTriangle, ArrowRightLeft, TrendingUp,
+  ShieldAlert, AlertTriangle, ArrowRightLeft,
   Settings, Clock, Activity, DollarSign, AlertCircle
 } from 'lucide-react';
 
