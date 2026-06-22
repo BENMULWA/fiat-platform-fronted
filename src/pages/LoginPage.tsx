@@ -7,6 +7,7 @@ import phoneImg from '../pages/assets/mamlaka-phone.png'
 
 type Tab = 'signin' | 'create'
 
+// statin the page 
 function InputField({
   type,
   value,
