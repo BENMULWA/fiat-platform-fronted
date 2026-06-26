@@ -14,7 +14,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext'
 
 const navItems = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/dashboard', label: 'Vault', icon: LayoutDashboard },
   { to: '/market-maker', label: 'Market Maker', icon: Scale },
   { to: '/trade', label: 'Trade', icon: TrendingUp },
   { to: '/ramp', label: 'On / Off Ramp', icon: ArrowLeftRight },
@@ -49,7 +49,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
             </div>
             <div>
               <p className="text-white font-bold text-xl leading-tight tracking-wide">Meshex</p>
-              <p className="text-[11px] mt-1.5" style={{ color: '#6b8db0' }}>Arbitrage desk</p>
+              <p className="text-[11px] mt-1.5" style={{ color: '#6b8db0' }}>MHS Treasury </p>
             </div>
           </div>
           {onClose && (

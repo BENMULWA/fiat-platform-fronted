@@ -1,10 +1,16 @@
 import axios from 'axios'
 
-export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '',
-  headers: { 'Content-Type': 'application/json' },
-  timeout: 15000,
-})
+// Dynamically assign the base URL. 
+// VITE_API_URL will be set in Vercel. If it's missing, it falls back to your local server.
+const baseURL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+
+const api = axios.create({
+  baseURL: baseURL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
 
 api.interceptors.response.use(
   res => res,
@@ -35,6 +41,7 @@ export const placeOrder = (data: object) => api.post('/api/trade/orders', data)
 
 // On/Off Ramp
 export const executeRamp = (data: object) => api.post('/api/ramp/execute', data)
+export const executeInternalSwap = (data: object) => api.post('/api/ramp/swap', data)
 export const getRampHistory = () => api.get('/api/ramp/history')
 
 // Airtime Ledger
