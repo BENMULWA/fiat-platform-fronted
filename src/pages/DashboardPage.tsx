@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Wallet, TrendingUp, Layers, Server, Smartphone,
   Radio, Coins, Network, CreditCard,
   Link2, AlertTriangle, ArrowRight, CheckCircle2, Clock,
-  Activity
+  
 } from 'lucide-react';
 import { getMasterWalletBalance } from '../api/client';
 

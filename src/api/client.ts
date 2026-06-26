@@ -4,7 +4,7 @@ import axios from 'axios'
 // VITE_API_URL will be set in Vercel. If it's missing, it falls back to your local server.
 const baseURL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
-const api = axios.create({
+export const api = axios.create({
   baseURL: baseURL,
   headers: {
     'Content-Type': 'application/json',

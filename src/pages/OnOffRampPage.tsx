@@ -49,6 +49,8 @@ export default function OnOffRampPage() {
   const [cardanoAddress, setCardanoAddress] = useState('')
   const [cardanoLoading, setCardanoLoading] = useState(false)
   const [txHashInput, setTxHashInput] = useState('')
+
+  // @ts-ignore
   const [cardanoTxs, setCardanoTxs] = useState<any[]>([])
   const [estimatedFee, setEstimatedFee] = useState<number | null>(null)
   const [estimatedFeeUsd, setEstimatedFeeUsd] = useState<number | null>(null)
