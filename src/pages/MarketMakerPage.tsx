@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import {
   ShieldAlert, AlertTriangle, ArrowRightLeft,
-  Settings, Clock, Activity, DollarSign, AlertCircle
-} from 'lucide-react';
+  Settings, Clock, Activity, DollarSign, AlertCircle} from 'lucide-react';
 
 // --- MOCK DATA ---
 const PNL_STATE = {
