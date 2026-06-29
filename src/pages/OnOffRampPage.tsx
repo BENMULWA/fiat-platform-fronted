@@ -1,4 +1,4 @@
-// @ts-nocheck
+// @ts-nocheck --- enables bypass the errors of unused imports
 import { useState, useEffect } from 'react'
 import { ArrowDown, ArrowRightLeft, Clock, CheckCircle2, XCircle, AlertCircle, Copy, RefreshCw, Wallet } from 'lucide-react'
 import {
