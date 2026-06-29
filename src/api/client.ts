@@ -76,3 +76,7 @@ export const platformTopUp = (data: object) => api.post('/api/cardano/topup', da
 // Fetch the master wallet to the dashboard to show the live vault balance for USDA
 
 export const getMasterWalletBalance = () => api.get('/api/cardano/master-wallet/balance')
+
+// --- TREASURY & MARKET MAKER ---
+export const getTreasuryDashboard = () => api.get('/api/treasury/dashboard')
+export const simulateTreasurySwap = (data: any) => api.post('/api/treasury/simulate-swap', data)

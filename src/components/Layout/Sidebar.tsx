@@ -1,4 +1,5 @@
-import { NavLink } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
   Scale,
@@ -10,17 +11,37 @@ import {
   LogOut,
   ArrowRightLeft,
   X,
+  ChevronDown,
+  Settings,
+  DollarSign,
+  TerminalSquare,
+  Wallet,
+  Radio // <-- Add Radio icon here
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 
-const navItems = [
-  { to: '/dashboard', label: 'Vault', icon: LayoutDashboard },
-  { to: '/market-maker', label: 'Market Maker', icon: Scale },
-  { to: '/trade', label: 'Trade', icon: TrendingUp },
+// --- ROLE 1: RETAIL USER MENU ---
+const retailNavItems = [
+  { to: '/wallet', label: 'My Wallet', icon: Wallet },
+  { to: '/trade', label: 'Quick Swap', icon: TrendingUp },
   { to: '/ramp', label: 'On / Off Ramp', icon: ArrowLeftRight },
+  { to: '/airtime-ledger', label: 'Tokenize Airtime', icon: Radio },
+]
+
+// --- ROLE 2: ADMIN MENU ---
+const adminNavItems = [
+  { to: '/vault', label: 'Vault', icon: LayoutDashboard },
+  // Market Maker is handled dynamically below
   { to: '/airtime-ledger', label: 'Airtime Ledger', icon: Link2 },
   { to: '/general-ledger', label: 'General Ledger', icon: BookOpen },
   { to: '/rates', label: 'Rates & Inventory', icon: Globe },
+]
+
+const marketMakerSubItems = [
+  { id: 'dashboard', label: 'Treasury Dashboard', icon: LayoutDashboard },
+  { id: 'engine', label: 'Spread Engine', icon: Settings },
+  { id: 'otc', label: 'OTC Desk', icon: DollarSign },
+  { id: 'terminal', label: 'Execution Terminal', icon: TerminalSquare },
 ]
 
 interface SidebarProps {
@@ -29,34 +50,55 @@ interface SidebarProps {
 
 export default function Sidebar({ onClose }: SidebarProps) {
   const { user, logout, viewAsAdmin, toggleViewAsAdmin } = useAuth()
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  // Market Maker Dropdown State
+  const isMarketMakerActive = location.pathname.startsWith('/market-maker')
+  const [isMMOpen, setIsMMOpen] = useState(isMarketMakerActive)
+  const currentMMTab = new URLSearchParams(location.search).get('tab') || 'dashboard'
+
+  useEffect(() => {
+    if (isMarketMakerActive) {
+      setIsMMOpen(true)
+    }
+  }, [isMarketMakerActive])
+
+  const handleMMToggle = (e: React.MouseEvent) => {
+    e.preventDefault()
+    if (!isMarketMakerActive) {
+      navigate('/market-maker?tab=dashboard')
+      setIsMMOpen(true)
+    } else {
+      setIsMMOpen(!isMMOpen)
+    }
+  }
+
+  // Determine which menu to show based on the toggle!
+  const navItems = viewAsAdmin ? adminNavItems : retailNavItems;
 
   return (
-    <aside className="w-[260px] min-w-[260px] h-screen flex flex-col"
-      style={{ background: '#0a1628', borderRight: '1px solid #1e3a5f' }}
+    <aside className="w-[260px] min-w-[260px] h-screen flex flex-col relative z-20"
+      style={{ background: '#070f19', borderRight: '1px solid #1a2a40' }}
     >
-      {/* Logo */}
-      <div className="py-4 border-b border-[#a1b4ca]">
+      {/* 1. Header / Logo */}
+      <div className="py-5 px-4 border-b border-[#1a2a40]">
         <div className="flex items-center justify-between">
-          <div
-            className="flex items-center gap-4 flex-1 px-3 py-6 rounded-xl"
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
-          >
-            <div
-              className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', boxShadow: '0 4px 12px rgba(16,185,129,0.35)' }}
-            >
-              <ArrowRightLeft className="w-6 h-6 text-white text-lg" strokeWidth={2.5} />
+          <div className="flex items-center gap-3 w-full p-2 rounded-xl bg-[#0d1a2d] border border-[#1e3a5f]/50 shadow-inner">
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-900/30">
+              <ArrowRightLeft className="w-5 h-5 text-[#070f19]" strokeWidth={2.5} />
             </div>
-            <div>
-              <p className="text-white font-bold text-xl leading-tight tracking-wide">Meshex</p>
-              <p className="text-[11px] mt-1.5" style={{ color: '#6b8db0' }}>MHS Treasury </p>
+            <div className="overflow-hidden">
+              <p className="text-white font-bold text-lg leading-tight tracking-wide truncate">Meshex</p>
+              <p className="text-[10px] uppercase font-semibold tracking-wider text-emerald-500/80">
+                {viewAsAdmin ? 'MHS TREASURY' : 'RETAIL APP'}
+              </p>
             </div>
           </div>
           {onClose && (
             <button
               onClick={onClose}
-              className="lg:hidden ml-2 w-7 h-7 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/10 transition-colors"
-              aria-label="Close menu"
+              className="lg:hidden absolute right-2 top-6 w-8 h-8 flex items-center justify-center rounded-lg bg-[#1a2a40] text-gray-400 hover:text-white transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
@@ -64,52 +106,112 @@ export default function Sidebar({ onClose }: SidebarProps) {
         </div>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 overflow-y-auto">
-        <ul className="space-y-1">
-          {navItems.map(({ to, label, icon: Icon }) => (
+      {/* 2. Main Navigation */}
+      <nav className="flex-1 px-3 py-6 overflow-y-auto custom-scrollbar">
+        <ul className="space-y-1.5">
+
+          {/* RETAIL USER MENU RENDER */}
+          {!viewAsAdmin && navItems.map(({ to, label, icon: Icon }) => (
             <li key={to}>
-              <NavLink
-                to={to}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-150 ${isActive
-                    ? 'bg-[#0f1e30] text-white font-medium border border-[#1e3a5f]/50'
-                    : 'text-gray-400 hover:text-white hover:bg-white/5'
-                  }`
-                }
-              >
+              <NavLink to={to} className={({ isActive }) => `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 ${isActive ? 'bg-blue-600/10 text-blue-400 font-semibold' : 'text-slate-400 hover:text-slate-200 hover:bg-[#1a2a40]/50'}`}>
                 {({ isActive }) => (
-                  <>
-                    <Icon
-                      className={`w-[18px] h-[18px] flex-shrink-0 ${isActive ? 'text-emerald-400' : 'text-gray-500'}`}
-                      strokeWidth={1.75}
-                    />
-                    <span>{label}</span>
-                  </>
+                  <><Icon className={`w-5 h-5 ${isActive ? 'text-blue-400' : 'text-slate-500'}`} /> {label}</>
                 )}
               </NavLink>
             </li>
           ))}
+
+          {/* ADMIN MENU RENDER */}
+          {viewAsAdmin && (
+            <>
+              {/* 1. VAULT DASHBOARD (Rendered First) */}
+              <li>
+                <NavLink to="/vault" className={({ isActive }) => `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 ${isActive ? 'bg-emerald-500/10 text-emerald-400 font-semibold' : 'text-slate-400 hover:text-slate-200 hover:bg-[#1a2a40]/50'}`}>
+                  {({ isActive }) => (
+                    <><LayoutDashboard className={`w-5 h-5 ${isActive ? 'text-emerald-400' : 'text-slate-500'}`} /> Vault</>
+                  )}
+                </NavLink>
+              </li>
+
+              {/* 2. MARKET MAKER DROPDOWN (Admin Only) */}
+              <li className="pt-2 pb-1">
+                <button
+                  onClick={handleMMToggle}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm transition-all duration-200 group ${isMarketMakerActive ? 'bg-emerald-500/10 text-emerald-400 font-semibold' : 'text-slate-400 hover:text-slate-200 hover:bg-[#1a2a40]/50'}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Scale className={`w-5 h-5 ${isMarketMakerActive ? 'text-emerald-400' : 'text-slate-500 group-hover:text-slate-400'}`} />
+                    <span>Market Maker</span>
+                  </div>
+                  <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${isMMOpen ? 'rotate-180 text-emerald-400' : 'text-slate-500'}`} />
+                </button>
+
+                <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isMMOpen ? 'max-h-64 opacity-100 mt-1' : 'max-h-0 opacity-0'}`}>
+                  <div className="pl-5 pr-2 py-1 space-y-1 border-l border-[#1a2a40] ml-5">
+                    {marketMakerSubItems.map((sub) => {
+                      const SubIcon = sub.icon;
+                      const isActive = isMarketMakerActive && currentMMTab === sub.id;
+
+                      return (
+                        <button
+                          key={sub.id}
+                          onClick={() => navigate(`/market-maker?tab=${sub.id}`)}
+                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-[13px] transition-all duration-200 ${isActive
+                              ? 'bg-[#1a2a40] text-emerald-400 font-medium border border-[#2a3f5f]'
+                              : 'text-slate-400 hover:text-slate-200 hover:bg-[#1a2a40]/50 border border-transparent'
+                            }`}
+                        >
+                          <SubIcon className={`w-4 h-4 ${isActive ? 'text-emerald-400' : 'text-slate-500'}`} />
+                          {sub.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </li>
+
+              {/* 3. OTHER ADMIN LEDGERS (Filter out Vault since it is at the top now) */}
+              {navItems.filter(item => item.to !== '/vault').map(({ to, label, icon: Icon }) => (
+                <li key={to}>
+                  <NavLink to={to} className={({ isActive }) => `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 ${isActive ? 'bg-emerald-500/10 text-emerald-400 font-semibold' : 'text-slate-400 hover:text-slate-200 hover:bg-[#1a2a40]/50'}`}>
+                    {({ isActive }) => (
+                      <><Icon className={`w-5 h-5 ${isActive ? 'text-emerald-400' : 'text-slate-500'}`} /> {label}</>
+                    )}
+                  </NavLink>
+                </li>
+              ))}
+            </>
+          )}
         </ul>
       </nav>
 
-      {/* Footer */}
-      <div className="px-3 pb-4 pt-3 border-t border-[#1a2535] space-y-2">
+      {/* 3. Footer / Auth Controls */}
+      <div className="px-4 pb-6 pt-4 bg-[#050b14] border-t border-[#1a2a40] space-y-3 shadow-[0_-4px_20px_rgba(0,0,0,0.2)]">
+
+        {/* THE MAGIC ROLE SIMULATOR TOGGLE */}
         {user && (
           <button
-            onClick={toggleViewAsAdmin}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
+            onClick={() => {
+              toggleViewAsAdmin();
+              // Auto-route them to the correct home page when switching modes
+              if (!viewAsAdmin) {
+                navigate('/market-maker?tab=dashboard');
+              } else {
+                navigate('/wallet');
+              }
+            }}
+            className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-[#0d1a2d] border border-[#1e3a5f]/50 hover:border-emerald-500/30 transition-colors"
           >
-            <div className={`w-2 h-2 rounded-full flex-shrink-0 ${viewAsAdmin ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-            <span>{viewAsAdmin ? 'View: Admin' : 'View: Member'}</span>
+            <span className="text-xs font-medium text-slate-300">{viewAsAdmin ? 'Admin Mode' : 'Retail Mode'}</span>
+            <div className={`w-2 h-2 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.8)] ${viewAsAdmin ? 'bg-emerald-400 shadow-emerald-500/50' : 'bg-blue-400 shadow-blue-500/50'}`} />
           </button>
         )}
 
         <button
           onClick={logout}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-amber-400/10 hover:bg-amber-400/20 text-amber-400 text-sm font-medium transition-colors"
+          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 text-sm font-bold transition-colors"
         >
-          <LogOut className="w-3.5 h-3.5" strokeWidth={2} />
+          <LogOut className="w-4 h-4" strokeWidth={2.5} />
           Sign out
         </button>
       </div>

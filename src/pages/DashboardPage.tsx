@@ -156,7 +156,7 @@ export default function DashboardPage() {
 
                   {/* Balances */}
                   <div className="w-24 shrink-0 text-right">
-                    <p className={`font-mono font-bold text-sm ${isWarning ? 'text-red-400' : 'text-white'}`}>
+                    <p className={`font-mono font-bold text-sm ${isWarning ? 'text-red-500' : 'text-white'}`}>
                       {vault.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </p>
                     <p className="text-[10px] text-slate-500 font-mono">≈ ${vault.usdValue.toFixed(2)}</p>

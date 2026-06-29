@@ -2,13 +2,21 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import LoginPage from './pages/LoginPage'
 import AppLayout from './components/Layout/AppLayout'
-import DashboardPage from './pages/DashboardPage'
+
+// --- ADMIN PAGES ---
+import DashboardPage from './pages/DashboardPage' // The Master Vault
 import MarketMakerPage from './pages/MarketMakerPage'
+import GeneralLedgerPage from './pages/GeneralLedgerPage'
+import RatesInventoryPage from './pages/RatesInventoryPage'
+
+// --- RETAIL PAGES ---
+import TraderWorkspace from './pages/TradeWorkspace' // The Retail Wallet
 import TradePage from './pages/TradePage'
 import OnOffRampPage from './pages/OnOffRampPage'
 import AirtimeLedgerPage from './pages/AirtimeLedgerPage'
-import GeneralLedgerPage from './pages/GeneralLedgerPage'
-import RatesInventoryPage from './pages/RatesInventoryPage'
+
+// --- SHARED PAGES ---
+
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth()
@@ -33,7 +41,10 @@ function AppRoutes() {
   }
   return (
     <Routes>
-      <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
+      {/* 1. Default Route (Logs you into the Retail Wallet by default) */}
+      <Route path="/" element={user ? <Navigate to="/wallet" replace /> : <LoginPage />} />
+
+      {/* 2. Protected App Layout containing our sidebar and content */}
       <Route
         path="/"
         element={
@@ -42,15 +53,23 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       >
-        <Route path="dashboard" element={<DashboardPage />} />
-        <Route path="market-maker" element={<MarketMakerPage />} />
+        {/* --- RETAIL ROUTES --- */}
+        <Route path="wallet" element={<TraderWorkspace />} />
         <Route path="trade" element={<TradePage />} />
         <Route path="ramp" element={<OnOffRampPage />} />
-        <Route path="airtime-ledger" element={<AirtimeLedgerPage />} />
+
+        {/* --- ADMIN ROUTES --- */}
+        <Route path="vault" element={<DashboardPage />} />
+        <Route path="market-maker" element={<MarketMakerPage />} />
         <Route path="general-ledger" element={<GeneralLedgerPage />} />
         <Route path="rates" element={<RatesInventoryPage />} />
+
+        {/* --- SHARED ROUTES --- */}
+        <Route path="airtime-ledger" element={<AirtimeLedgerPage />} />
       </Route>
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+
+      {/* 3. Catch-all: If user types a bad URL, send them back to their wallet */}
+      <Route path="*" element={<Navigate to="/wallet" replace />} />
     </Routes>
   )
 }

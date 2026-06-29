@@ -1,298 +1,636 @@
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  ShieldAlert, AlertTriangle, ArrowRightLeft,
-  Settings, Clock, Activity, DollarSign, AlertCircle} from 'lucide-react';
-
-// --- MOCK DATA ---
-const PNL_STATE = {
-  net: 850000,
-  target: 500000,
-  openPending: 120000,
-  grossToday: 1250000,
-  exchangeFees: 400000
-};
+  ShieldAlert, Activity, ArrowRightLeft, Settings,
+  TrendingUp, AlertTriangle, RefreshCw, Power,
+  ChevronDown, Scale, DollarSign, TerminalSquare,
+  Clock, CheckCircle2, XCircle, Wallet, Layers,
+  Server, Smartphone, Radio, Coins, Network,
+  CreditCard, Link2, ArrowRight, LayoutDashboard,
+  Play
+} from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { getTreasuryDashboard, simulateTreasurySwap } from '../api/client';
 
 const MOCK_ROUTES = [
-  { id: '#0042', path: 'KES → IMC', volume: 10000, entry: 125, market: 130, spreadPct: 4.0, timeElapsed: '12m 34s', status: 'OPEN', isStuck: false },
-  { id: '#0043', path: 'IMC → USDT', volume: 8000, entry: 130, market: 132, spreadPct: 1.5, timeElapsed: '45m 10s', status: 'OPEN', isStuck: false },
-  { id: '#0044', path: 'KES → IMC', volume: 15000, entry: 125, market: 128, spreadPct: 2.4, timeElapsed: '1h 15m', status: 'PENDING', isStuck: false },
-  { id: '#0045', path: 'IMC → USDT', volume: 5000, entry: 131, market: 130, spreadPct: -0.8, timeElapsed: '2h 05m', status: 'OPEN', isStuck: true },
+  { id: '#0042', path: 'KES → USDA', volume: 10000, entry: 125, market: 130.50, spreadPct: 4.4, timeElapsed: '12m', status: 'OPEN', isStuck: false },
+  { id: '#0045', path: 'USDA → KES', volume: 5000, entry: 131, market: 130.50, spreadPct: -0.3, timeElapsed: '2h', status: 'OPEN', isStuck: true },
 ];
 
-export default function DealingDesk() {
+const INFRASTRUCTURE_NODES = [
+  { id: 'N1', name: 'Telkom Kenya Airtime', desc: '10% Discount Rate', category: 'Airtime', icon: Radio, color: 'text-blue-400', bg: 'bg-blue-400/10 border-blue-400/20', dbKey: 'N1_TELKOM', currency: 'KES' },
+  { id: 'N2', name: 'Airtel Kenya Airtime', desc: '6% Discount Rate', category: 'Airtime', icon: Radio, color: 'text-red-400', bg: 'bg-red-400/10 border-red-400/20', dbKey: 'N2_AIRTEL', currency: 'KES' },
+  { id: 'N3', name: 'Safaricom Airtime', desc: '4% Discount Rate', category: 'Airtime', icon: Radio, color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-400/20', dbKey: 'N3_SAFARICOM', currency: 'KES' },
+  { id: 'N4', name: 'M-Pesa Super Agent', desc: 'B2C & C2B Liquidity', category: 'Mobile Money', icon: Smartphone, color: 'text-emerald-500', bg: 'bg-emerald-500/10 border-emerald-500/20', dbKey: 'N4_MPESA', currency: 'KES' },
+  { id: 'N5', name: 'Airtel Money Agent', desc: 'B2C & C2B Liquidity', category: 'Mobile Money', icon: Smartphone, color: 'text-red-500', bg: 'bg-red-500/10 border-red-500/20', dbKey: 'N5_AIRTEL_MONEY', currency: 'KES' },
+  { id: 'N6', name: 'T-Kash Super Agent', desc: 'B2C & C2B Liquidity', category: 'Mobile Money', icon: Smartphone, color: 'text-blue-500', bg: 'bg-blue-500/10 border-blue-500/20', dbKey: 'N6_TKASH', currency: 'KES' },
+  { id: 'N7', name: 'USDA Stablecoin Mint', desc: 'Cardano Native Token', category: 'Web3', icon: Coins, color: 'text-indigo-400', bg: 'bg-indigo-400/10 border-indigo-400/20', dbKey: 'N7_USDA', currency: 'USDA' },
+  { id: 'N8', name: 'Impalacoin Treasury', desc: 'Collateral & Reserve Mgr', category: 'Web3', icon: Layers, color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20', dbKey: 'N8_IMP', currency: 'IMP' },
+  { id: 'N9', name: 'Multi-Chain Router', desc: 'Stellar / Midnight Network', category: 'Web3', icon: Network, color: 'text-cyan-400', bg: 'bg-cyan-400/10 border-cyan-400/20', dbKey: 'N9_XLM', currency: 'XLM' },
+  { id: 'N10', name: 'PSP & Virtual Card Engine', desc: 'Global Card Settlement', category: 'Payments', icon: CreditCard, color: 'text-orange-400', bg: 'bg-orange-400/10 border-orange-400/20', dbKey: 'N10_USD', currency: 'USD' },
+];
+
+export default function MarketMakerPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeView = searchParams.get('tab') || 'dashboard';
+
   const [globalKillSwitch, setGlobalKillSwitch] = useState(false);
-  const [autoPeg, setAutoPeg] = useState(true);
+  const [isDashboardLoading, setIsDashboardLoading] = useState(true);
+  const [isAuditing, setIsAuditing] = useState(false);
 
-  const fmt = (n: number) => n.toLocaleString('en-US');
+  // Market Maker Spread State
+  const [usdaRoute, setUsdaRoute] = useState({ active: true, autoPeg: true, bid: 128.00, ask: 132.00 });
+  const binanceRate = 130.50;
 
-  // Logic to determine the color of the spread status dot
-  const getSpreadStatus = (spreadPct: number) => {
-    if (spreadPct >= 4.0) return { color: 'bg-emerald-500', glow: 'shadow-[0_0_8px_rgba(16,185,129,0.8)]' };
-    if (spreadPct >= 2.0) return { color: 'bg-yellow-500', glow: 'shadow-[0_0_8px_rgba(234,179,8,0.8)]' };
-    if (spreadPct >= 0) return { color: 'bg-orange-500', glow: 'shadow-[0_0_8px_rgba(249,115,22,0.8)]' };
-    return { color: 'bg-red-500', glow: 'animate-pulse shadow-[0_0_12px_rgba(239,68,68,1)]' };
+  // Simulation State
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [simAmount, setSimAmount] = useState('100');
+  const [simPair, setSimPair] = useState('USDA_KES');
+
+  const [dbVaults, setDbVaults] = useState<any>({});
+  const [dbSettlements, setDbSettlements] = useState<any[]>([]);
+
+  const toggleKillSwitch = () => setGlobalKillSwitch(!globalKillSwitch);
+  const fmt = (n: number) => (n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const fetchDashboardData = async () => {
+    try {
+      const res: any = await getTreasuryDashboard();
+      if (res.data?.status === 'success') {
+        setDbVaults(res.data.vaults);
+        setDbSettlements(res.data.settlements);
+      }
+    } catch (err) {
+      console.error("Dashboard fetch error:", err);
+    } finally {
+      setIsDashboardLoading(false);
+    }
   };
 
-  const criticalSpreadRoutes = MOCK_ROUTES.filter(r => r.spreadPct < 0);
-  const stuckRoutes = MOCK_ROUTES.filter(r => r.isStuck);
+  useEffect(() => {
+    fetchDashboardData();
+    const intervalId = setInterval(fetchDashboardData, 5000);
+    return () => clearInterval(intervalId);
+  }, []);
 
-  return (
-    <div className="min-h-screen bg-[#0b0f17] text-gray-200 font-sans p-6 space-y-8 selection:bg-blue-500/30">
+  const handleSimulateTrade = async () => {
+    if (!simAmount || isNaN(Number(simAmount))) return;
+    setIsSimulating(true);
+    const [fromAsset, toAsset] = simPair.split('_');
 
-      {/* HEADER & GLOBAL KILL SWITCH */}
-      <div className="flex justify-between items-center pb-4 border-b border-gray-800/60">
+    try {
+      await simulateTreasurySwap({
+        user_id: "test_user_123",
+        from_asset: fromAsset,
+        to_asset: toAsset,
+        amount: parseFloat(simAmount)
+      });
+      await fetchDashboardData();
+    } catch (error) {
+      console.error("Simulation failed", error);
+      alert("Simulation failed. Check backend logs.");
+    } finally {
+      setIsSimulating(false);
+    }
+  };
+
+  const renderDashboard = () => {
+    const usdaBal = dbVaults['N7_USDA'] || 0;
+    const kesBal = dbVaults['N4_MPESA'] || 0;
+    const impBal = dbVaults['N8_IMP'] || 0;
+    const airtBal = dbVaults['N3_SAFARICOM'] || 0;
+    const xlmBal = dbVaults['N9_XLM'] || 0;
+    const usdBal = dbVaults['N10_USD'] || 0;
+
+    const VAULTS = [
+      { id: 'USDA', name: 'USDA', desc: 'Master Wallet', balance: usdaBal, usdValue: usdaBal, color: 'bg-blue-500' },
+      { id: 'KES', name: 'KES', desc: 'Paybill Fiat', balance: kesBal, usdValue: kesBal / 130.50, color: 'bg-emerald-500' },
+      { id: 'IMP', name: 'IMP', desc: 'Impala Coin', balance: impBal, usdValue: impBal, color: 'bg-purple-500' },
+      { id: 'AIRT', name: 'AIRT', desc: 'Telco Inventory', balance: airtBal, usdValue: airtBal / 130.50, color: 'bg-orange-500' },
+      { id: 'XLM', name: 'XLM', desc: 'Stellar Router', balance: xlmBal, usdValue: xlmBal * 0.10, color: 'bg-cyan-500' },
+      { id: 'USD', name: 'USD', desc: 'PSP Virtual Cards', balance: usdBal, usdValue: usdBal, color: 'bg-yellow-500' },
+    ];
+
+    const totalPortfolioUSD = VAULTS.reduce((sum, vault) => sum + vault.usdValue, 0);
+
+    return (
+      <div className={`space-y-6 transition-opacity duration-500 ${isDashboardLoading ? 'opacity-60' : 'opacity-100'} animate-in fade-in`}>
+
+        {/* QUICK SIMULATOR PANEL */}
+        <div className="bg-gradient-to-r from-blue-900/40 to-indigo-900/40 border border-blue-500/30 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-lg">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-500/20 rounded-lg"><Play className="w-5 h-5 text-blue-400" /></div>
+            <div>
+              <h3 className="text-white font-bold text-sm">Quick Simulator</h3>
+              <p className="text-xs text-blue-200/60">Test treasury flows and watch nodes react in real-time.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <input
+              type="number"
+              value={simAmount}
+              onChange={(e) => setSimAmount(e.target.value)}
+              className="bg-[#0b0f19] border border-[#1e2d3d] text-white text-sm rounded-lg px-3 py-2 w-24 outline-none focus:border-blue-500 font-mono"
+            />
+            <select
+              value={simPair}
+              onChange={(e) => setSimPair(e.target.value)}
+              className="bg-[#0b0f19] border border-[#1e2d3d] text-white text-sm rounded-lg px-3 py-2 outline-none focus:border-blue-500 cursor-pointer"
+            >
+              <option value="USDA_KES">USDA → KES (Off-Ramp)</option>
+              <option value="KES_USDA">KES → USDA (On-Ramp)</option>
+              <option value="AIRT_IMP">AIRT → IMP (Minting)</option>
+              <option value="IMP_AIRT">IMP → AIRT (Burning)</option>
+              <option value="XLM_USD">XLM → USD (Cross-Border)</option>
+              <option value="USD_XLM">USD → XLM (Cross-Border)</option>
+            </select>
+            <button
+              onClick={handleSimulateTrade}
+              disabled={isSimulating}
+              className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm px-5 py-2 rounded-lg transition-colors shadow-lg disabled:opacity-50 whitespace-nowrap"
+            >
+              {isSimulating ? 'Running...' : 'Execute Test'}
+            </button>
+          </div>
+        </div>
+
+        {/* TOP KPI CARDS */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-[#111827] border border-[#1e2d3d] rounded-2xl p-5 shadow-lg">
+            <div className="flex items-center gap-2 text-slate-400 mb-2">
+              <Wallet className="w-4 h-4 text-emerald-400" />
+              <span className="text-[10px] uppercase font-bold tracking-wider">Total Portfolio Value</span>
+            </div>
+            <p className="text-3xl font-bold text-white font-mono">${fmt(totalPortfolioUSD)}</p>
+            <p className="text-slate-500 text-xs mt-1">USD equivalent</p>
+          </div>
+          <div className="bg-[#111827] border border-[#1e2d3d] rounded-2xl p-5 shadow-lg">
+            <div className="flex items-center gap-2 text-slate-400 mb-2">
+              <Link2 className="w-4 h-4 text-orange-400" />
+              <span className="text-[10px] uppercase font-bold tracking-wider">AIRT Inventory</span>
+            </div>
+            <p className="text-3xl font-bold text-white font-mono">{fmt(airtBal)}</p>
+            <p className="text-slate-500 text-xs mt-1">Tokenized airtime</p>
+          </div>
+          <div className="bg-[#111827] border border-[#1e2d3d] rounded-2xl p-5 shadow-lg">
+            <div className="flex items-center gap-2 text-slate-400 mb-2">
+              <Layers className="w-4 h-4 text-blue-400" />
+              <span className="text-[10px] uppercase font-bold tracking-wider">USDA Float</span>
+            </div>
+            <p className="text-3xl font-bold text-white font-mono">{fmt(usdaBal)}</p>
+            <p className="text-slate-500 text-xs mt-1">Master Wallet</p>
+          </div>
+          <div className="bg-[#111827] border border-[#1e2d3d] rounded-2xl p-5 shadow-lg">
+            <div className="flex items-center gap-2 text-slate-400 mb-2">
+              <TrendingUp className="w-4 h-4 text-emerald-400" />
+              <span className="text-[10px] uppercase font-bold tracking-wider">Open Routes</span>
+            </div>
+            <p className="text-3xl font-bold text-white font-mono">3</p>
+            <p className="text-slate-500 text-xs mt-1">Active MM Quotes</p>
+          </div>
+        </div>
+
+        {/* PANELS (VAULTS & ORACLE) */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 bg-[#111827] border border-[#1e2d3d] rounded-2xl p-6 shadow-lg">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-lg font-bold text-white">Live Vault Allocation</h2>
+              <button onClick={() => setSearchParams({ tab: 'otc' })} className="text-sm text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-medium transition-colors">
+                Manage liquidity <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-0">
+              {VAULTS.map((vault) => {
+                const pct = totalPortfolioUSD > 0 ? (vault.usdValue / totalPortfolioUSD) * 100 : 0;
+                const isWarning = pct > 0 && pct < 15;
+                return (
+                  <div key={vault.id} className={`flex flex-col sm:flex-row sm:items-center gap-4 py-3 border-b border-[#1e2d3d]/60 last:border-0 ${isWarning ? 'bg-red-500/5 -mx-4 px-4 rounded-lg' : ''}`}>
+                    <div className="w-40 shrink-0 flex items-center gap-3">
+                      <div className="px-2 py-1 rounded bg-[#1e293b] border border-[#1e2d3d] text-[10px] font-bold text-slate-300">{vault.id}</div>
+                      <div>
+                        <h3 className="text-white font-bold text-sm flex items-center gap-1.5">
+                          {vault.name}
+                          {isWarning && <AlertTriangle className="w-3.5 h-3.5 text-red-500" />}
+                        </h3>
+                        <p className="text-[10px] text-slate-500">{vault.desc}</p>
+                      </div>
+                    </div>
+                    <div className="flex-1 flex items-center gap-3">
+                      <div className="h-2 flex-1 bg-[#1e293b] rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full transition-all duration-1000 ${isWarning ? 'bg-red-500' : vault.color}`} style={{ width: `${Math.max(pct, 1)}%` }} />
+                      </div>
+                      <span className={`text-xs font-mono font-medium w-12 text-right ${isWarning ? 'text-red-400' : 'text-slate-400'}`}>{pct.toFixed(1)}%</span>
+                    </div>
+                    <div className="w-28 shrink-0 text-right">
+                      <p className={`font-mono font-bold text-sm ${isWarning ? 'text-red-400' : 'text-white'}`}>{fmt(vault.balance)}</p>
+                      <p className="text-[10px] text-slate-500 font-mono">≈ ${fmt(vault.usdValue)}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ORACLE SYNC */}
+          <div className="bg-[#111827] border border-[#1e2d3d] rounded-2xl p-6 shadow-lg flex flex-col">
+            <h2 className="text-lg font-bold text-white mb-6">Oracle Sync</h2>
+            <div className="mb-6">
+              <p className="text-[10px] uppercase tracking-widest font-bold text-slate-500 mb-1">System Collateralization</p>
+              <p className="text-5xl font-bold text-emerald-400 tracking-tighter">
+                {impBal > 0 ? (((airtBal / 130.50 * 0.95) / impBal) * 100).toFixed(1) : '100.0'}%
+              </p>
+            </div>
+            <div className="space-y-4 mb-8 flex-1">
+              <div className="flex justify-between items-center py-2 border-b border-[#1e2d3d]/60">
+                <span className="text-xs text-slate-400">Airtime Reserve (Haircut)</span>
+                <span className="text-sm text-white font-mono font-medium">${fmt(airtBal / 130.50 * 0.95)}</span>
+              </div>
+              <div className="flex justify-between items-center py-2 border-b border-[#1e2d3d]/60">
+                <span className="text-xs text-slate-400">IMP Minted (Circulation)</span>
+                <span className="text-sm text-white font-mono font-medium">${fmt(impBal)}</span>
+              </div>
+              <div className="flex justify-between items-center py-2">
+                <span className="text-xs text-slate-400">Oracle Status</span>
+                <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-full font-bold tracking-wider">SYNCED</span>
+              </div>
+            </div>
+            <button
+              onClick={async () => {
+                setIsAuditing(true);
+                await new Promise(r => setTimeout(r, 2000));
+                setIsAuditing(false);
+              }}
+              disabled={isAuditing}
+              className={`w-full py-3 rounded-xl font-semibold text-sm transition-all border ${isAuditing ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 animate-pulse cursor-wait' : 'bg-emerald-500/5 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/10'}`}
+            >
+              {isAuditing ? 'Auditing On-Chain...' : 'Audit Smart Contract'}
+            </button>
+          </div>
+        </div>
+
+        {/* SYSTEM INFRASTRUCTURE NODES GRID */}
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Dealing Desk</h1>
-          <p className="text-gray-500 text-sm mt-1">Real-time configuration, OTC operations, and trade execution monitoring.</p>
+          <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+            <Server className="w-5 h-5 text-indigo-400" /> Active Infrastructure Nodes
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+            {INFRASTRUCTURE_NODES.map((node) => {
+              const Icon = node.icon;
+              const liveBalance = dbVaults[node.dbKey] || 0;
+              const isOnline = liveBalance > 0;
+
+              return (
+                <div key={node.id} className={`bg-[#111827] border rounded-xl p-4 flex items-center justify-between transition-all group ${isOnline ? 'border-[#1e2d3d] hover:border-slate-500 hover:shadow-lg' : 'border-[#1e2d3d]/50 opacity-50 grayscale-[40%]'}`}>
+
+                  <div className="flex items-start gap-4 min-w-0">
+                    <div className={`p-2.5 rounded-xl border ${node.bg} shrink-0`}><Icon className={`w-5 h-5 ${node.color}`} /></div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">{node.id}</span>
+                        {isOnline ? (
+                          <span className="flex items-center gap-1 text-[8px] text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider"><div className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" /> Online</span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-[8px] text-slate-400 bg-slate-500/10 border border-slate-500/20 px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider"><div className="w-1 h-1 rounded-full bg-slate-500" /> Offline</span>
+                        )}
+                      </div>
+                      <h3 className={`font-semibold text-sm truncate ${isOnline ? 'text-white' : 'text-slate-300'}`}>{node.name}</h3>
+                      <p className="text-slate-500 text-[10px] truncate mt-0.5">{node.desc}</p>
+                    </div>
+                  </div>
+
+                  {/* DISPLAY LIVE BALANCE INSIDE THE CARD */}
+                  <div className="shrink-0 text-right ml-2 border-l border-[#1e2d3d]/60 pl-4 flex flex-col justify-center min-w-[90px]">
+                    <p className={`font-mono font-bold text-sm ${isOnline ? 'text-white' : 'text-slate-500'}`}>
+                      {fmt(liveBalance)}
+                    </p>
+                    <p className={`text-[9px] font-bold uppercase tracking-wider mt-0.5 ${isOnline ? node.color : 'text-slate-600'}`}>
+                      {node.currency}
+                    </p>
+                  </div>
+
+                </div>
+              );
+            })}
+          </div>
         </div>
-        <button
-          onClick={() => setGlobalKillSwitch(!globalKillSwitch)}
-          className={`flex items-center gap-3 px-6 py-2.5 rounded-lg font-bold text-sm transition-all shadow-lg ${globalKillSwitch
-              ? 'bg-red-600 text-white animate-pulse shadow-red-900/50'
-              : 'bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20'
-            }`}
-        >
-          <ShieldAlert className="w-4 h-4" />
-          {globalKillSwitch ? 'SYSTEM HALTED' : 'GLOBAL KILL SWITCH'}
-        </button>
+
+        {/* ROW 4: SETTLEMENT LOG (REALIZED P&L) */}
+        <div className="bg-[#111827] border border-[#1e2d3d] rounded-2xl p-6 shadow-lg mt-6">
+          <h2 className="text-lg font-bold text-white mb-4">Settlement Log (Realized P&L)</h2>
+
+          <div className="space-y-2">
+            {dbSettlements.map((tx) => (
+              <div key={tx.id} className="flex items-center justify-between p-3 hover:bg-[#0d1420] rounded-xl transition-colors border border-transparent hover:border-[#1e2d3d]">
+                <div className="flex items-center gap-4">
+                  <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
+                    <TrendingUp className="w-4 h-4 text-emerald-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-white font-mono">{tx.desc}</p>
+                    <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                      <Clock className="w-3 h-3" /> {tx.time}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-6">
+                  {/* Profit Display */}
+                  <div className="text-right">
+                    <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-0.5">Profit</span>
+                    <span className={`text-sm font-bold font-mono ${tx.profit.includes('+') ? 'text-emerald-400' : 'text-slate-400'}`}>{tx.profit}</span>
+                  </div>
+
+                  {/* Status Badge */}
+                  <div className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1.5 rounded-lg border border-emerald-500/20 tracking-wider flex items-center gap-1.5 min-w-[100px] justify-center">
+                    {tx.status} <CheckCircle2 className="w-3.5 h-3.5" />
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {dbSettlements.length === 0 && (
+              <p className="text-sm text-slate-500 text-center py-4">No recent settlements.</p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderSpreadEngine = () => (
+    <div className="space-y-6 animate-in fade-in duration-300">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-[#111827] border border-[#1e2d3d] rounded-xl p-4 shadow-lg shadow-black/20">
+          <p className="text-[11px] text-gray-500 uppercase tracking-wider font-semibold mb-1">24h Realized P&L</p>
+          <div className="flex items-center justify-between">
+            <p className="text-2xl font-bold text-emerald-400 font-mono">+ 142,500 KES</p>
+            <TrendingUp className="text-emerald-400/50 w-6 h-6" />
+          </div>
+        </div>
+        <div className="bg-[#111827] border border-[#1e2d3d] rounded-xl p-4 shadow-lg shadow-black/20">
+          <p className="text-[11px] text-gray-500 uppercase tracking-wider font-semibold mb-1">Binance P2P (Ref)</p>
+          <p className="text-2xl font-bold text-white font-mono">{fmt(binanceRate)} KES</p>
+        </div>
+        <div className="bg-[#111827] border border-[#1e2d3d] rounded-xl p-4 shadow-lg shadow-black/20">
+          <p className="text-[11px] text-gray-500 uppercase tracking-wider font-semibold mb-1">CBK Official (Ref)</p>
+          <p className="text-2xl font-bold text-gray-400 font-mono">129.80 KES</p>
+        </div>
       </div>
 
-      {/* TOP ROW: KPIs & REFERENCES */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-[#111827] border border-gray-800/60 rounded-xl p-5 flex items-center justify-between shadow-sm">
+      <h2 className="text-lg font-medium text-white flex items-center gap-2 pt-2">
+        <Settings className="w-5 h-5 text-blue-400" />
+        Pricing Configuration
+      </h2>
+
+      {/* Route A: USDA/KES */}
+      <div className={`bg-[#111827] border rounded-2xl p-6 transition-colors shadow-xl ${!usdaRoute.active || globalKillSwitch ? 'border-red-500/50 opacity-80' : 'border-[#1e2d3d]'}`}>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
+              <ArrowRightLeft className="w-6 h-6 text-blue-400" />
+            </div>
+            <div>
+              <h3 className="text-white font-bold text-lg flex items-center gap-2">
+                USDA <span className="text-gray-500">↔</span> KES
+              </h3>
+              <p className="text-xs text-gray-500 mt-0.5">Core Remittance Route</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 cursor-pointer bg-[#0d1420] px-3 py-2 rounded-lg border border-[#1e2d3d]">
+              <span className="text-xs font-semibold text-gray-300">Auto-Peg to Binance</span>
+              <input type="checkbox" className="w-4 h-4 rounded bg-gray-800 border-gray-600 text-blue-500" checked={usdaRoute.autoPeg} onChange={() => setUsdaRoute({ ...usdaRoute, autoPeg: !usdaRoute.autoPeg })} />
+            </label>
+            <button
+              onClick={() => setUsdaRoute({ ...usdaRoute, active: !usdaRoute.active })}
+              className={`text-xs px-4 py-2.5 rounded-lg border font-bold tracking-wide uppercase ${usdaRoute.active && !globalKillSwitch ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}
+            >
+              {globalKillSwitch ? 'SYSTEM HALTED' : usdaRoute.active ? 'ROUTE LIVE' : 'ROUTE PAUSED'}
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-[#0d1420] p-6 rounded-xl border border-[#1e2d3d]">
+          {/* Bid */}
           <div>
-            <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-1.5">24H Trade Volume</p>
-            <p className="text-2xl font-bold text-blue-400 font-mono">{fmt(12450000)} <span className="text-blue-400/70 text-lg">KES</span></p>
+            <label className="text-xs text-gray-500 font-bold uppercase tracking-wider block mb-2">We Buy USDA from Users (Bid)</label>
+            <div className="relative">
+              <input
+                type="number"
+                value={usdaRoute.bid}
+                onChange={(e) => setUsdaRoute({ ...usdaRoute, bid: parseFloat(e.target.value) })}
+                disabled={usdaRoute.autoPeg || globalKillSwitch}
+                className="w-full bg-[#111827] border border-[#1e2d3d] rounded-xl py-3 pl-4 pr-16 text-white text-lg font-mono focus:border-blue-500 outline-none disabled:opacity-50 shadow-inner"
+              />
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-mono font-bold">KES</span>
+            </div>
+            <p className="text-emerald-400 text-xs mt-2 font-medium">Spread Profit: +{(binanceRate - usdaRoute.bid).toFixed(2)} KES per USD</p>
           </div>
-          <Activity className="w-8 h-8 text-blue-500/20" />
-        </div>
-        <div className="bg-[#111827] border border-gray-800/60 rounded-xl p-5 shadow-sm">
-          <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-1.5">Binance P2P (Ref)</p>
-          <p className="text-2xl font-bold text-white font-mono">130.50 <span className="text-gray-400 text-lg">KES</span></p>
-        </div>
-        <div className="bg-[#111827] border border-gray-800/60 rounded-xl p-5 shadow-sm">
-          <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-1.5">CBK Official (Ref)</p>
-          <p className="text-2xl font-bold text-white font-mono">129.80 <span className="text-gray-400 text-lg">KES</span></p>
+
+          {/* Ask */}
+          <div>
+            <label className="text-xs text-gray-500 font-bold uppercase tracking-wider block mb-2">We Sell USDA to Users (Ask)</label>
+            <div className="relative">
+              <input
+                type="number"
+                value={usdaRoute.ask}
+                onChange={(e) => setUsdaRoute({ ...usdaRoute, ask: parseFloat(e.target.value) })}
+                disabled={usdaRoute.autoPeg || globalKillSwitch}
+                className="w-full bg-[#111827] border border-[#1e2d3d] rounded-xl py-3 pl-4 pr-16 text-white text-lg font-mono focus:border-blue-500 outline-none disabled:opacity-50 shadow-inner"
+              />
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-mono font-bold">KES</span>
+            </div>
+            <p className="text-emerald-400 text-xs mt-2 font-medium">Spread Profit: +{(usdaRoute.ask - binanceRate).toFixed(2)} KES per USD</p>
+          </div>
         </div>
       </div>
+    </div>
+  );
 
-      {/* LAYER 1: CONFIGURATION (The Trap) */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+  const renderOTCDesk = () => {
+    const mobileMoney = dbVaults['N4_MPESA'] || 0;
 
-        {/* Spread Engine (Inputs) */}
-        <div className="xl:col-span-2 space-y-4">
-          <h2 className="text-[11px] font-bold text-white uppercase tracking-widest flex items-center gap-2.5">
-            <Settings className="w-4 h-4 text-cyan-400" /> The Spread Engine (Configuration)
-          </h2>
-
-          <div className="bg-[#111827] border border-gray-800/60 rounded-xl p-6 shadow-sm">
-            <div className="flex justify-between items-center mb-6 border-b border-gray-800/60 pb-4">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-lg bg-[#1f2937] flex items-center justify-center border border-gray-700/50">
-                  <ArrowRightLeft className="w-4 h-4 text-blue-400" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-white text-base tracking-wide">USDA ↔ KES</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">Core Remittance Route</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-5">
-                <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
-                  Auto-Peg to Binance
-                  <input
-                    type="checkbox"
-                    checked={autoPeg}
-                    onChange={(e) => setAutoPeg(e.target.checked)}
-                    className="w-3.5 h-3.5 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-900"
-                  />
-                </label>
-                <span className="px-2.5 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded text-[10px] font-bold uppercase tracking-wider">
-                  Route Live
-                </span>
-              </div>
+    return (
+      <div className="space-y-6 animate-in fade-in duration-300 max-w-4xl">
+        <div className="bg-red-500/5 border border-red-500/20 rounded-2xl p-6 relative overflow-hidden shadow-lg">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/10 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none" />
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-red-500/20 rounded-lg">
+              <AlertTriangle className="w-6 h-6 text-red-400" />
             </div>
+            <div>
+              <h3 className="text-red-400 font-bold text-lg">Action Required: Liquidity Imbalance</h3>
+              <p className="text-sm text-gray-400">KES Paybill is dropping rapidly based on current USDA sell volume.</p>
+            </div>
+          </div>
 
-            <div className="grid grid-cols-2 gap-8">
-              <div className="space-y-2">
-                <label className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">We Buy USDA from Users (Bid)</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value="128"
-                    readOnly={autoPeg}
-                    className={`w-full bg-[#0b0f17] border border-gray-800 rounded-lg py-2.5 px-4 text-white font-mono text-sm focus:outline-none focus:border-blue-500/50 ${autoPeg ? 'opacity-70 cursor-not-allowed' : ''}`}
-                  />
-                  <span className="absolute right-4 top-3 text-gray-600 font-mono text-xs">KES</span>
-                </div>
-                <p className="text-[10px] text-emerald-400/80 text-right font-mono mt-1.5">Profit: +2.50 KES per USD</p>
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">We Sell USDA to Users (Ask)</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value="132"
-                    readOnly={autoPeg}
-                    className={`w-full bg-[#0b0f17] border border-gray-800 rounded-lg py-2.5 px-4 text-white font-mono text-sm focus:outline-none focus:border-blue-500/50 ${autoPeg ? 'opacity-70 cursor-not-allowed' : ''}`}
-                  />
-                  <span className="absolute right-4 top-3 text-gray-600 font-mono text-xs">KES</span>
-                </div>
-                <p className="text-[10px] text-emerald-400/80 text-right font-mono mt-1.5">Profit: +1.50 KES per USD</p>
-              </div>
+          <div className="grid grid-cols-2 gap-4 mt-6 bg-[#0b0f17]/50 p-4 rounded-xl border border-red-500/10">
+            <div>
+              <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Target Float</p>
+              <p className="text-xl font-mono text-gray-300">10,000,000 <span className="text-sm">KES</span></p>
+            </div>
+            <div>
+              <p className="text-xs text-red-500 uppercase font-bold tracking-wider mb-1">Current Balance</p>
+              <p className="text-xl font-mono text-red-400 font-bold">{fmt(mobileMoney)} <span className="text-sm">KES</span></p>
             </div>
           </div>
         </div>
 
-        {/* OTC Rebalance Desk */}
-        <div className="space-y-4">
-          <h2 className="text-[11px] font-bold text-white uppercase tracking-widest flex items-center gap-2.5">
-            <DollarSign className="w-4 h-4 text-emerald-400" /> OTC Rebalance Desk
-          </h2>
-          <div className="bg-red-950/10 border border-red-900/30 rounded-xl p-6 shadow-sm relative overflow-hidden">
-            {/* Subtle red glow effect in corner */}
-            <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none" />
+        <div className="bg-[#111827] border border-[#1e2d3d] rounded-2xl p-6 shadow-xl">
+          <h3 className="text-white font-bold text-lg mb-2">Log Fiat Rebalance</h3>
+          <p className="text-sm text-gray-400 mb-6">
+            Record a real-world bank transfer or Binance P2P transaction to rebalance the internal system vaults.
+          </p>
 
-            <h3 className="flex items-center gap-2 text-red-400 font-bold mb-3 text-sm">
-              <AlertTriangle className="w-4 h-4" /> Liquidity Warning
-            </h3>
-            <p className="text-gray-400 text-xs mb-5 leading-relaxed pr-2">
-              KES Paybill is dropping rapidly based on current USDA sell volume. Est. depletion: <strong className="text-white font-semibold">2 Hours</strong>.
-            </p>
-            <div className="space-y-2.5 text-xs font-mono mb-6">
-              <div className="flex justify-between border-b border-gray-800/50 pb-2">
-                <span className="text-gray-500">KES Target</span>
-                <span className="text-gray-400">10,000,000</span>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs text-gray-500 font-bold uppercase tracking-wider block mb-2">Asset Withdrawn</label>
+                <select className="w-full bg-[#0d1420] border border-[#1e2d3d] rounded-xl py-3 px-4 text-white font-medium outline-none">
+                  <option>USDA (Master Wallet)</option>
+                </select>
               </div>
-              <div className="flex justify-between">
-                <span className="text-red-400 font-semibold">Current KES</span>
-                <span className="text-red-400 font-bold">1,240,000</span>
+              <div>
+                <label className="text-xs text-gray-500 font-bold uppercase tracking-wider block mb-2">Amount</label>
+                <input type="number" placeholder="e.g. 5000" className="w-full bg-[#0d1420] border border-[#1e2d3d] rounded-xl py-3 px-4 text-white font-mono outline-none" />
               </div>
             </div>
-            <button className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs rounded-lg transition-colors shadow-lg shadow-blue-900/20">
-              Log Fiat Rebalance
+
+            <div className="flex justify-center py-2">
+              <ArrowRightLeft className="w-6 h-6 text-gray-600 rotate-90 md:rotate-0" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs text-gray-500 font-bold uppercase tracking-wider block mb-2">Asset Deposited</label>
+                <select className="w-full bg-[#0d1420] border border-[#1e2d3d] rounded-xl py-3 px-4 text-white font-medium outline-none">
+                  <option>KES (M-Pesa Paybill)</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 font-bold uppercase tracking-wider block mb-2">Amount Received</label>
+                <input type="number" placeholder="e.g. 650000" className="w-full bg-[#0d1420] border border-[#1e2d3d] rounded-xl py-3 px-4 text-white font-mono outline-none" />
+              </div>
+            </div>
+
+            <button className="w-full mt-6 bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl text-sm transition-all shadow-lg shadow-blue-900/20 flex items-center justify-center gap-2">
+              <RefreshCw className="w-5 h-5" />
+              Submit Ledger Update
             </button>
           </div>
         </div>
       </div>
+    );
+  };
 
-      {/* LAYER 2: EXECUTION TERMINAL (The Catch) */}
-      <div className="space-y-4 pt-2">
-        <h2 className="text-[11px] font-bold text-white uppercase tracking-widest flex items-center gap-2.5">
-          <Activity className="w-4 h-4 text-emerald-400" /> Live Execution Terminal (Active Routes)
-        </h2>
-
-        <div className="bg-[#111827] border border-gray-800/60 rounded-xl overflow-hidden shadow-xl">
-          {/* P&L Header Section - Integrated beautifully */}
-          <div className="p-6 pb-5">
-            <div className="flex items-end justify-between mb-5">
-              <div>
-                <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-1.5">Running Daily P&L (Net)</p>
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl font-mono font-bold text-emerald-400">+ {fmt(PNL_STATE.net)} KES</span>
-                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] mb-1"></div>
-                </div>
-              </div>
-              <div className="text-right">
-                <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-1.5">Target</p>
-                <p className="text-base font-mono text-gray-300">{fmt(PNL_STATE.target)} KES</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-4 pt-4 border-t border-dashed border-gray-700/70">
-              <div>
-                <p className="text-[9px] text-gray-500 uppercase tracking-wider mb-1">Open P&L (Pending)</p>
-                <p className="text-xs font-mono text-blue-400">+ {fmt(PNL_STATE.openPending)} KES</p>
-              </div>
-              <div>
-                <p className="text-[9px] text-gray-500 uppercase tracking-wider mb-1">Gross P&L (Today)</p>
-                <p className="text-xs font-mono text-emerald-400">+ {fmt(PNL_STATE.grossToday)} KES</p>
-              </div>
-              <div>
-                <p className="text-[9px] text-gray-500 uppercase tracking-wider mb-1">Exchange Fees (Today)</p>
-                <p className="text-xs font-mono text-red-400">- {fmt(PNL_STATE.exchangeFees)} KES</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Active Routes Table */}
-          <div className="overflow-x-auto border-t border-gray-800/60">
-            <table className="w-full text-left border-collapse whitespace-nowrap">
-              <thead>
-                <tr className="bg-[#0b0f17]/50 text-[9px] uppercase tracking-widest text-gray-500">
-                  <th className="py-4 pl-6 font-semibold">Route</th>
-                  <th className="py-4 font-semibold">Path</th>
-                  <th className="py-4 font-semibold text-right">Volume</th>
-                  <th className="py-4 font-semibold text-right">Entry (Cost)</th>
-                  <th className="py-4 font-semibold text-right">Market (Oracle)</th>
-                  <th className="py-4 font-semibold text-center">Time Elapsed</th>
-                  <th className="py-4 font-semibold text-center">Status</th>
-                  <th className="py-4 pr-6 font-semibold text-right">Spread</th>
+  const renderTerminal = () => (
+    <div className="space-y-6 animate-in fade-in duration-300">
+      <div className="bg-[#111827] border border-[#1e2d3d] rounded-2xl overflow-hidden shadow-xl">
+        <div className="p-5 border-b border-[#1e2d3d] flex items-center gap-3">
+          <TerminalSquare className="w-5 h-5 text-indigo-400" />
+          <h2 className="text-lg font-bold text-white">Active Arbitration Routes</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm whitespace-nowrap">
+            <thead>
+              <tr className="bg-[#0b0f17] text-gray-500 text-xs uppercase tracking-wider">
+                <th className="p-4 font-bold">Route ID</th>
+                <th className="p-4 font-bold">Path</th>
+                <th className="p-4 font-bold text-right">Volume</th>
+                <th className="p-4 font-bold text-right">Entry / Market</th>
+                <th className="p-4 font-bold text-center">Status</th>
+                <th className="p-4 font-bold text-right">Spread</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#1e2d3d]/50 font-mono">
+              {MOCK_ROUTES.map(route => (
+                <tr key={route.id} className="hover:bg-[#0d1420]/50 transition-colors group">
+                  <td className="p-4 text-gray-400">{route.id}</td>
+                  <td className="p-4 text-gray-200">{route.path}</td>
+                  <td className="p-4 text-right text-gray-300">{fmt(route.volume)}</td>
+                  <td className="p-4 text-right">
+                    <span className="text-gray-300">{route.entry}</span>
+                    <span className="text-gray-600 mx-2">/</span>
+                    <span className="text-blue-400">{route.market}</span>
+                  </td>
+                  <td className="p-4 text-center">
+                    <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded text-[10px] uppercase font-bold tracking-wider ${route.isStuck ? 'bg-red-500/10 text-red-400' : 'bg-blue-500/10 text-blue-400'}`}>
+                      <Clock className="w-3 h-3" /> {route.timeElapsed}
+                    </span>
+                  </td>
+                  <td className="p-4 text-right">
+                    <span className={`px-2 py-1 rounded text-xs font-bold ${route.spreadPct >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/20 text-red-400 animate-pulse'}`}>
+                      {route.spreadPct > 0 ? '+' : ''}{route.spreadPct}%
+                    </span>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="font-mono text-xs">
-                {MOCK_ROUTES.map((route) => {
-                  const status = getSpreadStatus(route.spreadPct);
-                  return (
-                    <tr key={route.id} className="border-b border-gray-800/40 hover:bg-[#1f2937]/30 transition-colors">
-                      <td className="py-3 pl-6 text-gray-500">{route.id}</td>
-                      <td className="py-3 text-gray-300 tracking-wide">{route.path}</td>
-                      <td className="py-3 text-right text-gray-300">{fmt(route.volume)}</td>
-                      <td className="py-3 text-right text-gray-500">{route.entry} KES</td>
-                      <td className="py-3 text-right text-gray-500">{route.market} KES</td>
-                      <td className="py-3 text-center">
-                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] ${route.isStuck ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'text-gray-500'}`}>
-                          <Clock className="w-3 h-3" /> {route.timeElapsed}
-                        </span>
-                      </td>
-                      <td className="py-3 text-center">
-                        <span className="text-[9px] text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded uppercase tracking-wider font-bold">
-                          {route.status}
-                        </span>
-                      </td>
-                      <td className="py-3 pr-6 text-right">
-                        <div className="flex items-center justify-end gap-2.5">
-                          <span className={route.spreadPct >= 0 ? 'text-emerald-400' : 'text-red-400'}>
-                            {route.spreadPct > 0 ? '+' : ''}{route.spreadPct.toFixed(1)}%
-                          </span>
-                          <div className={`w-2 h-2 rounded-full ${status.color} ${status.glow}`} />
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-          {/* Dynamic Circuit Breaker Alerts */}
-          {(criticalSpreadRoutes.length > 0 || stuckRoutes.length > 0) && (
-            <div className="p-4 bg-[#0d131f] border-t border-gray-800/60">
-              <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-4 flex items-start gap-3">
-                <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                <div className="space-y-2">
-                  {criticalSpreadRoutes.length > 0 && (
-                    <div>
-                      <h4 className="text-red-400 font-semibold text-xs tracking-wide">
-                        SPREAD ALERT: Route {criticalSpreadRoutes.map(r => r.id).join(', ')} is showing negative spread. Circuit Breaker engaged.
-                      </h4>
-                      <p className="text-red-400/60 text-[10px] mt-1">Action Required: Close position manually or adjust Oracle rate immediately.</p>
-                    </div>
-                  )}
-                  {stuckRoutes.length > 0 && (
-                    <div>
-                      <h4 className="text-red-400 font-bold text-sm">
-                        ⏱️ TIME EXCEEDED: Route {stuckRoutes.map(r => r.id).join(', ')} has been open for &gt; 2 Hours.
-                      </h4>
-                      <p className="text-red-400/60 text-[10px] mt-1">🚨 Action Required: Transaction is likely stuck. Investigate off-chain settlement status and manually close.</p>
-                    </div>
-                  )}
-                </div>
+      <div className="bg-[#111827] border border-[#1e2d3d] rounded-2xl overflow-hidden shadow-xl">
+        <div className="p-5 border-b border-[#1e2d3d] flex items-center gap-3">
+          <Activity className="w-5 h-5 text-emerald-400" />
+          <h2 className="text-lg font-bold text-white">The Live Tape (Simulated Outputs)</h2>
+        </div>
+        <div className="divide-y divide-[#1e2d3d]/50">
+          {dbSettlements.map((tx) => (
+            <div key={tx.id} className="p-4 flex items-center justify-between hover:bg-[#0d1420]/50 transition-colors">
+              <div className="flex items-center gap-4">
+                <span className="text-xs font-mono text-gray-500">{tx.time}</span>
+                <span className="text-sm font-medium text-gray-200">
+                  User executed {tx.desc}
+                </span>
               </div>
+              <span className={`text-sm font-mono font-bold ${tx.profit.includes('+') ? 'text-emerald-400' : 'text-slate-400'}`}>
+                {tx.profit}
+              </span>
+            </div>
+          ))}
+          {dbSettlements.length === 0 && (
+            <div className="p-8 text-center text-slate-500 text-sm">
+              Waiting for simulated trades... Use the Quick Simulator on the Dashboard tab.
             </div>
           )}
         </div>
       </div>
+    </div>
+  );
 
+  return (
+    <div className="min-h-screen bg-[#0b0f19] text-gray-200 flex flex-col md:flex-row">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <header className="bg-[#111827] border-b border-[#1e2d3d] px-6 py-4 flex items-center justify-between shrink-0">
+          <div>
+            <h1 className="text-xl font-bold text-white tracking-tight">
+              {activeView === 'dashboard' && 'Treasury Overview'}
+              {activeView === 'engine' && 'The Spread Engine'}
+              {activeView === 'otc' && 'OTC Rebalance Desk'}
+              {activeView === 'terminal' && 'Execution Terminal'}
+            </h1>
+            <p className="text-gray-500 text-xs mt-0.5">Mamlaka Global Treasury Operations</p>
+          </div>
+
+          <button
+            onClick={toggleKillSwitch}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs transition-all shadow-lg border ${globalKillSwitch
+                ? 'bg-red-600/20 text-red-500 border-red-500/50 animate-pulse'
+                : 'bg-red-500 hover:bg-red-600 text-white border-red-600'
+              }`}
+          >
+            <Power className="w-4 h-4" />
+            {globalKillSwitch ? 'SYSTEM HALTED' : 'GLOBAL KILL SWITCH'}
+          </button>
+        </header>
+
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar">
+          {activeView === 'dashboard' && renderDashboard()}
+          {activeView === 'engine' && renderSpreadEngine()}
+          {activeView === 'otc' && renderOTCDesk()}
+          {activeView === 'terminal' && renderTerminal()}
+        </main>
+      </div>
     </div>
   );
 }

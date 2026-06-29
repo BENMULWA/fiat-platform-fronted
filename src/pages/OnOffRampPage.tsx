@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { ArrowDown, ArrowRightLeft, Clock, CheckCircle2, XCircle, AlertCircle, Copy, RefreshCw } from 'lucide-react'
 import {
   executeRamp,
-  executeInternalSwap,
   getRampHistory,
   withdrawUsda,
   verifyCardanoDeposit,
@@ -12,7 +11,6 @@ import {
 } from '../api/client'
 
 const CHANNELS = ['Mobile Money', 'Bank Transfer', 'Card', 'Cardano Blockchain']
-const ASSETS = ['KES', 'USD', 'UGX', 'TZS', 'USDA', 'USDT']
 
 interface RampEntry {
   id: string
@@ -27,10 +25,11 @@ interface RampEntry {
   timeAgo: string
   date?: string
   status: string
+  direction: string
 }
 
 export default function OnOffRampPage() {
-  const [direction, setDirection] = useState<'on' | 'off' | 'swap'>('on')
+  const [direction, setDirection] = useState<'on' | 'off'>('on')
   const [channel, setChannel] = useState('Mobile Money')
   const [from, setFrom] = useState('KES')
   const [to, setTo] = useState('USDA')
@@ -49,21 +48,15 @@ export default function OnOffRampPage() {
   const [cardanoAddress, setCardanoAddress] = useState('')
   const [cardanoLoading, setCardanoLoading] = useState(false)
   const [txHashInput, setTxHashInput] = useState('')
-
-  // @ts-ignore
   const [cardanoTxs, setCardanoTxs] = useState<any[]>([])
   const [estimatedFee, setEstimatedFee] = useState<number | null>(null)
   const [estimatedFeeUsd, setEstimatedFeeUsd] = useState<number | null>(null)
-  const [showWalletBalance, setShowWalletBalance] = useState(false)
   const [walletBalances, setWalletBalances] = useState<{ ada?: number | null; usda?: number | null } | null>(null)
 
-  // Fixed internal rates for display (hidden from retail user inputs)
-  let rate = 1
-  if (direction === 'swap') {
-    if (from === 'KES' && to === 'USDA') rate = 1 / 130;
-    else if (from === 'USDA' && to === 'KES') rate = 130;
-    else if (from === 'KES' && to === 'UGX') rate = 28.5;
-    else if (from === 'UGX' && to === 'KES') rate = 1 / 28.5;
+  // Dynamic Rate Calculation (Mocking Dealing Desk Rates)
+  let rate = 1;
+  if (channel !== 'Cardano Blockchain') {
+    rate = direction === 'on' ? (1 / 132) : 128; // User buys USDA at 132 KES, sells at 128 KES
   }
   const fee = 0
   const receiveAmount = (parseFloat(amount) || 0) * rate - fee
@@ -72,28 +65,27 @@ export default function OnOffRampPage() {
     try {
       const r: any = await getRampHistory()
       if (r.data?.entries) {
-        setHistory(r.data.entries)
+        // Filter to show ONLY external on/off ramp transactions (hide internal swaps)
+        const rampsOnly = r.data.entries.filter((e: any) => e.direction !== 'swap')
+        setHistory(rampsOnly)
       }
     } catch (e) {
       console.debug('Failed to load history', e)
     }
   }
 
-  // Poll history every 5 seconds
   useEffect(() => {
     loadHistory()
     const interval = setInterval(loadHistory, 5000)
     return () => clearInterval(interval)
   }, [])
 
-  // --- CARDANO LOGIC ---
   useEffect(() => {
     if (channel === 'Cardano Blockchain' && direction === 'on') {
       fetchDepositAddress()
     }
     if (channel === 'Cardano Blockchain') {
       fetchRecentCardanoTxs()
-      setTo('USDA')
     }
   }, [channel, direction])
 
@@ -125,13 +117,12 @@ export default function OnOffRampPage() {
     } catch (err) {
       console.error(err)
       setToastError('Failed to fetch deposit address.')
-      setCardanoAddress('addr_error_failed_to_load_backend')
+      setCardanoAddress('')
     } finally {
       setCardanoLoading(false)
     }
   }
 
-  // Estimate fee when amount/recipient changes for Cardano operations
   useEffect(() => {
     const estimate = async () => {
       if (channel !== 'Cardano Blockchain') return
@@ -156,11 +147,10 @@ export default function OnOffRampPage() {
     return () => clearTimeout(t)
   }, [amount, counterparty, cardanoAddress, channel, direction])
 
-  // --- EXECUTION LOGIC ---
   const handleExecute = async () => {
     const numericAmount = parseFloat(amount)
 
-    // Sandbox Guardrail for Mobile Money
+    // Guardrails
     if (channel === 'Mobile Money' && numericAmount > 1) {
       setToastError('Sandbox limit is 1 KES. Please enter 1.')
       setTimeout(() => setToastError(''), 4000)
@@ -169,9 +159,8 @@ export default function OnOffRampPage() {
 
     if (!amount || numericAmount <= 0) return
 
-    // Validate counterparty unless it's a Cardano On-Ramp (which uses txHashInput)
-    // AND skip this check entirely if it's an Internal Swap
-    if (direction !== 'swap' && !(channel === 'Cardano Blockchain' && direction === 'on') && !counterparty) {
+    // Require counterparty unless it's a Cardano On-Ramp
+    if (!(channel === 'Cardano Blockchain' && direction === 'on') && !counterparty) {
       setToastError('Please enter your destination details (Phone/Address).')
       setTimeout(() => setToastError(''), 4000)
       return
@@ -181,15 +170,7 @@ export default function OnOffRampPage() {
     setToastError('')
 
     try {
-      if (direction === 'swap') {
-        // --- INTERNAL LEDGER SWAP ---
-        const res: any = await executeInternalSwap({
-          from_asset: from,
-          to_asset: to,
-          amount: numericAmount
-        });
-        setSuccessMessage(res?.data?.message || 'Swap completed instantly.');
-      } else if (channel === 'Cardano Blockchain') {
+      if (channel === 'Cardano Blockchain') {
         if (direction === 'off') {
           // Cardano Off-Ramp
           const addr = counterparty
@@ -245,7 +226,7 @@ export default function OnOffRampPage() {
 
       setShowSuccessModal(true)
       setAmount('')
-      if (channel !== 'Cardano Blockchain' && direction !== 'swap') setCounterparty('')
+      if (channel !== 'Cardano Blockchain') setCounterparty('')
       setTxHashInput('')
       loadHistory()
 
@@ -264,7 +245,7 @@ export default function OnOffRampPage() {
   }
 
   return (
-    <div className="animate-in fade-in duration-300 relative">
+    <div className="animate-in fade-in duration-300 relative max-w-7xl mx-auto p-4 md:p-6 text-gray-200">
 
       {/* 1. SUCCESS MODAL POPUP */}
       {showSuccessModal && (
@@ -286,9 +267,9 @@ export default function OnOffRampPage() {
       )}
 
       {/* 2. HEADER & ERRORS */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white">Quick Swap</h1>
-        <p className="text-gray-500 text-sm mt-1">Convert fiat and crypto securely across multiple channels.</p>
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-white tracking-tight">On / Off Ramp</h1>
+        <p className="text-gray-500 text-sm mt-1">Deposit fiat to your wallet, or withdraw your crypto to local currency.</p>
       </div>
 
       {toastError && (
@@ -300,91 +281,61 @@ export default function OnOffRampPage() {
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
 
-        {/* LEFT: THE SWAP FORM */}
+        {/* LEFT: THE RAMP FORM */}
         <div className="bg-[#0b0f19] border border-[#1e2d3d] rounded-3xl p-6 shadow-xl relative overflow-hidden">
 
-          {/* Subtle background glow */}
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-32 bg-emerald-500/5 blur-3xl rounded-full pointer-events-none" />
 
-          {/* Direction Tabs (Fixed Responsive Spacing) */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6 relative z-10">
+          {/* Direction Tabs (Removed Swap Tab) */}
+          <div className="flex mb-6 rounded-xl overflow-hidden bg-[#111827] p-1 border border-[#1e2d3d] relative z-10">
             <button
-              onClick={() => { setDirection('on'); setFrom('KES'); setTo('USDA'); setAmount(''); setToastError(''); }}
-              className={`py-3.5 px-2 text-sm font-bold rounded-xl border transition-all duration-300 ${direction === 'on'
-                  ? 'bg-emerald-500 border-emerald-400 text-white shadow-lg shadow-emerald-900/30'
-                  : 'bg-[#111827] border-[#1e2d3d] text-gray-400 hover:text-white hover:border-gray-600'
-                }`}
+              onClick={() => { setDirection('on'); setFrom('KES'); setTo('USDA'); setAmount(''); }}
+              className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${direction === 'on' ? 'bg-emerald-500 text-white shadow-md' : 'text-gray-400 hover:text-white'}`}
             >
-              Deposit (To Crypto)
+              Deposit
             </button>
             <button
-              onClick={() => { setDirection('swap'); setFrom('KES'); setTo('USDA'); setAmount(''); setToastError(''); }}
-              className={`py-3.5 px-2 text-sm font-bold rounded-xl border transition-all duration-300 ${direction === 'swap'
-                  ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-900/30'
-                  : 'bg-[#111827] border-[#1e2d3d] text-gray-400 hover:text-white hover:border-gray-600'
-                }`}
+              onClick={() => { setDirection('off'); setFrom('USDA'); setTo('KES'); setAmount(''); }}
+              className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${direction === 'off' ? 'bg-emerald-500 text-white shadow-md' : 'text-gray-400 hover:text-white'}`}
             >
-              Internal Swap
-            </button>
-            <button
-              onClick={() => { setDirection('off'); setFrom('USDA'); setTo('KES'); setAmount(''); setToastError(''); }}
-              className={`py-3.5 px-2 text-sm font-bold rounded-xl border transition-all duration-300 ${direction === 'off'
-                  ? 'bg-emerald-500 border-emerald-400 text-white shadow-lg shadow-emerald-900/30'
-                  : 'bg-[#111827] border-[#1e2d3d] text-gray-400 hover:text-white hover:border-gray-600'
-                }`}
-            >
-              Withdraw (To Fiat)
+              Withdraw
             </button>
           </div>
 
           <div className="space-y-6 relative z-10">
 
-            {/* Channel Selector */}
-            {direction !== 'swap' && (
-              <div>
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 block">
-                  Payment Channel
-                </label>
-                <div className="relative">
-                  <select
-                    value={channel}
-                    onChange={e => setChannel(e.target.value)}
-                    className="w-full bg-[#111827] border border-[#1e2d3d] focus:border-emerald-500 rounded-xl py-3.5 pl-4 pr-10 text-white font-medium appearance-none outline-none transition-colors"
-                  >
-                    {CHANNELS.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-500">
-                    <ArrowDown className="w-4 h-4" />
-                  </div>
+            {/* Conditionally Render Channel Selector */}
+            <div>
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 block">
+                Payment Channel
+              </label>
+              <div className="relative">
+                <select
+                  value={channel}
+                  onChange={e => {
+                    setChannel(e.target.value);
+                    if (e.target.value === 'Cardano Blockchain') {
+                      setFrom(direction === 'on' ? 'USDA' : 'USDA');
+                      setTo(direction === 'on' ? 'USDA' : 'USDA');
+                    } else {
+                      setFrom(direction === 'on' ? 'KES' : 'USDA');
+                      setTo(direction === 'on' ? 'USDA' : 'KES');
+                    }
+                  }}
+                  className="w-full bg-[#111827] border border-[#1e2d3d] focus:border-emerald-500 rounded-xl py-3.5 pl-4 pr-10 text-white font-medium appearance-none outline-none transition-colors cursor-pointer"
+                >
+                  {CHANNELS.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-500">
+                  <ArrowDown className="w-4 h-4" />
                 </div>
               </div>
-            )}
-
-            {/* Visual Route Display */}
-            {direction === 'swap' && (
-              <div className="flex items-center justify-between bg-[#111827] p-4 rounded-xl border border-[#1e2d3d]">
-                <div className="flex-1">
-                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">From Asset</p>
-                  <select value={from} onChange={e => setFrom(e.target.value)} className="bg-transparent text-xl font-bold text-white outline-none w-full appearance-none cursor-pointer">
-                    {ASSETS.map(a => <option key={a} value={a} className="bg-[#111827]">{a}</option>)}
-                  </select>
-                </div>
-                <div className="w-8 h-8 rounded-full bg-[#1e2d3d] flex items-center justify-center shrink-0 mx-4">
-                  <ArrowRightLeft className="w-4 h-4 text-blue-400" />
-                </div>
-                <div className="flex-1 text-right">
-                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">To Asset</p>
-                  <select value={to} onChange={e => setTo(e.target.value)} className="bg-transparent text-xl font-bold text-white outline-none w-full appearance-none text-right cursor-pointer" dir="rtl">
-                    {ASSETS.map(a => <option key={a} value={a} className="bg-[#111827]">{a}</option>)}
-                  </select>
-                </div>
-              </div>
-            )}
+            </div>
 
             {/* BIG AMOUNT INPUT */}
             <div>
               <label className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-2 block">
-                1. Amount to Swap ({from})
+                1. Amount to {direction === 'on' ? 'Deposit' : 'Withdraw'} ({from})
               </label>
               <div className="relative">
                 <input
@@ -398,100 +349,59 @@ export default function OnOffRampPage() {
               </div>
             </div>
 
-            {/* DYNAMIC COUNTERPARTY INPUT (With Internal Swap clarification) */}
-            {direction === 'swap' ? (
-              <div>
-                <label className="text-xs font-bold text-blue-400 uppercase tracking-wider mb-2 block">
-                  2. Destination
-                </label>
-                <div className="w-full bg-[#111827]/60 border-2 border-[#1e2d3d]/60 rounded-xl py-4 px-4 flex items-center justify-between cursor-not-allowed">
-                  <span className="text-gray-400 text-lg font-mono">Your Internal Wallet</span>
-                </div>
-                <p className="text-[10px] text-gray-500 mt-2 font-medium">Internal swaps instantly update your dashboard balances without network fees.</p>
-              </div>
-            ) : (
-              <div>
-                <label className="text-xs font-bold text-blue-400 uppercase tracking-wider mb-2 block">
-                  2. {channel === 'Cardano Blockchain'
-                    ? (direction === 'on' ? 'Deposit Details' : 'Destination Cardano Address')
-                    : channel === 'Mobile Money' ? 'Your M-Pesa Phone Number'
-                      : 'Account / Reference Details'}
-                </label>
+            {/* DYNAMIC COUNTERPARTY INPUT */}
+            <div>
+              <label className="text-xs font-bold text-blue-400 uppercase tracking-wider mb-2 block">
+                2. {channel === 'Cardano Blockchain'
+                  ? (direction === 'on' ? 'Deposit Details' : 'Destination Cardano Address')
+                  : channel === 'Mobile Money' ? 'Your M-Pesa Phone Number'
+                    : 'Account / Reference Details'}
+              </label>
 
-                {channel === 'Cardano Blockchain' && direction === 'on' ? (
-                  <div className="space-y-3 p-4 bg-[#111827] border border-[#1e2d3d] rounded-xl">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-400">Send {from} to this address:</span>
-                      <button onClick={fetchDepositAddress} className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1">
-                        <RefreshCw className={`w-3 h-3 ${cardanoLoading ? 'animate-spin' : ''}`} /> Refresh
-                      </button>
-                    </div>
-                    <div className="flex gap-2">
-                      <input value={cardanoAddress} readOnly className="flex-1 bg-[#0d1420] border border-[#1e2d3d] rounded-lg py-2.5 px-3 text-gray-300 text-xs font-mono outline-none" />
-                      <button
-                        onClick={() => {
-                          if (cardanoAddress) navigator.clipboard.writeText(cardanoAddress)
-                          setToastError('Address copied!')
-                          setTimeout(() => setToastError(''), 2000)
-                        }}
-                        className="bg-[#1e2d3d] hover:bg-gray-700 px-3 rounded-lg flex items-center justify-center transition-colors"
-                      >
-                        <Copy className="w-4 h-4 text-gray-400" />
-                      </button>
-                    </div>
-                    <div className="pt-2 border-t border-[#1e2d3d]">
-                      <span className="text-xs text-gray-400 mb-2 block">After sending, paste your TX Hash below:</span>
-                      <input
-                        value={txHashInput}
-                        onChange={e => setTxHashInput(e.target.value)}
-                        className="w-full bg-[#0d1420] border border-[#1e2d3d] focus:border-blue-500 rounded-lg py-2.5 px-3 text-white text-sm font-mono outline-none transition-colors"
-                        placeholder="Paste Tx Hash..."
-                      />
-                    </div>
+              {channel === 'Cardano Blockchain' && direction === 'on' ? (
+                <div className="space-y-3 p-4 bg-[#111827] border border-[#1e2d3d] rounded-xl">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-400">Send USDA to this address:</span>
+                    <button onClick={fetchDepositAddress} className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1">
+                      <RefreshCw className={`w-3 h-3 ${cardanoLoading ? 'animate-spin' : ''}`} /> Refresh
+                    </button>
                   </div>
-                ) : (
-                  <input
-                    type="text"
-                    value={counterparty}
-                    onChange={e => setCounterparty(e.target.value)}
-                    className="w-full bg-[#111827] border-2 border-[#1e2d3d] focus:border-blue-500 rounded-xl py-4 px-4 text-white text-lg font-mono transition-colors outline-none shadow-inner"
-                    placeholder={
-                      channel === 'Cardano Blockchain' ? 'addr1...' :
-                        channel === 'Mobile Money' ? '2547XXXXXXXX' : 'Account number'
-                    }
-                  />
-                )}
-              </div>
-            )}
-
-            {/* CARDANO EXTRAS (Fees & Balances) */}
-            {channel === 'Cardano Blockchain' && direction !== 'swap' && (
-              <div className="space-y-3">
-                <div className="bg-[#111827] border border-[#1e2d3d] rounded-xl p-3 flex justify-between items-center">
-                  <div>
-                    <p className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">Network Fee</p>
-                    <p className="text-white font-mono text-sm">{estimatedFee !== null ? `${estimatedFee.toFixed(6)} ADA` : 'Calculating...'}</p>
+                  <div className="flex gap-2">
+                    <input value={cardanoAddress} readOnly className="flex-1 bg-[#0d1420] border border-[#1e2d3d] rounded-lg py-2.5 px-3 text-gray-300 text-xs font-mono outline-none" />
+                    <button
+                      onClick={() => {
+                        if (cardanoAddress) navigator.clipboard.writeText(cardanoAddress)
+                        setToastError('Address copied!')
+                        setTimeout(() => setToastError(''), 2000)
+                      }}
+                      className="bg-[#1e2d3d] hover:bg-gray-700 px-3 rounded-lg flex items-center justify-center transition-colors"
+                    >
+                      <Copy className="w-4 h-4 text-gray-400" />
+                    </button>
                   </div>
-                  <div className="text-right">
-                    <p className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">Approx USD</p>
-                    <p className="text-emerald-400 text-sm">{estimatedFeeUsd !== null ? `$${estimatedFeeUsd.toFixed(4)}` : '...'}</p>
+                  <div className="pt-2 border-t border-[#1e2d3d]">
+                    <span className="text-xs text-gray-400 mb-2 block">After sending, paste your TX Hash below:</span>
+                    <input
+                      value={txHashInput}
+                      onChange={e => setTxHashInput(e.target.value)}
+                      className="w-full bg-[#0d1420] border border-[#1e2d3d] focus:border-blue-500 rounded-lg py-2.5 px-3 text-white text-sm font-mono outline-none transition-colors"
+                      placeholder="Paste Tx Hash..."
+                    />
                   </div>
                 </div>
-
-                <div className="flex items-center justify-between px-1">
-                  <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer hover:text-white transition-colors">
-                    <input type="checkbox" className="rounded bg-[#1e2d3d] border-gray-600 text-emerald-500 focus:ring-emerald-500" checked={showWalletBalance} onChange={e => { setShowWalletBalance(e.target.checked); if (e.target.checked) fetchDepositAddress() }} />
-                    Show Hot Wallet Balance
-                  </label>
-                  {showWalletBalance && walletBalances && (
-                    <div className="text-xs text-gray-300 font-mono">
-                      <span className="mr-3">ADA: {walletBalances.ada ?? '0.00'}</span>
-                      <span>USDA: {walletBalances.usda ?? '0.00'}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+              ) : (
+                <input
+                  type="text"
+                  value={counterparty}
+                  onChange={e => setCounterparty(e.target.value)}
+                  className="w-full bg-[#111827] border-2 border-[#1e2d3d] focus:border-blue-500 rounded-xl py-4 px-4 text-white text-lg font-mono transition-colors outline-none shadow-inner"
+                  placeholder={
+                    channel === 'Cardano Blockchain' ? 'addr1...' :
+                      channel === 'Mobile Money' ? '2547XXXXXXXX' : 'Account number'
+                  }
+                />
+              )}
+            </div>
 
             <div className="flex justify-center -my-2 relative z-20">
               <div className="bg-[#0b0f19] p-1 rounded-full">
@@ -510,10 +420,9 @@ export default function OnOffRampPage() {
             <button
               onClick={handleExecute}
               disabled={submitting || !amount || parseFloat(amount) <= 0}
-              className={`w-full py-4 disabled:bg-gray-800 disabled:text-gray-600 text-white font-bold text-lg rounded-xl transition-colors shadow-lg ${direction === 'swap' ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-900/20' : 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-900/20'
-                }`}
+              className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-800 disabled:text-gray-600 text-white font-bold text-lg rounded-xl transition-colors shadow-lg shadow-emerald-900/20"
             >
-              {submitting ? 'Processing...' : `Confirm ${direction === 'on' ? 'Deposit' : direction === 'swap' ? 'Swap' : 'Withdrawal'}`}
+              {submitting ? 'Processing...' : `Confirm ${direction === 'on' ? 'Deposit' : 'Withdrawal'}`}
             </button>
           </div>
         </div>
@@ -521,8 +430,8 @@ export default function OnOffRampPage() {
         {/* RIGHT: UPGRADED HISTORY PANEL */}
         <div className="bg-[#0b0f19] border border-[#1e2d3d] rounded-3xl p-6 shadow-xl flex flex-col h-[750px]">
           <h2 className="text-white font-bold text-lg mb-6 flex items-center gap-2">
-            <Clock className="w-5 h-5 text-blue-400" />
-            Transaction History
+            <Clock className="w-5 h-5 text-emerald-400" />
+            Ramp History
           </h2>
 
           <div className="space-y-3 overflow-y-auto pr-2 custom-scrollbar flex-1">
@@ -536,22 +445,22 @@ export default function OnOffRampPage() {
                   <div>
                     {/* TYPE & AMOUNT */}
                     <div className="flex items-center gap-2.5 mb-2">
-                      <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${r.type === 'On-Ramp' ? 'bg-blue-500/20 text-blue-400' : 'bg-purple-500/20 text-purple-400'
+                      <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${r.direction === 'on' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-blue-500/20 text-blue-400'
                         }`}>
-                        {r.type}
+                        {r.direction === 'on' ? 'Deposit' : 'Withdrawal'}
                       </span>
                       <span className="text-white font-bold text-sm font-mono">
-                        {r.fromAmount} {r.fromAsset} <span className="text-gray-500 mx-1">→</span> {r.toAmount} {r.toAsset}
+                        {r.fromAmount} {r.fromAsset} <span className="text-gray-500 mx-1">→</span> {r.toAmount.toFixed(2)} {r.toAsset}
                       </span>
                     </div>
 
                     {/* EXACT DATE & TIME & CHANNEL */}
-                    <div className="flex items-center gap-2 text-xs text-gray-500 font-medium">
+                    <div className="flex items-center gap-2 text-xs text-gray-500 font-medium ml-1">
                       <span>{r.date || 'Today'}</span>
                       <span className="w-1 h-1 rounded-full bg-gray-600"></span>
                       <span>{r.timeAgo || 'Just now'}</span>
                       <span className="w-1 h-1 rounded-full bg-gray-600"></span>
-                      <span className="truncate max-w-[100px]">{r.channel}</span>
+                      <span className="truncate max-w-[120px]">{r.channel}</span>
                     </div>
                   </div>
 
@@ -574,8 +483,8 @@ export default function OnOffRampPage() {
             {history.length === 0 && (
               <div className="text-center py-10 border-2 border-dashed border-[#1e2d3d] rounded-2xl flex flex-col items-center justify-center h-48">
                 <ArrowRightLeft className="w-8 h-8 text-gray-600 mb-3" />
-                <p className="text-gray-400 text-sm font-medium">No transactions found.</p>
-                <p className="text-gray-600 text-xs mt-1">Your swaps will appear here.</p>
+                <p className="text-gray-400 text-sm font-medium">No ramps found.</p>
+                <p className="text-gray-600 text-xs mt-1">Your deposits and withdrawals will appear here.</p>
               </div>
             )}
           </div>
