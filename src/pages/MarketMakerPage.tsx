@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
-  ShieldAlert, Activity, ArrowRightLeft, Settings,
+  Activity, ArrowRightLeft, Settings,
   TrendingUp, AlertTriangle, RefreshCw, Power,
-  ChevronDown, Scale, DollarSign, TerminalSquare,
-  Clock, CheckCircle2, XCircle, Wallet, Layers,
+  TerminalSquare,
+  Clock, CheckCircle2, Wallet, Layers,
   Server, Smartphone, Radio, Coins, Network,
-  CreditCard, Link2, ArrowRight, LayoutDashboard,
+  CreditCard, Link2, ArrowRight,
   Play
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
