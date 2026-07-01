@@ -80,3 +80,4 @@ export const getMasterWalletBalance = () => api.get('/api/cardano/master-wallet/
 // --- TREASURY & MARKET MAKER ---
 export const getTreasuryDashboard = () => api.get('/api/treasury/dashboard')
 export const simulateTreasurySwap = (data: any) => api.post('/api/treasury/simulate-swap', data)
+export const resetTreasurySandbox = () => api.post('/api/treasury/reset-sandbox')
