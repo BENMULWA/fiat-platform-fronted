@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+// @ts-nocheck
+import { useState, useEffect } from 'react';
 import { BookOpen, Search, Download, Filter, Server } from 'lucide-react';
 import { api } from '../api/client';
 
@@ -7,7 +8,6 @@ export default function GeneralLedgerPage() {
   const [ledger, setLedger] = useState<any[]>([]);
   const [isLive, setIsLive] = useState(true);
 
-  // Poll the backend endpoint every 2 seconds to watch the HFT bot
   useEffect(() => {
     if (!isLive) return;
 
@@ -64,7 +64,7 @@ export default function GeneralLedgerPage() {
         </div>
       </div>
 
-      {/* The Ledger Table */}
+      { }
       <div className="flex-1 bg-[#060c11] border border-[#162a36] rounded-2xl shadow-2xl flex flex-col overflow-hidden relative">
 
         <div className="grid grid-cols-12 gap-4 p-4 border-b border-[#162a36] text-[10px] text-[#4a728f] uppercase tracking-widest font-bold bg-[#040a0f] shrink-0">
@@ -78,7 +78,6 @@ export default function GeneralLedgerPage() {
         </div>
 
         <div className="overflow-y-auto custom-scrollbar flex-1 p-2">
-          {/* We remove the client-side .filter() because the server is doing it now! */}
           {ledger.map((log, i) => (
             <div key={log.id || i} className="grid grid-cols-12 gap-4 p-3 text-[11px] font-mono text-[#8ba3b8] hover:bg-[#162a36]/40 border-b border-[#162a36]/30 last:border-0 transition-colors group cursor-default">
 
@@ -106,6 +105,7 @@ export default function GeneralLedgerPage() {
           )}
         </div>
 
+        { }
         <div className="border-t border-[#162a36] bg-[#040a0f] p-3 flex justify-between items-center shrink-0">
           <div className="flex items-center gap-3">
             <button

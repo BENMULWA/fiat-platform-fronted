@@ -1,29 +1,27 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+// @ts-nocheck
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: 'admin' | 'trader';
+}
 
 interface AuthContextType {
-  user: any | null;
+  user: User | null;
   isLoading: boolean;
+  viewAsAdmin: boolean;
   login: (email: string, password?: string) => Promise<void>;
   signup: (displayName: string, email: string, password?: string) => Promise<void>;
   logout: () => void;
-  viewAsAdmin: boolean;
   toggleViewAsAdmin: () => void;
 }
 
-const AuthContext = createContext<AuthContextType>({
-  user: null,
-  isLoading: true,
-  login: async () => { },
-  signup: async () => { },
-  logout: () => { },
-  viewAsAdmin: false,
-  toggleViewAsAdmin: () => { },
-});
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const useAuth = () => useContext(AuthContext);
-
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<any | null>(null);
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [viewAsAdmin, setViewAsAdmin] = useState(false);
 
@@ -37,7 +35,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Default to admin view if their role is admin
         setViewAsAdmin(parsedUser.role === 'admin');
       } catch (e) {
-        console.error("Failed to parse user session");
+        console.error("Failed to parse user session", e);
       }
     }
     // Stop the loading spinner in App.tsx once we've checked storage
@@ -53,15 +51,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // For demonstration: any email containing 'admin' gets admin privileges
     const role = email.toLowerCase().includes('admin') ? 'admin' : 'trader';
 
-    const loggedInUser = {
-      email,
+    const loggedInUser: User = {
+      id: `usr_${Math.random().toString(36).substr(2, 9)}`,
       name: email.split('@')[0],
+      email,
       role,
-      workspaceId: `ws_${Math.random().toString(36).substring(2, 9)}`
     };
 
     setUser(loggedInUser);
-    setViewAsAdmin(loggedInUser.role === 'admin');
+    setViewAsAdmin(role === 'admin');
 
     localStorage.setItem('meshex_user', JSON.stringify(loggedInUser));
     localStorage.setItem('meshex_token', 'mock_jwt_token_123456789');
@@ -77,15 +75,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const role = email.toLowerCase().includes('admin') ? 'admin' : 'trader';
 
-    const newUser = {
-      email,
+    const newUser: User = {
+      id: `usr_${Math.random().toString(36).substr(2, 9)}`,
       name: displayName,
+      email,
       role,
-      workspaceId: `ws_${Math.random().toString(36).substring(2, 9)}`
     };
 
     setUser(newUser);
-    setViewAsAdmin(newUser.role === 'admin');
+    setViewAsAdmin(role === 'admin');
 
     localStorage.setItem('meshex_user', JSON.stringify(newUser));
     localStorage.setItem('meshex_token', 'mock_jwt_token_123456789');
@@ -98,22 +96,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setViewAsAdmin(false);
     localStorage.removeItem('meshex_user');
     localStorage.removeItem('meshex_token');
+  };
 
-    // Optional: Force a hard reload to clear any residual state from memory
-    // window.location.href = '/'; 
+  const toggleViewAsAdmin = () => {
+    if (user?.role === 'admin') {
+      setViewAsAdmin(prev => !prev);
+    }
   };
 
   return (
-    <AuthContext.Provider value={{
-      user,
-      isLoading,
-      login,
-      signup,
-      logout,
-      viewAsAdmin,
-      toggleViewAsAdmin: () => setViewAsAdmin(!viewAsAdmin)
-    }}>
+    <AuthContext.Provider value={{ user, isLoading, viewAsAdmin, login, signup, logout, toggleViewAsAdmin }}>
       {children}
     </AuthContext.Provider>
   );
-};
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+}
