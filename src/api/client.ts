@@ -1,24 +1,32 @@
 import axios from 'axios'
 
-// Dynamically assign the base URL. 
-// VITE_API_URL will be set in Vercel. If it's missing, it falls back to your local server.
-const baseURL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
-
 export const api = axios.create({
-  baseURL: baseURL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
+  baseURL: import.meta.env.VITE_API_URL || '',
+  headers: { 'Content-Type': 'application/json' },
+  timeout: 15000,
+})
 
+// Attach the token
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('meshex_token')
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+    return config
+  },
+  (error) => Promise.reject(error)
+)
 
 api.interceptors.response.use(
   res => res,
   err => {
     if (err.response?.status === 401) {
-      localStorage.removeItem('meshex_token')
-      localStorage.removeItem('meshex_user')
-      window.location.href = '/'
+      // ⚠️ DEV MODE: We have commented out the auto-logout tripwire!
+      console.warn("⚠️ 401 Unauthorized - Ignoring auto-logout for development");
+      // localStorage.removeItem('meshex_token')
+      // localStorage.removeItem('meshex_user')
+      // window.location.href = '/'
     }
     return Promise.reject(err)
   }
@@ -55,6 +63,10 @@ export const getLedgerSummary = () => api.get('/api/ledger/summary')
 export const getLedgerEntries = (flow?: string, search?: string) =>
   api.get('/api/ledger/entries', { params: { flow, search } })
 
+// The Live Tape HFT Feed!
+export const getLiveLedgerFeed = (limit: number = 50) =>
+  api.get('/api/ledger/feed', { params: { limit } })
+
 // Rates & Inventory
 export const getDiscountRates = () => api.get('/api/rates/discount')
 export const addDiscountRate = (data: object) => api.post('/api/rates/discount', data)
@@ -72,9 +84,7 @@ export const withdrawUsda = (data: object) => api.post('/api/cardano/withdraw', 
 export const estimateCardanoFee = (data: object) => api.post('/api/cardano/estimate-fee', data)
 export const platformTopUp = (data: object) => api.post('/api/cardano/topup', data)
 
-
-// Fetch the master wallet to the dashboard to show the live vault balance for USDA
-
+// Fetch the master wallet balance for the dashboard
 export const getMasterWalletBalance = () => api.get('/api/cardano/master-wallet/balance')
 
 // --- TREASURY & MARKET MAKER ---

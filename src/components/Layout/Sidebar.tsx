@@ -9,14 +9,14 @@ import {
   BookOpen,
   Globe,
   LogOut,
-  ArrowRightLeft,
   X,
   ChevronDown,
   Settings,
   DollarSign,
   TerminalSquare,
   Wallet,
-  Radio // <-- Add Radio icon here
+  Radio,
+  Repeat
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -24,7 +24,7 @@ import { useAuth } from '../../contexts/AuthContext'
 const retailNavItems = [
   { to: '/wallet', label: 'My Wallet', icon: Wallet },
   { to: '/trade', label: 'Quick Swap', icon: TrendingUp },
-  { to: '/ramp', label: 'On / Off Ramp', icon: ArrowLeftRight },
+  { to: '/ramp', label: 'Deposit / Withdraw', icon: ArrowLeftRight },
   { to: '/airtime-ledger', label: 'Tokenize Airtime', icon: Radio },
 ]
 
@@ -37,8 +37,10 @@ const adminNavItems = [
   { to: '/rates', label: 'Rates & Inventory', icon: Globe },
 ]
 
+// 🚀 UPDATED: Cleaned up to strictly these 5 tabs
 const marketMakerSubItems = [
   { id: 'dashboard', label: 'Treasury Dashboard', icon: LayoutDashboard },
+  { id: 'corridor', label: 'Channel Corridor', icon: Repeat },
   { id: 'engine', label: 'Spread Engine', icon: Settings },
   { id: 'otc', label: 'OTC Desk', icon: DollarSign },
   { id: 'terminal', label: 'Execution Terminal', icon: TerminalSquare },
@@ -74,7 +76,6 @@ export default function Sidebar({ onClose }: SidebarProps) {
     }
   }
 
-  // Determine which menu to show based on the toggle!
   const navItems = viewAsAdmin ? adminNavItems : retailNavItems;
 
   return (
@@ -86,7 +87,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 w-full p-2 rounded-xl bg-[#0d1a2d] border border-[#1e3a5f]/50 shadow-inner">
             <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-900/30">
-              <ArrowRightLeft className="w-5 h-5 text-[#070f19]" strokeWidth={2.5} />
+              <ArrowLeftRight className="w-5 h-5 text-[#070f19]" strokeWidth={2.5} />
             </div>
             <div className="overflow-hidden">
               <p className="text-white font-bold text-lg leading-tight tracking-wide truncate">Meshex</p>
@@ -110,7 +111,6 @@ export default function Sidebar({ onClose }: SidebarProps) {
       <nav className="flex-1 px-3 py-6 overflow-y-auto custom-scrollbar">
         <ul className="space-y-1.5">
 
-          {/* RETAIL USER MENU RENDER */}
           {!viewAsAdmin && navItems.map(({ to, label, icon: Icon }) => (
             <li key={to}>
               <NavLink to={to} className={({ isActive }) => `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 ${isActive ? 'bg-blue-600/10 text-blue-400 font-semibold' : 'text-slate-400 hover:text-slate-200 hover:bg-[#1a2a40]/50'}`}>
@@ -121,10 +121,9 @@ export default function Sidebar({ onClose }: SidebarProps) {
             </li>
           ))}
 
-          {/* ADMIN MENU RENDER */}
           {viewAsAdmin && (
             <>
-              {/* 1. VAULT DASHBOARD (Rendered First) */}
+              {/* VAULT */}
               <li>
                 <NavLink to="/vault" className={({ isActive }) => `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 ${isActive ? 'bg-emerald-500/10 text-emerald-400 font-semibold' : 'text-slate-400 hover:text-slate-200 hover:bg-[#1a2a40]/50'}`}>
                   {({ isActive }) => (
@@ -133,7 +132,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
                 </NavLink>
               </li>
 
-              {/* 2. MARKET MAKER DROPDOWN (Admin Only) */}
+              {/* MARKET MAKER DROPDOWN */}
               <li className="pt-2 pb-1">
                 <button
                   onClick={handleMMToggle}
@@ -146,7 +145,8 @@ export default function Sidebar({ onClose }: SidebarProps) {
                   <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${isMMOpen ? 'rotate-180 text-emerald-400' : 'text-slate-500'}`} />
                 </button>
 
-                <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isMMOpen ? 'max-h-64 opacity-100 mt-1' : 'max-h-0 opacity-0'}`}>
+                {/* Increased max-h to 350px so all 5 items fit comfortably */}
+                <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isMMOpen ? 'max-h-[350px] opacity-100 mt-1' : 'max-h-0 opacity-0'}`}>
                   <div className="pl-5 pr-2 py-1 space-y-1 border-l border-[#1a2a40] ml-5">
                     {marketMakerSubItems.map((sub) => {
                       const SubIcon = sub.icon;
@@ -157,8 +157,8 @@ export default function Sidebar({ onClose }: SidebarProps) {
                           key={sub.id}
                           onClick={() => navigate(`/market-maker?tab=${sub.id}`)}
                           className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-[13px] transition-all duration-200 ${isActive
-                              ? 'bg-[#1a2a40] text-emerald-400 font-medium border border-[#2a3f5f]'
-                              : 'text-slate-400 hover:text-slate-200 hover:bg-[#1a2a40]/50 border border-transparent'
+                            ? 'bg-[#1a2a40] text-emerald-400 font-medium border border-[#2a3f5f]'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-[#1a2a40]/50 border border-transparent'
                             }`}
                         >
                           <SubIcon className={`w-4 h-4 ${isActive ? 'text-emerald-400' : 'text-slate-500'}`} />
@@ -170,7 +170,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
                 </div>
               </li>
 
-              {/* 3. OTHER ADMIN LEDGERS (Filter out Vault since it is at the top now) */}
+              {/* OTHER ADMIN LEDGERS */}
               {navItems.filter(item => item.to !== '/vault').map(({ to, label, icon: Icon }) => (
                 <li key={to}>
                   <NavLink to={to} className={({ isActive }) => `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 ${isActive ? 'bg-emerald-500/10 text-emerald-400 font-semibold' : 'text-slate-400 hover:text-slate-200 hover:bg-[#1a2a40]/50'}`}>
@@ -187,18 +187,12 @@ export default function Sidebar({ onClose }: SidebarProps) {
 
       {/* 3. Footer / Auth Controls */}
       <div className="px-4 pb-6 pt-4 bg-[#050b14] border-t border-[#1a2a40] space-y-3 shadow-[0_-4px_20px_rgba(0,0,0,0.2)]">
-
-        {/* THE MAGIC ROLE SIMULATOR TOGGLE */}
         {user && (
           <button
             onClick={() => {
               toggleViewAsAdmin();
-              // Auto-route them to the correct home page when switching modes
-              if (!viewAsAdmin) {
-                navigate('/market-maker?tab=dashboard');
-              } else {
-                navigate('/wallet');
-              }
+              if (!viewAsAdmin) navigate('/market-maker?tab=dashboard');
+              else navigate('/wallet');
             }}
             className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-[#0d1a2d] border border-[#1e3a5f]/50 hover:border-emerald-500/30 transition-colors"
           >
@@ -206,7 +200,6 @@ export default function Sidebar({ onClose }: SidebarProps) {
             <div className={`w-2 h-2 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.8)] ${viewAsAdmin ? 'bg-emerald-400 shadow-emerald-500/50' : 'bg-blue-400 shadow-blue-500/50'}`} />
           </button>
         )}
-
         <button
           onClick={logout}
           className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 text-sm font-bold transition-colors"

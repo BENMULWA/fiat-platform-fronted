@@ -1,78 +1,119 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { User } from '../types'
-import { api } from '../api/client'
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
-interface AuthContextValue {
-  user: User | null
-  token: string | null
-  viewAsAdmin: boolean
-  isLoading: boolean
-  login: (email: string, password: string) => Promise<void>
-  signup: (displayName: string, email: string, password: string) => Promise<void>
-  logout: () => void
-  toggleViewAsAdmin: () => void
+interface AuthContextType {
+  user: any | null;
+  isLoading: boolean;
+  login: (email: string, password?: string) => Promise<void>;
+  signup: (displayName: string, email: string, password?: string) => Promise<void>;
+  logout: () => void;
+  viewAsAdmin: boolean;
+  toggleViewAsAdmin: () => void;
 }
 
-const AuthContext = createContext<AuthContextValue | null>(null)
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  isLoading: true,
+  login: async () => { },
+  signup: async () => { },
+  logout: () => { },
+  viewAsAdmin: false,
+  toggleViewAsAdmin: () => { },
+});
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [token, setToken] = useState<string | null>(null)
-  const [viewAsAdmin, setViewAsAdmin] = useState(true)
-  const [isLoading, setIsLoading] = useState(true)
+export const useAuth = () => useContext(AuthContext);
+
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<any | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [viewAsAdmin, setViewAsAdmin] = useState(false);
 
   useEffect(() => {
-    const stored = localStorage.getItem('meshex_token')
-    const storedUser = localStorage.getItem('meshex_user')
-    if (stored && storedUser) {
-      setToken(stored)
-      setUser(JSON.parse(storedUser))
-      api.defaults.headers.common['Authorization'] = `Bearer ${stored}`
+    // Check local storage for an existing user session on mount
+    const storedUser = localStorage.getItem('meshex_user');
+    if (storedUser) {
+      try {
+        const parsedUser = JSON.parse(storedUser);
+        setUser(parsedUser);
+        // Default to admin view if their role is admin
+        setViewAsAdmin(parsedUser.role === 'admin');
+      } catch (e) {
+        console.error("Failed to parse user session");
+      }
     }
-    setIsLoading(false)
-  }, [])
+    // Stop the loading spinner in App.tsx once we've checked storage
+    setIsLoading(false);
+  }, []);
 
-  const login = async (email: string, password: string) => {
-    const res = await api.post('/api/auth/login', { email, password })
-    const { access_token, user: userData } = res.data
-    setToken(access_token)
-    setUser(userData)
-    setViewAsAdmin(userData.role === 'admin')
-    localStorage.setItem('meshex_token', access_token)
-    localStorage.setItem('meshex_user', JSON.stringify(userData))
-    api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
-  }
+  const login = async (email: string, password?: string) => {
+    setIsLoading(true);
 
-  const signup = async (displayName: string, email: string, password: string) => {
-    const res = await api.post('/api/auth/signup', { displayName, email, password })
-    const { access_token, user: userData } = res.data
-    setToken(access_token)
-    setUser(userData)
-    setViewAsAdmin(true)
-    localStorage.setItem('meshex_token', access_token)
-    localStorage.setItem('meshex_user', JSON.stringify(userData))
-    api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
-  }
+    // Simulate a secure API call to your backend
+    await new Promise(res => setTimeout(res, 800));
+
+    // For demonstration: any email containing 'admin' gets admin privileges
+    const role = email.toLowerCase().includes('admin') ? 'admin' : 'trader';
+
+    const loggedInUser = {
+      email,
+      name: email.split('@')[0],
+      role,
+      workspaceId: `ws_${Math.random().toString(36).substring(2, 9)}`
+    };
+
+    setUser(loggedInUser);
+    setViewAsAdmin(loggedInUser.role === 'admin');
+
+    localStorage.setItem('meshex_user', JSON.stringify(loggedInUser));
+    localStorage.setItem('meshex_token', 'mock_jwt_token_123456789');
+
+    setIsLoading(false);
+  };
+
+  const signup = async (displayName: string, email: string, password?: string) => {
+    setIsLoading(true);
+
+    // Simulate API call to register user
+    await new Promise(res => setTimeout(res, 800));
+
+    const role = email.toLowerCase().includes('admin') ? 'admin' : 'trader';
+
+    const newUser = {
+      email,
+      name: displayName,
+      role,
+      workspaceId: `ws_${Math.random().toString(36).substring(2, 9)}`
+    };
+
+    setUser(newUser);
+    setViewAsAdmin(newUser.role === 'admin');
+
+    localStorage.setItem('meshex_user', JSON.stringify(newUser));
+    localStorage.setItem('meshex_token', 'mock_jwt_token_123456789');
+
+    setIsLoading(false);
+  };
 
   const logout = () => {
-    setUser(null)
-    setToken(null)
-    localStorage.removeItem('meshex_token')
-    localStorage.removeItem('meshex_user')
-    delete api.defaults.headers.common['Authorization']
-  }
+    setUser(null);
+    setViewAsAdmin(false);
+    localStorage.removeItem('meshex_user');
+    localStorage.removeItem('meshex_token');
 
-  const toggleViewAsAdmin = () => setViewAsAdmin(v => !v)
+    // Optional: Force a hard reload to clear any residual state from memory
+    // window.location.href = '/'; 
+  };
 
   return (
-    <AuthContext.Provider value={{ user, token, viewAsAdmin, isLoading, login, signup, logout, toggleViewAsAdmin }}>
+    <AuthContext.Provider value={{
+      user,
+      isLoading,
+      login,
+      signup,
+      logout,
+      viewAsAdmin,
+      toggleViewAsAdmin: () => setViewAsAdmin(!viewAsAdmin)
+    }}>
       {children}
     </AuthContext.Provider>
-  )
-}
-
-export function useAuth() {
-  const ctx = useContext(AuthContext)
-  if (!ctx) throw new Error('useAuth must be used within AuthProvider')
-  return ctx
-}
+  );
+};
