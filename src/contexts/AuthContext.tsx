@@ -12,8 +12,8 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   viewAsAdmin: boolean;
-  login: (email: string, password?: string) => Promise<void>;
-  signup: (displayName: string, email: string, password?: string) => Promise<void>;
+  login: (email: string, _password?: string) => Promise<void>;
+  signup: (displayName: string, email: string, _password?: string) => Promise<void>;
   logout: () => void;
   toggleViewAsAdmin: () => void;
 }
@@ -42,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(false);
   }, []);
 
-  const login = async (email: string, password?: string) => {
+  const login = async (email: string, _password?: string) => {
     setIsLoading(true);
 
     // Simulate a secure API call to your backend
@@ -67,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(false);
   };
 
-  const signup = async (displayName: string, email: string, password?: string) => {
+  const signup = async (displayName: string, email: string, _password?: string) => {
     setIsLoading(true);
 
     // Simulate API call to register user
@@ -99,9 +99,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const toggleViewAsAdmin = () => {
-    if (user?.role === 'admin') {
-      setViewAsAdmin(prev => !prev);
-    }
+    // SECURITY LOCK REMOVED: Anyone can toggle between Retail and Admin modes for the demo!
+    setViewAsAdmin(prev => !prev);
   };
 
   return (
