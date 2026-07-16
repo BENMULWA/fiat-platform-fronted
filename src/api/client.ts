@@ -1,9 +1,9 @@
-import axios from 'axios'
+import axios from 'axios' //axios are used to make http requests to the backend api
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '',
   headers: { 'Content-Type': 'application/json' },
-  timeout: 15000,
+  timeout: 60000, // 60 seconds timeout for requests
 })
 
 // Attach the token
@@ -41,6 +41,7 @@ export const createQuote = (data: object) => api.post('/api/market-maker/quotes'
 export const deleteQuote = (id: string) => api.delete(`/api/market-maker/quotes/${id}`)
 export const toggleQuote = (id: string) => api.patch(`/api/market-maker/quotes/${id}/toggle`)
 export const bookDeal = (id: string) => api.post(`/api/market-maker/quotes/${id}/book`)
+ 
 
 // Trade
 export const getOrderBook = () => api.get('/api/trade/orderbook')
@@ -51,6 +52,10 @@ export const placeOrder = (data: object) => api.post('/api/trade/orders', data)
 export const executeRamp = (data: object) => api.post('/api/ramp/execute', data)
 export const executeInternalSwap = (data: object) => api.post('/api/ramp/swap', data)
 export const getRampHistory = () => api.get('/api/ramp/history')
+
+// Retail Wallet
+export const getRetailWallet = () => api.get('/api/retail/wallet')
+
 
 // Airtime Ledger
 export const getAirtimeSummary = () => api.get('/api/airtime/summary')
@@ -91,3 +96,22 @@ export const getMasterWalletBalance = () => api.get('/api/cardano/master-wallet/
 export const getTreasuryDashboard = () => api.get('/api/treasury/dashboard')
 export const simulateTreasurySwap = (data: any) => api.post('/api/treasury/simulate-swap', data)
 export const resetTreasurySandbox = () => api.post('/api/treasury/reset-sandbox')
+
+
+// Dynamic Dealing Desk Apis
+
+export const getMarketMakerOpportunities = () => api.get('/api/market-maker/opportunities')
+export const getSpreadConfig = () => api.get('/api/market-maker/spread')
+export const updateSpreadConfig = (data: any) => api.post('/api/market-maker/spread', data)
+
+// HFT Corridor APIs
+export const toggleTreasuryKillSwitch = (active: boolean) => api.post('/api/treasury/kill-switch', { active })
+export const executeHftCorridor = (data: { amount: number, corridor_id: string }) => api.post('/api/treasury/corridor/execute-hft', data)
+
+
+// Valora APIs
+export const executeValoraWithdraw = (data: { amount: number; identifier: string }) =>
+  axios.post('/api/valora/withdraw', data);
+
+export const registerValoraPhone = (data: { phone: string; celo_address: string }) =>
+  axios.post('/api/valora/register-phone', data);

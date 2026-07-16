@@ -1,16 +1,15 @@
-//@ts-nocheck
-
 import React, { useState, useEffect } from 'react';
 import {
   Activity, ArrowLeftRight, Settings,
   TrendingUp, AlertTriangle, RefreshCw, Power,
-  ChevronDown, ChevronUp, DollarSign, Terminal,
-  Clock, CheckCircle2, Wallet, Layers,
+  ChevronDown, ChevronUp, TerminalSquare,
+  Clock, Wallet, Layers,
   Server, Smartphone, Radio, Coins, Network,
-  CreditCard, Link2, ArrowRight, Play, Hexagon
+  CreditCard, Link2, ArrowRight, Play,
+  Repeat
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
-import { getTreasuryDashboard, simulateTreasurySwap, getLiveLedgerFeed, api } from '../api/client';
+import { getTreasuryDashboard, getLiveLedgerFeed, api } from '../api/client';
 
 const MOCK_ROUTES = [
   { id: '#0042', path: 'KES → USDA', volume: 10000, entry: 125, market: 130.50, spreadPct: 4.4, timeElapsed: '12m', status: 'OPEN', isStuck: false },
@@ -28,16 +27,12 @@ const INFRASTRUCTURE_NODES = [
   { id: 'N8', name: 'Impalacoin Treasury', desc: 'Collateral & Reserve Mgr', category: 'Web3', icon: Layers, color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20', dbKey: 'N8_IMP', currency: 'IMP' },
   { id: 'N9', name: 'Multi-Chain Router', desc: 'Stellar / Midnight Network', category: 'Web3', icon: Network, color: 'text-cyan-400', bg: 'bg-cyan-400/10 border-cyan-400/20', dbKey: 'N9_XLM', currency: 'XLM' },
   { id: 'N10', name: 'PSP & Virtual Card Engine', desc: 'Global Card Settlement', category: 'Payments', icon: CreditCard, color: 'text-orange-400', bg: 'bg-orange-400/10 border-orange-400/20', dbKey: 'N10_USD', currency: 'USD' },
-  { id: 'N11', name: 'Commodities Vault', desc: 'Tokenized Gold Reserves', category: 'Commodities', icon: Hexagon, color: 'text-yellow-400', bg: 'bg-yellow-400/10 border-yellow-400/20', dbKey: 'N11_GOLD', currency: 'GOLD (OZ)' },
-  { id: 'N12', name: 'Yeshara Protocol', desc: 'Custom Platform Utility Token', category: 'Web3', icon: Coins, color: 'text-pink-400', bg: 'bg-pink-400/10 border-pink-400/20', dbKey: 'N12_YESHARA', currency: 'YESHARA' },
 ];
 
 const NODE_CATEGORIES = [
   { id: 'Mobile Money', label: 'Mobile Money Liquidity', icon: Smartphone, color: 'text-emerald-400' },
   { id: 'Airtime', label: 'Airtime Liquidity', icon: Radio, color: 'text-blue-400' },
   { id: 'Web3', label: 'Web3 Blockchain', icon: Coins, color: 'text-indigo-400' },
-  { id: 'Payments', label: 'Cross-Border & PSP', icon: CreditCard, color: 'text-orange-400' },
-  { id: 'Commodities', label: 'Commodities Vault', icon: Hexagon, color: 'text-yellow-400' }
 ];
 
 export default function MarketMakerPage() {
@@ -46,72 +41,69 @@ export default function MarketMakerPage() {
 
   const [globalKillSwitch, setGlobalKillSwitch] = useState(false);
   const [isDashboardLoading, setIsDashboardLoading] = useState(true);
-  const [isAuditing, setIsAuditing] = useState(false);
 
-  // Market Maker Spread State
-  const [usdaRoute, setUsdaRoute] = useState({ active: true, autoPeg: true, bid: 128.00, ask: 132.00 });
-  const binanceRate = 130.50;
-  const cbkRate = 129.50; // Updated to 129.50 per user instruction
+  // DYNAMIC BACKEND STATE
+  const [opportunities, setOpportunities] = useState<any>(null);
+  const [spreadConfig, setSpreadConfig] = useState({ active: true, autoPeg: true, bid: 128.00, ask: 132.00, reference: 130.50 });
+  const [activeOpp, setActiveOpp] = useState<string>('');
 
-  // Simulation State
-  const [isSimulating, setIsSimulating] = useState(false);
-  const [simAmount, setSimAmount] = useState('100');
-  const [simPair, setSimPair] = useState('USDA_KES');
-
-  // Corridor Opportunity State
-  const [activeOpp, setActiveOpp] = useState<'telkom' | 'airtime_celo'>('airtime_celo');
-
-  // --- NEW: Visual HUD Tracking States ---
+  const [simCycle, setSimCycle] = useState<number>(4);
   const [isExecutingCorridor, setIsExecutingCorridor] = useState(false);
-  const [deployAmountKes, setDeployAmountKes] = useState('50'); // Defaults to 50 KES
+  const [deployAmountInput, setDeployAmountInput] = useState('100');
   const [deployLogs, setDeployLogs] = useState<string[]>([]);
   const [activeNode, setActiveNode] = useState<string | null>(null);
 
-  // Backend Feeds
   const [dbVaults, setDbVaults] = useState<any>({});
-  const [dbSettlements, setDbSettlements] = useState<any[]>([]);
   const [liveTape, setLiveTape] = useState<any[]>([]);
 
-  // Accordion State
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
     'Mobile Money': true,
-    'Airtime': false,
+    'Airtime': true,
     'Web3': true,
-    'Payments': false,
-    'Commodities': false
   });
 
-  const toggleCategory = (catId: string) => {
-    setExpandedCategories(prev => ({ ...prev, [catId]: !prev[catId] }));
-  };
-
+  const toggleCategory = (catId: string) => setExpandedCategories(prev => ({ ...prev, [catId]: !prev[catId] }));
   const toggleKillSwitch = () => {
     setGlobalKillSwitch(!globalKillSwitch);
     api.post('/api/treasury/kill-switch', { active: !globalKillSwitch }).catch(console.error);
   };
-
   const fmt = (n: number) => (n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const fetchDashboardData = async () => {
     try {
-      const [dashRes, ledgerRes] = await Promise.allSettled([
+      const [dashRes, ledgerRes, oppRes, spreadRes] = await Promise.allSettled([
         getTreasuryDashboard(),
-        getLiveLedgerFeed(25)
+        getLiveLedgerFeed(25),
+        api.get('/api/market-maker/opportunities'),
+        api.get('/api/market-maker/spread')
       ]);
 
       if (dashRes.status === 'fulfilled') {
         const d = (dashRes.value as any).data;
         if (d?.status === 'success') {
           setDbVaults(d.vaults || {});
-          setDbSettlements(d.settlements || []);
         }
       }
+
       if (ledgerRes.status === 'fulfilled') {
         const l = (ledgerRes.value as any).data;
-        if (l?.feed) {
-          setLiveTape(l.feed);
+        if (l?.feed) setLiveTape(l.feed);
+      }
+
+      if (oppRes.status === 'fulfilled') {
+        const o = oppRes.value.data;
+        if (o?.opportunities) {
+          setOpportunities(o.opportunities);
+          // Default to first opportunity if not set
+          setActiveOpp(prev => prev || Object.keys(o.opportunities)[0]);
         }
       }
+
+      if (spreadRes.status === 'fulfilled') {
+        const s = spreadRes.value.data;
+        if (s) setSpreadConfig(s);
+      }
+
     } catch (err) {
       console.error("Dashboard fetch error:", err);
     } finally {
@@ -121,130 +113,465 @@ export default function MarketMakerPage() {
 
   useEffect(() => {
     fetchDashboardData();
-    const intervalId = setInterval(fetchDashboardData, 3000);
+    const intervalId = setInterval(fetchDashboardData, 5000);
     return () => clearInterval(intervalId);
   }, []);
 
-  const handleSimulateTrade = async () => {
-    if (!simAmount || isNaN(Number(simAmount))) return;
-    setIsSimulating(true);
-    const [fromAsset, toAsset] = simPair.split('_');
-
+  const handleSpreadUpdate = async (updates: any) => {
+    const newConfig = { ...spreadConfig, ...updates };
+    setSpreadConfig(newConfig);
     try {
-      await simulateTreasurySwap({
-        user_id: "test_user_123",
-        from_asset: fromAsset,
-        to_asset: toAsset,
-        amount: parseFloat(simAmount)
-      });
-      await fetchDashboardData();
-    } catch (error) {
-      console.error("Simulation failed", error);
-      alert("Simulation failed. Check backend logs.");
-    } finally {
-      setIsSimulating(false);
+      await api.post('/api/market-maker/spread', newConfig);
+    } catch (err) {
+      console.error("Failed to update spread configuration", err);
     }
   };
 
-  // =========================================================================
-  // THE VISUAL ORCHESTRATOR
-  // This simulates the timeline of the execution on the UI, then calls the backend.
-  // =========================================================================
   const handleExecuteCorridor = async () => {
-    if (activeOpp !== 'airtime_celo') {
-      alert("Only the Airtel -> Celo corridor is wired for live API execution in this demo!");
-      return;
-    }
-
-    const amt = parseFloat(deployAmountKes);
-    if (!amt || amt <= 0) {
-      alert("Please enter a valid KES amount to deploy.");
-      return;
-    }
+    const amt = parseFloat(deployAmountInput);
+    if (!amt || amt <= 0) return alert("Please enter a valid amount.");
 
     setIsExecutingCorridor(true);
     setDeployLogs([]);
+    const opp = opportunities[activeOpp];
 
-    // UI Math Pre-Calculation
-    const startingUsd = amt / cbkRate;
-    const faceValue = amt / (1 - 0.06);
-    const mintedUsda = faceValue / cbkRate;
-    const profitUsda = mintedUsda - startingUsd;
-
-    // --- STEP 1: PROCURE ---
-    setActiveNode('N2');
-    setDeployLogs(prev => [...prev, `[1/4] Deployed ${amt.toFixed(2)} KES ($${startingUsd.toFixed(4)} USD). Procuring Airtel Airtime...`]);
-    await new Promise(r => setTimeout(r, 1500));
-
-    // --- STEP 2: DISCOUNT APPLIED ---
-    setDeployLogs(prev => [...prev, `[2/4] 6% B2B Wholesale Discount Applied. Received ${faceValue.toFixed(2)} KES Face Value.`]);
-    await new Promise(r => setTimeout(r, 1500));
-
-    // --- STEP 3: MINT ---
-    setActiveNode('N7');
-    setDeployLogs(prev => [...prev, `[3/4] Liquidating fresh ${faceValue.toFixed(2)} Airtime at CBK 129.50. Minted $${mintedUsda.toFixed(4)} USDA.`]);
-    await new Promise(r => setTimeout(r, 1500));
-
-    // --- STEP 4: CELO EXIT ---
-    setActiveNode('N9');
-    setDeployLogs(prev => [...prev, `[4/4] Yield Captured: +$${profitUsda.toFixed(4)} USDA. Executing Celo Web3 Exit...`]);
+    // Step 1: Procurement
+    setActiveNode(opp.nodes[0].id);
+    setDeployLogs(prev => [...prev, `[1/3] Deployed ${amt} KES. Initiating LIVE Mam-laka B2B API...`]);
 
     try {
-      // 🚀 Send KES to the backend API
-      const response = await api.post('/api/treasury/corridor/airtime-celo', { amount_kes: amt });
+      // 🟢 Calls the LIVE endpoint instead of the execute-hft dummy endpoint
+      const payload = { amount_kes: amt };
+      const response = await api.post('/api/treasury/corridor/airtime-celo', payload);
+
+      // Step 2: Internal Minting
+      setActiveNode('N7');
+      setDeployLogs(prev => [...prev, `[2/3] Yield Captured! Minting USDA internally...`]);
+      await new Promise(r => setTimeout(r, 1000));
+
+      // Step 3: Celo Web3 Exit
+      setActiveNode(opp.nodes[opp.nodes.length - 1].id);
+      setDeployLogs(prev => [...prev, `[3/3] Target Gate Hit. Executing LIVE Celo Web3 Exit...`]);
+
       const txHash = response.data.data.tx_hash;
+      const profit = response.data.data.profit_usda;
 
-      setDeployLogs(prev => [...prev, `✅ [SUCCESS] On-chain settlement confirmed!`]);
+      setDeployLogs(prev => [...prev, `✅ [SUCCESS] Live Execution Complete!`]);
+      setDeployLogs(prev => [...prev, `💰 Profit: +$${profit.toFixed(4)} USDC`]);
       setDeployLogs(prev => [...prev, `🔗 TxHash: ${txHash}`]);
-
-      // Inject into Terminal Local State immediately so the admin sees the receipt
-      const newTerminalLog = {
-        id: `tx-UI-${Date.now().toString().slice(-6)}`,
-        time: new Date().toLocaleTimeString(),
-        from: 'N2_AIRTEL',
-        to: 'N9_CELO',
-        amount: `${amt.toFixed(2)} KES`,
-        intValue: `$${mintedUsda.toFixed(4)}`,
-        type: 'CELO_EXIT',
-        typeColor: 'text-purple-400'
-      };
-      setLiveTape(prev => [newTerminalLog, ...prev]);
 
       await fetchDashboardData();
     } catch (error: any) {
-      console.error(error);
-      const serverError = error.response?.data?.detail || error.message || "Unknown execution error";
-      setDeployLogs(prev => [...prev, `❌ [FAILED] Web3 execution reverted. Reason: ${serverError}`]);
+      const serverError = error.response?.data?.detail || error.message || "Execution error";
+      setDeployLogs(prev => [...prev, `❌ [FAILED] Transaction reverted. Reason: ${serverError}`]);
     } finally {
-      // Reset UI after 6 seconds
       setTimeout(() => {
         setIsExecutingCorridor(false);
         setActiveNode(null);
-        setDeployLogs([]);
-      }, 6000);
+        // setDeployLogs([]); // Keep logs visible for the admin to read
+      }, 8000);
     }
   };
 
-  // Live Balances mapped from DB
-  const usdaBal = dbVaults['N7_USDA'] || 0;
-  const kesBal = dbVaults['N4_MPESA'] || 0;
-  const impBal = dbVaults['N8_IMP'] || 0;
-  const airtBal = (dbVaults['N1_TELKOM'] || 0) + (dbVaults['N2_AIRTEL'] || 0) + (dbVaults['N3_SAFARICOM'] || 0);
-  const xlmBal = dbVaults['N9_XLM'] || 0;
-  const usdBal = dbVaults['N10_USD'] || 0;
-  const goldBal = dbVaults['N11_GOLD'] || 0;
+  const renderCorridor = () => {
+    if (isDashboardLoading || !opportunities || !opportunities[activeOpp]) {
+      return <div className="p-20 text-center text-emerald-400 animate-pulse font-mono font-bold tracking-widest">CONNECTING TO DISCOVERY ENGINE...</div>;
+    }
 
-  const totalPortfolioUSD = usdaBal + (kesBal / 130.50) + impBal + (airtBal / 130.50) + (xlmBal * 0.10) + usdBal + (goldBal * 2400);
+    const opp = opportunities[activeOpp];
+    const rawInputAmt = parseFloat(deployAmountInput) || 0;
+    const baselineRate = parseFloat(opp.baseline) || spreadConfig.reference || 129.50;
 
-  // ==========================================
-  // RENDER 1: TREASURY DASHBOARD
-  // ==========================================
+    // --- GENERIC MATH ENGINE FOR CYCLES ---
+    let baseUsd = 0;
+    const rolloverCycles = [];
+    let runningUsd = 0;
+    let runningKes = 0;
+
+    if (opp.currency === 'KES') {
+      baseUsd = rawInputAmt / baselineRate;
+      runningUsd = baseUsd;
+      runningKes = rawInputAmt;
+
+      for (let i = 1; i <= 5; i++) {
+        const kesFloat = runningKes / (1 - opp.discountNum);
+        const usdaMinted = kesFloat / (baselineRate * (1 - (parseFloat(opp.fxEdge) / 100 || 0)));
+        const profit = usdaMinted - runningUsd;
+
+        rolloverCycles.push({
+          cycle: i,
+          startVal: runningKes,
+          kesFloat: kesFloat,
+          usdaMinted: usdaMinted,
+          profit: profit
+        });
+
+        runningKes = kesFloat;
+        runningUsd = usdaMinted;
+      }
+    } else {
+      baseUsd = rawInputAmt || 100;
+      runningUsd = baseUsd;
+
+      for (let i = 1; i <= 5; i++) {
+        const kesFloat = (runningUsd * baselineRate) / (1 - opp.discountNum);
+        const usdaMinted = kesFloat / (baselineRate * (1 - (parseFloat(opp.fxEdge) / 100 || 0)));
+        const profit = usdaMinted - runningUsd;
+
+        rolloverCycles.push({
+          cycle: i,
+          startVal: runningUsd,
+          kesFloat: kesFloat,
+          usdaMinted: usdaMinted,
+          profit: profit
+        });
+        runningUsd = usdaMinted;
+      }
+    }
+
+    const finalUsd = rolloverCycles[4].usdaMinted;
+    const totalProfit = finalUsd - baseUsd;
+    const maxProfit = Math.max(...rolloverCycles.map(c => c.profit));
+
+    const colorClasses: Record<string, string> = {
+      red: 'border-red-500/30 text-red-400 bg-[#1a0b0b] shadow-[0_0_20px_rgba(239,68,68,0.1)]',
+      blue: 'border-blue-500/30 text-blue-400 bg-[#061022] shadow-[0_0_20px_rgba(59,130,246,0.1)]',
+      emerald: 'border-emerald-500/30 text-emerald-400 bg-[#05130d] shadow-[0_0_20px_rgba(16,185,129,0.1)]',
+      orange: 'border-orange-500/30 text-orange-400 bg-[#140b05] shadow-[0_0_20px_rgba(249,115,22,0.1)]',
+      purple: 'border-purple-500/50 text-purple-400 bg-[#10071a] shadow-[0_0_25px_rgba(168,85,247,0.2)]',
+      slate: 'border-[#1e2d3d] text-slate-400 bg-[#0d1420] shadow-lg opacity-50'
+    };
+
+    return (
+      <div className="space-y-6 animate-in fade-in duration-300">
+
+        {/* Top Header Section */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-4 border-b border-[#1e2d3d] pb-4 gap-4">
+          <div>
+            <h2 className="text-sm font-bold tracking-widest uppercase mb-1 flex flex-wrap items-center gap-2">
+              <span className={opp.nodes[0].color === 'red' ? "text-red-400" : "text-blue-400"}>{opp.nodes[0].name.split(' ')[0]}</span>
+              <span className="text-slate-600">→</span>
+              <span className="text-emerald-400">USDA</span> <span className="text-slate-600">→</span>
+              {opp.exitGate === 'CYCLE 5' && <><span className="text-purple-400">×5 ROLLOVER</span> <span className="text-slate-600">→</span></>}
+              <span className="text-slate-400">{opp.nodes[opp.nodes.length - 1].id === 'N9' ? 'CELO' : 'MERCHANT'}</span>
+            </h2>
+            <p className="text-slate-400 text-sm tracking-wide">
+              {opp.exitGate === 'CYCLE 5' ? '5× internal rollovers · single external exit · zero friction until cycle 5' : 'Direct 1-cycle yield capture · minimal execution risk'}
+            </p>
+          </div>
+          <div className="text-left md:text-right bg-[#111827] border border-[#1e2d3d] rounded-xl px-4 py-2 shrink-0">
+            <p className="text-[10px] uppercase font-bold tracking-widest text-slate-500 mb-0.5">MULTIPLIER / CYCLE</p>
+            <p className="text-2xl font-bold text-emerald-400 font-mono">{opp.multiplier}</p>
+            <p className="text-[9px] text-slate-500 font-mono">{opp.discount} disc · {opp.fxEdge} FX</p>
+          </div>
+        </div>
+
+        {/* Action Bar / Flow Map */}
+        <div className="bg-[#0b0f19] border border-[#1e2d3d] rounded-2xl p-4 md:p-6 shadow-xl mb-6 overflow-hidden">
+          <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-6 mb-8">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-blue-600/20 rounded-lg"><Activity className="w-5 h-5 text-blue-400" /></div>
+              <div>
+                <h3 className="text-white font-bold text-sm">Execution Engine Ready</h3>
+                <p className="text-xs text-slate-400">Deploy capital directly into the active {opp.exitGate === 'CYCLE 5' ? '5x compounding' : 'direct'} corridor.</p>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full xl:w-auto">
+              <div className="relative">
+                <input
+                  type="number"
+                  value={deployAmountInput}
+                  onChange={(e) => setDeployAmountInput(e.target.value)}
+                  disabled={isExecutingCorridor}
+                  className="bg-[#111827] border border-[#1e2d3d] text-emerald-400 font-mono font-bold text-lg rounded-lg py-2.5 pl-4 pr-16 w-full sm:w-40 outline-none focus:border-blue-500 shadow-inner disabled:opacity-50"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-xs uppercase tracking-wider pointer-events-none">
+                  {opp.currency}
+                </span>
+              </div>
+              <button
+                onClick={handleExecuteCorridor}
+                disabled={isExecutingCorridor}
+                className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm px-6 py-3 rounded-lg transition-colors shadow-[0_0_15px_rgba(37,99,235,0.4)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 whitespace-nowrap"
+              >
+                {isExecutingCorridor ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" fill="currentColor" />}
+                Deploy Live
+              </button>
+            </div>
+          </div>
+
+          {/* Terminal Logs */}
+          {deployLogs.length > 0 && (
+            <div className="mb-8 bg-[#040a0f] border border-[#1e2d3d] rounded-xl p-4 font-mono text-xs space-y-2 text-slate-400 shadow-inner">
+              {deployLogs.map((log, idx) => (
+                <div key={idx} className={`${log.includes('SUCCESS') ? 'text-emerald-400' : log.includes('FAILED') ? 'text-red-400' : 'text-blue-300'} animate-in slide-in-from-left-2`}>
+                   {'>'} {log}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* DYNAMIC FLOW MAP WITH CLIPPING FIX */}
+          <div className="w-full overflow-x-auto pt-8 pb-6 px-2 custom-scrollbar">
+            <div className="flex items-center gap-4 w-max min-w-full">
+              {opp.nodes.map((node: any, index: number) => {
+                const isLast = index === opp.nodes.length - 1;
+                const isActive = activeNode === node.id && node.type !== 'rollover';
+                const activeRing = isActive ? 'ring-2 ring-offset-4 ring-offset-[#0b0f19] scale-105 opacity-100 border-current' : 'border-current opacity-80 hover:opacity-100';
+
+                return (
+                  <React.Fragment key={node.id}>
+                    <div className={`border p-4 rounded-lg w-44 text-center flex flex-col items-center justify-center h-[120px] relative transition-all duration-500 group ${colorClasses[node.color]} ${activeRing}`}>
+                      {/* ABSOLUTE POSITIONED BADGE FIX */}
+                      <div className={`absolute -top-3.5 px-3 py-1 bg-inherit border rounded-full font-bold text-[9px] tracking-widest uppercase flex items-center gap-1 border-current z-10 shadow-sm`}>
+                        {node.type === 'rollover' && <Repeat className="w-3 h-3" />}
+                        {node.tag}
+                      </div>
+                      <h4 className="font-bold text-xl mb-1 mt-2 font-mono relative z-0">{node.id}</h4>
+                      <p className="text-slate-400 text-[10px] relative z-0">{node.name}</p>
+                    </div>
+                    {!isLast && <ArrowRight className="w-4 h-4 text-slate-700 shrink-0" />}
+                  </React.Fragment>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+
+        { }
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+          {/* Left Column: Compounding Table & Bar Chart */}
+          <div className="lg:col-span-2 overflow-hidden">
+
+            {/* Simulation Controls for 5x Loop */}
+            {opp.exitGate !== 'CYCLE 1' && (
+              <div className="flex items-center gap-2 mb-4 bg-[#111827] p-1.5 rounded-lg border border-[#1e2d3d] w-max">
+                <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold px-3">Simulate Cycle:</span>
+                {[1, 2, 3, 4, 5].map(c => (
+                  <button
+                    key={c}
+                    onClick={() => setSimCycle(c)}
+                    className={`w-10 h-8 rounded-md text-xs font-bold font-mono transition-colors ${simCycle === c ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50' : 'bg-transparent text-slate-400 hover:text-white border border-transparent'}`}
+                  >
+                    C{c}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="flex justify-between items-center mb-3 mt-2">
+              <h3 className="text-[11px] font-bold text-slate-400 tracking-widest uppercase">
+                {opp.exitGate === 'CYCLE 1' ? '1× DIRECT EXECUTION' : '5× ROLLOVER COMPOUNDING'}
+              </h3>
+              <span className="text-[11px] font-bold text-emerald-400 font-mono tracking-widest">
+                {opp.currency === 'KES'
+                  ? `${rawInputAmt.toFixed(2)} KES → ${rolloverCycles[opp.exitGate === 'CYCLE 1' ? 0 : 4]?.kesFloat.toFixed(2)} KES`
+                  : `$${baseUsd.toFixed(2)} → $${finalUsd.toFixed(2)}`}
+              </span>
+            </div>
+
+            <div className="bg-[#111827] border border-[#1e2d3d] rounded-xl overflow-x-auto w-full mb-6 custom-scrollbar">
+              <table className="w-full min-w-[500px] text-left text-[11px] font-mono whitespace-nowrap">
+                <thead>
+                  <tr className="border-b border-[#1e2d3d] text-slate-500 bg-[#0d1420]">
+                    <th className="p-3 font-normal">CYCLE</th>
+                    <th className="p-3 font-normal">{opp.currency === 'KES' ? 'START KES' : 'START USD'}</th>
+                    <th className="p-3 font-normal">KES FLOAT</th>
+                    <th className="p-3 font-normal">USDA MINTED</th>
+                    <th className="p-3 font-normal text-right">PROFIT</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#1e2d3d]/50 text-slate-300">
+                  {rolloverCycles.slice(0, opp.exitGate === 'CYCLE 1' ? 1 : 5).map(c => (
+                    <tr key={c.cycle} className={`transition-colors ${simCycle === c.cycle || opp.exitGate === 'CYCLE 1' ? 'bg-[#1a2638]' : 'hover:bg-[#151c2f]'}`}>
+                      <td className={`p-3 font-bold ${simCycle === c.cycle || opp.exitGate === 'CYCLE 1' ? 'text-emerald-400' : 'text-slate-500'}`}>
+                        {simCycle === c.cycle || opp.exitGate === 'CYCLE 1' ? '•' : '✓'} C{c.cycle}
+                      </td>
+                      <td className={`p-3 ${simCycle === c.cycle || opp.exitGate === 'CYCLE 1' ? 'text-white font-bold' : ''}`}>
+                        {opp.currency === 'KES' ? c.startVal.toFixed(2) : `$${c.startVal.toFixed(2)}`}
+                      </td>
+                      <td className={`p-3 ${simCycle === c.cycle || opp.exitGate === 'CYCLE 1' ? 'text-emerald-400 font-bold' : 'text-emerald-400/80'}`}>
+                        {c.kesFloat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} KES
+                      </td>
+                      <td className={`p-3 ${simCycle === c.cycle || opp.exitGate === 'CYCLE 1' ? 'text-emerald-400 font-bold' : ''}`}>
+                        ${c.usdaMinted.toFixed(4)}
+                      </td>
+                      <td className={`p-3 text-right ${simCycle === c.cycle || opp.exitGate === 'CYCLE 1' ? 'text-emerald-400 font-bold' : 'text-emerald-400/80'}`}>
+                        +${c.profit.toFixed(4)}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="border-t-2 border-[#1e2d3d] font-bold">
+                    <td className="p-3 text-slate-500 uppercase tracking-widest font-sans text-[10px]">Total</td>
+                    <td className="p-3 text-white">
+                      {opp.currency === 'KES' ? rawInputAmt.toFixed(2) : `$${baseUsd.toFixed(2)}`}
+                    </td>
+                    <td className="p-3 text-slate-500">{opp.exitGate === 'CYCLE 1' ? '1× direct' : '5× internal'}</td>
+                    <td className="p-3 text-emerald-400">${opp.exitGate === 'CYCLE 1' ? rolloverCycles[0].usdaMinted.toFixed(4) : finalUsd.toFixed(4)}</td>
+                    <td className="p-3 text-emerald-400 text-right">+${opp.exitGate === 'CYCLE 1' ? rolloverCycles[0].profit.toFixed(4) : totalProfit.toFixed(4)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* CAPITAL GROWTH BAR CHART */}
+            {opp.exitGate !== 'CYCLE 1' && (
+              <div className="mt-8 overflow-x-auto w-full pb-4">
+                <div className="min-w-[400px]">
+                  <h3 className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-4">Capital Growth Per Cycle</h3>
+                  <div className="flex items-end gap-3 h-28 border-b border-[#1e2d3d] pb-1 px-2">
+                    {rolloverCycles.map(c => {
+                      const heightPct = (c.profit / maxProfit) * 100;
+                      return (
+                        <div key={c.cycle} className="flex-1 flex flex-col items-center justify-end h-full group">
+                          <span className="text-[10px] text-emerald-400 font-mono mb-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            +${c.profit.toFixed(4)}
+                          </span>
+                          <div
+                            className={`w-full transition-all duration-500 rounded-t-sm ${simCycle === c.cycle ? 'bg-emerald-400 shadow-[0_0_15px_rgba(52,211,153,0.3)]' : 'bg-emerald-500/20 hover:bg-emerald-500/40'}`}
+                            style={{ height: `${Math.max(heightPct, 5)}%` }}
+                          ></div>
+                          <span className="text-[10px] font-bold text-slate-500 mt-2 block w-full text-center">C{c.cycle}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          { }
+          {/* Right Column: Engine & Opportunities */}
+          <div className="space-y-6">
+
+            {/* Price Discovery Engine Box */}
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="text-[11px] font-bold text-slate-400 tracking-widest uppercase">PRICE DISCOVERY ENGINE</h3>
+                <span className="text-xs font-bold text-emerald-400 font-mono tracking-widest">
+                  {opp.engineTopRight} <span className="text-slate-500 text-[10px]">KES/USD</span>
+                </span>
+              </div>
+              <div className="h-[2px] w-full bg-gradient-to-r from-emerald-400/50 to-transparent rounded-full mb-3" />
+
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-px bg-[#1e2d3d] border border-[#1e2d3d] rounded-xl overflow-hidden text-[11px] font-mono shadow-lg">
+                <div className="bg-[#0b0f19] p-3 flex flex-col gap-1 justify-between">
+                  <span className="text-slate-500">Discount Rate</span>
+                  <span className="text-emerald-400 font-bold">{opp.discount}</span>
+                </div>
+                <div className="bg-[#0b0f19] p-3 flex flex-col gap-1 justify-between">
+                  <span className="text-slate-500">FX Edge</span>
+                  <span className="text-emerald-400 font-bold">{opp.fxEdge}</span>
+                </div>
+                <div className="bg-[#0b0f19] p-3 flex flex-col gap-1 justify-between">
+                  <span className="text-slate-500">Pip Discovery</span>
+                  <span className="text-purple-400 font-bold">{opp.pip}</span>
+                </div>
+
+                <div className="bg-[#0b0f19] p-3 flex flex-col gap-1 justify-between">
+                  <span className="text-slate-500">Rollover FX Rate</span>
+                  <span className="text-blue-400 font-bold">{opp.rolloverRate}</span>
+                </div>
+                <div className="bg-[#0b0f19] p-3 flex flex-col gap-1 justify-between">
+                  <span className="text-slate-500">Baseline KES/USD</span>
+                  <span className="text-slate-400 font-bold">{opp.baseline}</span>
+                </div>
+                <div className="bg-[#0b0f19] p-3 flex flex-col gap-1 justify-between">
+                  <span className="text-slate-500">Multiplier/Cycle</span>
+                  <span className="text-emerald-400 font-bold">{opp.multiplier}</span>
+                </div>
+
+                <div className="bg-[#0b0f19] p-3 flex flex-col gap-1 justify-between">
+                  <span className="text-slate-500">Celo Gas Cost</span>
+                  <span className="text-slate-400 font-bold">~$0.01</span>
+                </div>
+                <div className="bg-[#0b0f19] p-3 flex flex-col gap-1 justify-between">
+                  <span className="text-slate-500">Internal Fees</span>
+                  <span className="text-emerald-400 font-bold">$0.00</span>
+                </div>
+                <div className="bg-[#0b0f19] p-3 flex flex-col gap-1 justify-between">
+                  <span className="text-slate-500">Exit Gate</span>
+                  <span className="text-purple-400 font-bold">{opp.exitGate}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Ranked Opportunities List */}
+            <div className="mt-6">
+              <h3 className="text-[11px] font-bold text-slate-400 tracking-widest uppercase mb-3">RANKED OPPORTUNITIES</h3>
+              <div className="space-y-3">
+                {Object.values(opportunities).map((opportunity: any) => (
+                  <div
+                    key={opportunity.id}
+                    onClick={() => { setActiveOpp(opportunity.id); setDeployAmountInput('100'); }}
+                    className={`border rounded-xl p-3 flex justify-between items-center group cursor-pointer transition-colors ${activeOpp === opportunity.id ? 'bg-emerald-500/5 border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)]' : 'bg-[#111827] border-[#1e2d3d] hover:bg-[#1a2638] opacity-70'}`}
+                  >
+                    <div>
+                      <p className={`text-sm font-bold mb-1 ${activeOpp === opportunity.id ? 'text-emerald-400' : 'text-slate-300'}`}>{opportunity.title}</p>
+                      <p className="text-[9px] font-mono text-slate-500 uppercase tracking-wider">{opportunity.pathDesc}</p>
+                    </div>
+                    <div className="text-right shrink-0 ml-4">
+                      <p className={`text-sm font-bold font-mono ${activeOpp === opportunity.id ? 'text-emerald-400' : 'text-slate-300'}`}>{opportunity.profitPct}</p>
+                      {activeOpp === opportunity.id && <p className="text-[10px] text-emerald-500/70 font-bold tracking-widest uppercase flex items-center justify-end gap-1 mt-1"><Play className="w-3 h-3" fill="currentColor" /> SELECTED</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Celo Exit Ramp Widget */}
+            {opp.exitGate.includes('5') && (
+              <div className="mt-6 border border-purple-500/30 rounded-xl p-4 bg-[#10071a] shadow-[0_0_15px_rgba(168,85,247,0.15)] relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none" />
+                <div className="flex justify-between items-center mb-4 relative z-10">
+                  <h3 className="text-[11px] font-bold text-purple-400 tracking-widest uppercase">CELO EXIT RAMP · N9</h3>
+                  <span className="text-[9px] font-mono text-slate-500 bg-[#0d1420] px-2 py-0.5 rounded border border-[#1e2d3d]">LOCKED · CYCLE {simCycle}/5</span>
+                </div>
+                <div className="space-y-3 text-[11px] font-mono relative z-10">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">USDA → USDC via Celo pools</span>
+                    <span className="text-purple-400 font-bold">low-gas</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Total USDA to exit</span>
+                    <span className="text-white font-bold">{simCycle === 5 ? `$${finalUsd.toFixed(2)}` : '—'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Internal txns avoided</span>
+                    <span className="text-emerald-400 font-bold">12 blockchain calls</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Est. gas cost</span>
+                    <span className="text-slate-300">~$0.01</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderDashboard = () => {
+    const usdaBal = dbVaults['N7_USDA'] || 0;
+    const kesBal = dbVaults['N4_MPESA'] || 0;
+    const impBal = dbVaults['N8_IMP'] || 0;
+    const airtBal = (dbVaults['N1_TELKOM'] || 0) + (dbVaults['N2_AIRTEL'] || 0) + (dbVaults['N3_SAFARICOM'] || 0);
+    const xlmBal = dbVaults['N9_XLM'] || 0;
+    const usdBal = dbVaults['N10_USD'] || 0;
+    const goldBal = dbVaults['N11_GOLD'] || 0;
+    const totalPortfolioUSD = usdaBal + (kesBal / spreadConfig.reference) + impBal + (airtBal / spreadConfig.reference) + (xlmBal * 0.10) + usdBal + (goldBal * 2400);
+
     const VAULTS = [
       { id: 'USDA', name: 'USDA', desc: 'Master Wallet', balance: usdaBal, usdValue: usdaBal, color: 'bg-blue-500' },
-      { id: 'KES', name: 'KES (Fiat)', desc: 'Mobile Money', balance: kesBal, usdValue: kesBal / 130.50, color: 'bg-emerald-500' },
+      { id: 'KES', name: 'KES (Fiat)', desc: 'Mobile Money', balance: kesBal, usdValue: kesBal / spreadConfig.reference, color: 'bg-emerald-500' },
       { id: 'IMP', name: 'IMP', desc: 'Impala Coin Treasury', balance: impBal, usdValue: impBal, color: 'bg-purple-500' },
-      { id: 'AIRT', name: 'AIRT', desc: 'Telco Airtime', balance: airtBal, usdValue: airtBal / 130.50, color: 'bg-orange-500' },
+      { id: 'AIRT', name: 'AIRT', desc: 'Telco Airtime', balance: airtBal, usdValue: airtBal / spreadConfig.reference, color: 'bg-orange-500' },
       { id: 'XLM', name: 'XLM', desc: 'Stellar Router', balance: xlmBal, usdValue: xlmBal * 0.10, color: 'bg-cyan-500' },
       { id: 'USD', name: 'USD', desc: 'Virtual Cards', balance: usdBal, usdValue: usdBal, color: 'bg-slate-400' },
       { id: 'GOLD', name: 'GOLD', desc: 'Commodities Vault', balance: goldBal, usdValue: goldBal * 2400, color: 'bg-yellow-500' },
@@ -252,55 +579,6 @@ export default function MarketMakerPage() {
 
     return (
       <div className={`space-y-6 transition-opacity duration-500 ${isDashboardLoading ? 'opacity-60' : 'opacity-100'} animate-in fade-in`}>
-
-        {/* MANUAL SIMULATOR */}
-        <div className="bg-[#151c2f] border border-[#2a3754] rounded-2xl p-6 flex flex-col xl:flex-row xl:items-center justify-between gap-6 shadow-xl relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-r from-blue-600/5 to-transparent pointer-events-none" />
-
-          <div className="flex items-center gap-4 relative z-10 shrink-0">
-            <button className="w-12 h-12 rounded-xl bg-blue-600/20 flex items-center justify-center border border-blue-500/30 hover:bg-blue-600/30 transition-colors group">
-              <Play className="w-5 h-5 text-blue-400 group-hover:scale-110 transition-transform ml-1" fill="currentColor" />
-            </button>
-            <div>
-              <h3 className="text-white font-bold text-base tracking-wide">Manual Simulator</h3>
-              <p className="text-sm text-slate-400 mt-0.5">Inject mock volume to test node thresholds.</p>
-            </div>
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full xl:w-auto relative z-10">
-            <input
-              type="number"
-              value={simAmount}
-              onChange={(e) => setSimAmount(e.target.value)}
-              className="bg-[#0b0f19] border border-[#2a3754] text-white text-sm rounded-lg px-4 py-2.5 w-full sm:w-32 outline-none focus:border-blue-500 font-mono shadow-inner"
-            />
-            <select
-              value={simPair}
-              onChange={(e) => setSimPair(e.target.value)}
-              className="bg-[#0b0f19] border border-[#2a3754] text-white text-sm rounded-lg px-4 py-2.5 outline-none focus:border-blue-500 cursor-pointer w-full sm:w-56"
-            >
-              <optgroup label="Mobile Money Ramps">
-                <option value="USDA_KES">USDA → M-Pesa (N4)</option>
-                <option value="KES_USDA">M-Pesa (N4) → USDA</option>
-              </optgroup>
-              <optgroup label="Synthetic Minting (Airtime)">
-                <option value="AIRT_IMP">Safaricom Airtime → IMP (N3)</option>
-                <option value="IMP_AIRT">IMP → Safaricom Airtime (N3)</option>
-              </optgroup>
-            </select>
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <button
-                onClick={handleSimulateTrade}
-                disabled={isSimulating}
-                className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm px-6 py-2.5 rounded-lg transition-colors shadow-[0_0_15px_rgba(37,99,235,0.4)] disabled:opacity-50 whitespace-nowrap"
-              >
-                {isSimulating ? 'Running...' : 'Execute Test'}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* TOP KPI CARDS */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-[#111827] border border-[#1e2d3d] rounded-2xl p-5 shadow-lg">
             <div className="flex items-center gap-2 text-slate-400 mb-2">
@@ -331,12 +609,11 @@ export default function MarketMakerPage() {
               <TrendingUp className="w-4 h-4 text-emerald-400" />
               <span className="text-[10px] uppercase font-bold tracking-wider">Open Routes</span>
             </div>
-            <p className="text-3xl font-bold text-white font-mono">12</p>
+            <p className="text-3xl font-bold text-white font-mono">{opportunities ? Object.keys(opportunities).length : 0}</p>
             <p className="text-slate-500 text-xs mt-1">Active MM Quotes</p>
           </div>
         </div>
 
-        {/* PANELS (VAULTS & ORACLE) */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           <div className="xl:col-span-2 bg-[#111827] border border-[#1e2d3d] rounded-2xl p-6 shadow-lg">
             <div className="flex justify-between items-center mb-6">
@@ -377,21 +654,20 @@ export default function MarketMakerPage() {
             </div>
           </div>
 
-          {/* ORACLE SYNC */}
           <div className="bg-[#111827] border border-[#1e2d3d] rounded-2xl p-6 shadow-lg flex flex-col">
             <h2 className="text-[11px] font-bold text-slate-400 tracking-widest uppercase mb-6">Oracle Sync</h2>
 
             <div className="mb-8">
               <p className="text-[10px] uppercase tracking-widest font-bold text-slate-500 mb-2">System Collateralization</p>
               <p className="text-5xl font-extrabold text-emerald-400 tracking-tighter">
-                {impBal > 0 ? (((airtBal / cbkRate * 0.95) / impBal) * 100).toFixed(1) : '285.0'}%
+                {impBal > 0 ? (((airtBal / spreadConfig.reference * 0.95) / impBal) * 100).toFixed(1) : '285.0'}%
               </p>
             </div>
 
             <div className="space-y-5 mb-8 flex-1">
               <div className="flex justify-between items-center pb-3 border-b border-[#1e2d3d]">
                 <span className="text-xs text-slate-400 font-medium">Airtime Reserve (Haircut)</span>
-                <span className="text-sm text-white font-mono font-bold">${fmt(airtBal / cbkRate * 0.95)}</span>
+                <span className="text-sm text-white font-mono font-bold">${fmt(airtBal / spreadConfig.reference * 0.95)}</span>
               </div>
               <div className="flex justify-between items-center pb-3 border-b border-[#1e2d3d]">
                 <span className="text-xs text-slate-400 font-medium">IMP Minted (Circulation)</span>
@@ -405,7 +681,6 @@ export default function MarketMakerPage() {
           </div>
         </div>
 
-        {/* SYSTEM INFRASTRUCTURE NODES ACCORDION */}
         <div>
           <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
             <Server className="w-5 h-5 text-indigo-400" /> Active Infrastructure Nodes
@@ -481,334 +756,6 @@ export default function MarketMakerPage() {
     );
   };
 
-  // =========================================================================
-  // RENDER 2: CORRIDOR + COMPOUND
-  // 
-  // Contains the visual state machine trace HUD.
-  // =========================================================================
-  const renderCorridor = () => {
-    const isAirtimeCelo = activeOpp === 'airtime_celo';
-
-    // Instantly calculate the math as the user types in the input box!
-    const amt = parseFloat(deployAmountKes) || 0;
-    const startingUsd = amt / cbkRate;
-    const faceValue = amt / (1 - 0.06); // 6% Airtel Discount
-    const mintedUsda = faceValue / cbkRate;
-    const profitUsda = mintedUsda - startingUsd;
-
-    return (
-      <div className="space-y-6 animate-in fade-in duration-300">
-
-        {/* Top Header Section */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-4 border-b border-[#1e2d3d] pb-4 gap-4">
-          <div>
-            {isAirtimeCelo ? (
-              <h2 className="text-sm font-bold tracking-widest uppercase mb-1 flex items-center gap-2">
-                <span className="text-red-400">AIRTEL</span> <span className="text-slate-600">→</span>
-                <span className="text-blue-400">USDA</span> <span className="text-slate-600">→</span>
-                <span className="text-purple-400">CELO</span> <span className="text-slate-600">·</span>
-                <span className="text-slate-400">CORRIDOR</span>
-              </h2>
-            ) : (
-              <h2 className="text-sm font-bold tracking-widest uppercase mb-1 flex items-center gap-2">
-                <span className="text-blue-400">TELKOM</span> <span className="text-slate-600">→</span>
-                <span className="text-orange-400">T-KASH</span> <span className="text-slate-600">→</span>
-                <span className="text-emerald-400">USDA</span> <span className="text-slate-600">→</span>
-                <span className="text-purple-400">CELO</span> <span className="text-slate-600">·</span>
-                <span className="text-slate-400">CORRIDOR</span>
-              </h2>
-            )}
-            <p className="text-slate-400 text-sm tracking-wide">
-              {isAirtimeCelo ? "Direct 1-cycle yield capture · minimal execution risk" : "5× internal rollovers · single Celo exit · zero external friction until cycle 5"}
-            </p>
-          </div>
-          <div className="text-left md:text-right bg-[#111827] border border-[#1e2d3d] rounded-xl px-4 py-2">
-            <p className="text-[10px] uppercase font-bold tracking-widest text-slate-500 mb-0.5">MULTIPLIER / CYCLE</p>
-            <p className="text-2xl font-bold text-emerald-400 font-mono">{isAirtimeCelo ? '1.0638×' : '1.2865×'}</p>
-            <p className="text-[9px] text-slate-500 font-mono">{isAirtimeCelo ? '6% disc · 0 pip' : '10% disc · 5% FX · 0.1 pip'}</p>
-          </div>
-        </div>
-
-        {/* Global Action Bar / Live Tracker */}
-        <div className="bg-[#151c2f] border border-[#2a3754] rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between shadow-xl mb-6 gap-4 min-h-[90px]">
-
-          {/* Dynamic Left Content: Idle vs Executing */}
-          {!isExecutingCorridor && deployLogs.length === 0 ? (
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-blue-600/20 rounded-lg"><Activity className="w-5 h-5 text-blue-400" /></div>
-              <div>
-                <h3 className="text-white font-bold text-sm">Execution Engine Ready</h3>
-                <p className="text-xs text-slate-400">Deploy capital directly into the active corridor.</p>
-              </div>
-            </div>
-          ) : (
-            <div className="flex-1 w-full bg-[#040a0f] border border-[#1e2d3d] rounded-xl p-3 font-mono text-xs text-emerald-400 h-full overflow-y-auto custom-scrollbar shadow-inner">
-              {deployLogs.map((log, idx) => (
-                <div key={idx} className="mb-1 leading-relaxed opacity-90 animate-in slide-in-from-bottom-2">
-                  {log}
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="flex items-center gap-3 w-full md:w-auto shrink-0 md:ml-4">
-            <div className="relative">
-              <input
-                type="number"
-                value={deployAmountKes}
-                onChange={(e) => setDeployAmountKes(e.target.value)}
-                disabled={isExecutingCorridor}
-                className="bg-[#0b0f19] border border-[#2a3754] text-emerald-400 font-mono font-bold text-lg rounded-lg py-2.5 pl-4 pr-12 w-36 outline-none focus:border-blue-500 shadow-inner disabled:opacity-50"
-              />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-xs uppercase tracking-wider pointer-events-none">KES</span>
-            </div>
-
-            <button
-              onClick={handleExecuteCorridor}
-              disabled={isExecutingCorridor}
-              className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm px-6 py-3 rounded-lg transition-colors shadow-[0_0_15px_rgba(37,99,235,0.4)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
-            >
-              {isExecutingCorridor ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
-              ) : (
-                <Play className="w-4 h-4" fill="currentColor" />
-              )}
-              Deploy Live
-            </button>
-          </div>
-        </div>
-
-        {/* Visual Flow Map with Glowing Nodes */}
-        <div className="flex flex-col xl:flex-row items-center gap-4 xl:gap-2 w-full overflow-x-auto pb-6 pt-2 custom-scrollbar px-2 min-h-[220px]">
-          {isAirtimeCelo ? (
-            <>
-              {/* N2: AIRTEL (6% DISCOUNT) */}
-              <div className={`border bg-[#1a0b0b] p-5 rounded-lg w-full xl:w-56 shrink-0 text-center flex flex-col items-center justify-center min-h-[160px] relative transition-all duration-500 ${activeNode === 'N2'
-                  ? 'border-red-500 ring-2 ring-offset-4 ring-offset-[#0b0f19] ring-red-500/50 scale-105 shadow-[0_0_30px_rgba(239,68,68,0.2)]'
-                  : 'border-red-500/30 shadow-[0_0_20px_rgba(239,68,68,0.1)] hover:border-red-400'
-                }`}
-              >
-                <div className="absolute -top-3 px-3 py-1 bg-[#1a0b0b] border border-red-500/50 rounded-full text-red-400 font-bold text-[10px] tracking-widest uppercase">Procure</div>
-                <h4 className="text-red-400 font-bold text-2xl mb-3 font-mono mt-2">N2</h4>
-                <p className="text-slate-400 text-xs">Airtel 6% disc.</p>
-                <p className="text-red-400 font-mono text-xs mt-2 bg-red-500/10 px-3 py-1 rounded">{amt.toFixed(2)} KES → {faceValue.toFixed(2)} KES</p>
-              </div>
-              <ArrowRight className="w-6 h-6 text-slate-700 rotate-90 xl:rotate-0 shrink-0" />
-
-              {/* N7: USDA */}
-              <div className={`border bg-[#061022] p-5 rounded-lg w-full xl:w-56 shrink-0 text-center flex flex-col items-center justify-center min-h-[160px] relative transition-all duration-500 ${activeNode === 'N7'
-                  ? 'border-blue-500 ring-2 ring-offset-4 ring-offset-[#0b0f19] ring-blue-500/50 scale-105 shadow-[0_0_30px_rgba(59,130,246,0.2)]'
-                  : 'border-blue-500/30 shadow-[0_0_20px_rgba(59,130,246,0.1)] hover:border-blue-400'
-                }`}
-              >
-                <div className="absolute -top-3 px-3 py-1 bg-[#061022] border border-blue-500/50 rounded-full text-blue-400 font-bold text-[10px] tracking-widest uppercase">Mint USDA</div>
-                <h4 className="text-blue-400 font-bold text-2xl mb-3 font-mono mt-2">N7</h4>
-                <p className="text-slate-400 text-xs">Internal Realization</p>
-                <p className="text-blue-400 font-mono text-xs mt-2 bg-blue-500/10 px-3 py-1 rounded">{cbkRate.toFixed(2)} KES/USD</p>
-              </div>
-              <ArrowRight className="w-6 h-6 text-slate-700 rotate-90 xl:rotate-0 shrink-0" />
-
-              {/* N9: CELO EXIT */}
-              <div className={`border bg-[#10071a] p-5 rounded-lg w-full xl:w-56 shrink-0 text-center flex flex-col items-center justify-center min-h-[160px] relative transition-all duration-500 ${activeNode === 'N9'
-                  ? 'border-purple-500 ring-2 ring-offset-4 ring-offset-[#0b0f19] ring-purple-500/50 scale-105 shadow-[0_0_30px_rgba(168,85,247,0.2)]'
-                  : 'border-purple-500/30 shadow-[0_0_20px_rgba(168,85,247,0.1)] hover:border-purple-400'
-                }`}
-              >
-                <div className="absolute -top-3 px-3 py-1 bg-[#10071a] border border-purple-500/50 rounded-full text-purple-400 font-bold text-[10px] tracking-widest uppercase">Celo Exit</div>
-                <h4 className="text-purple-400 font-bold text-2xl mb-3 font-mono mt-2">N9</h4>
-                <p className="text-slate-400 text-xs">Single Cycle Exit</p>
-                <p className="text-purple-400 font-mono text-xs mt-2 bg-purple-500/10 px-3 py-1 rounded">USDA → USDC</p>
-              </div>
-            </>
-          ) : (
-            <>
-              {/* Fallback Telkom Route Render... */}
-              <div className="border border-blue-500/30 bg-[#061022] p-5 rounded-lg w-full xl:w-56 shrink-0 text-center flex flex-col items-center justify-center min-h-[160px] shadow-[0_0_20px_rgba(37,99,235,0.1)] relative group hover:border-blue-400 transition-colors">
-                <div className="absolute -top-3 px-3 py-1 bg-[#061022] border border-blue-500/50 rounded-full text-blue-400 font-bold text-[10px] tracking-widest uppercase">Procure</div>
-                <h4 className="text-blue-400 font-bold text-2xl mb-3 font-mono mt-2">N1</h4>
-                <p className="text-slate-400 text-xs">Telkom 10% disc.</p>
-                <p className="text-blue-400 font-mono text-xs mt-2 bg-blue-500/10 px-3 py-1 rounded">$100 → 13,888 KES</p>
-              </div>
-              <ArrowRight className="w-6 h-6 text-slate-700 rotate-90 xl:rotate-0 shrink-0" />
-
-              <div className="border border-orange-500/30 bg-[#140b05] p-5 rounded-lg w-full xl:w-56 shrink-0 text-center flex flex-col items-center justify-center min-h-[160px] shadow-[0_0_20px_rgba(249,115,22,0.1)] relative group hover:border-orange-400 transition-colors">
-                <div className="absolute -top-3 px-3 py-1 bg-[#140b05] border border-orange-500/50 rounded-full text-orange-400 font-bold text-[10px] tracking-widest uppercase">Liquidate</div>
-                <h4 className="text-orange-400 font-bold text-2xl mb-3 font-mono mt-2">N4</h4>
-                <p className="text-slate-400 text-xs">T-Kash Super-Agent</p>
-                <p className="text-orange-400 font-mono text-xs mt-2 bg-orange-500/10 px-3 py-1 rounded">Airtime → Hard Float</p>
-              </div>
-              <ArrowRight className="w-6 h-6 text-slate-700 rotate-90 xl:rotate-0 shrink-0" />
-
-              <div className="border border-emerald-500/30 bg-[#05130d] p-5 rounded-lg w-full xl:w-56 shrink-0 text-center flex flex-col items-center justify-center min-h-[160px] shadow-[0_0_20px_rgba(16,185,129,0.1)] relative group hover:border-emerald-400 transition-colors">
-                <div className="absolute -top-3 px-3 py-1 bg-[#05130d] border border-emerald-500/50 rounded-full text-emerald-400 font-bold text-[10px] tracking-widest uppercase">Mint USDA</div>
-                <h4 className="text-emerald-400 font-bold text-2xl mb-3 font-mono mt-2">N7</h4>
-                <p className="text-slate-400 text-xs">+0.1 pip · 5% FX</p>
-                <p className="text-emerald-400 font-mono text-xs mt-2 bg-emerald-500/10 px-3 py-1 rounded">{cbkRate.toFixed(2)} KES/USD</p>
-              </div>
-              <ArrowRight className="w-6 h-6 text-slate-700 rotate-90 xl:rotate-0 shrink-0" />
-
-              <div className="border border-purple-500/50 bg-[#10071a] p-5 rounded-lg w-full xl:w-56 shrink-0 text-center flex flex-col items-center justify-center min-h-[160px] shadow-[0_0_25px_rgba(168,85,247,0.2)] relative group hover:border-purple-400 transition-colors">
-                <div className="absolute -top-3 px-3 py-1 bg-[#10071a] border border-purple-500/80 rounded-full text-purple-400 font-bold text-[10px] tracking-widest uppercase flex items-center gap-1">
-                  <RefreshCw className="w-3 h-3" /> Rollover
-                </div>
-                <h4 className="text-purple-400 font-bold text-3xl mb-3 mt-2">↻</h4>
-                <p className="text-slate-400 text-xs">Cycle 4/5 internal</p>
-                <p className="text-purple-400 font-mono text-xs mt-2 bg-purple-500/10 px-3 py-1 rounded">No blockchain touch</p>
-              </div>
-              <ArrowRight className="w-6 h-6 text-slate-700 rotate-90 xl:rotate-0 shrink-0" />
-
-              <div className="border border-[#1e2d3d] bg-[#0d1420] p-5 rounded-lg w-full xl:w-56 shrink-0 text-center flex flex-col items-center justify-center min-h-[160px] shadow-lg relative group transition-colors opacity-50">
-                <div className="absolute -top-3 px-3 py-1 bg-[#0d1420] border border-[#1e2d3d] rounded-full text-slate-400 font-bold text-[10px] tracking-widest uppercase">Celo Exit</div>
-                <h4 className="text-slate-500 font-bold text-2xl mb-3 font-mono mt-2">N9</h4>
-                <p className="text-slate-500 text-xs">Cycle 5 only</p>
-                <p className="text-slate-400 font-mono text-xs mt-2 bg-[#111827] border border-[#1e2d3d] px-3 py-1 rounded">USDA → USDC</p>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Grid for Bottom Data */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-
-          {/* Compounding Table */}
-          <div>
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="text-[11px] font-bold text-slate-400 tracking-widest uppercase">
-                {isAirtimeCelo ? "1× Direct Execution" : "5× Rollover Compounding"}
-              </h3>
-              <span className="text-[11px] font-bold text-emerald-400 font-mono">
-                {isAirtimeCelo ? `${amt.toFixed(2)} KES → ${faceValue.toFixed(2)} KES` : "$100 → $352.32"}
-              </span>
-            </div>
-            <div className="bg-[#111827] border border-[#1e2d3d] rounded-xl overflow-hidden mb-6">
-              <table className="w-full text-left text-[11px] font-mono whitespace-nowrap">
-                <thead>
-                  <tr className="border-b border-[#1e2d3d] text-slate-500">
-                    <th className="p-3 font-normal">CYCLE</th>
-                    <th className="p-3 font-normal">START KES</th>
-                    <th className="p-3 font-normal">KES FLOAT</th>
-                    <th className="p-3 font-normal">USDA MINTED</th>
-                    <th className="p-3 font-normal text-right">PROFIT</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#1e2d3d]/50 text-slate-300">
-                  {isAirtimeCelo ? (
-                    <>
-                      <tr className="bg-emerald-500/5 hover:bg-emerald-500/10 transition-colors">
-                        <td className="p-3 text-emerald-400 font-bold">• C1</td>
-                        <td className="p-3 font-bold text-white">{amt.toFixed(2)}</td>
-                        <td className="p-3 font-bold text-emerald-400">{faceValue.toFixed(2)} KES</td>
-                        <td className="p-3 font-bold text-emerald-400">${mintedUsda.toFixed(4)}</td>
-                        <td className="p-3 font-bold text-emerald-400 text-right">+${profitUsda.toFixed(4)}</td>
-                      </tr>
-                      <tr className="border-t-2 border-[#1e2d3d] font-bold">
-                        <td className="p-3 text-slate-500 uppercase tracking-widest font-sans text-[10px]">Total</td>
-                        <td className="p-3 text-white">{amt.toFixed(2)}</td>
-                        <td className="p-3 text-slate-500">1× direct</td>
-                        <td className="p-3 text-emerald-400">${mintedUsda.toFixed(4)}</td>
-                        <td className="p-3 text-emerald-400 text-right">+${profitUsda.toFixed(4)}</td>
-                      </tr>
-                    </>
-                  ) : (
-                    <>
-                      <tr className="hover:bg-[#1a2638] transition-colors">
-                        <td className="p-3 text-slate-500">✓ C1</td>
-                        <td className="p-3">100.00</td>
-                        <td className="p-3 text-orange-400/80">138.88 KES</td>
-                        <td className="p-3">$128.65</td>
-                        <td className="p-3 text-emerald-400/80 text-right">+$28.65</td>
-                      </tr>
-                      <tr className="hover:bg-[#1a2638] transition-colors">
-                        <td className="p-3 text-slate-500">✓ C2</td>
-                        <td className="p-3">128.65</td>
-                        <td className="p-3 text-orange-400/80">178.68 KES</td>
-                        <td className="p-3">$165.51</td>
-                        <td className="p-3 text-emerald-400/80 text-right">+$36.86</td>
-                      </tr>
-                      <tr className="border-t-2 border-[#1e2d3d] font-bold">
-                        <td className="p-3 text-slate-500 uppercase tracking-widest font-sans text-[10px]">Total</td>
-                        <td className="p-3 text-white">100.00</td>
-                        <td className="p-3 text-slate-500">5× internal</td>
-                        <td className="p-3 text-emerald-400">$352.32</td>
-                        <td className="p-3 text-emerald-400 text-right">+$252.32</td>
-                      </tr>
-                    </>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Price Discovery & Opportunities */}
-          <div className="space-y-6">
-
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <h3 className="text-[11px] font-bold text-slate-400 tracking-widest uppercase">PRICE DISCOVERY ENGINE</h3>
-                <span className="text-[11px] font-bold text-emerald-400 font-mono">
-                  {cbkRate.toFixed(2)} <span className="text-slate-500">KES/USD</span>
-                </span>
-              </div>
-              <div className="h-1 w-full bg-gradient-to-r from-emerald-400/50 to-transparent rounded-full mb-3" />
-
-              <div className="grid grid-cols-2 gap-px bg-[#1e2d3d] border border-[#1e2d3d] rounded-xl overflow-hidden text-[11px] font-mono">
-                <div className="bg-[#0b0f19] p-3 flex justify-between">
-                  <span className="text-slate-500">Discount Rate</span>
-                  <span className="text-emerald-400 font-bold">{isAirtimeCelo ? '6%' : '10%'}</span>
-                </div>
-                <div className="bg-[#0b0f19] p-3 flex justify-between">
-                  <span className="text-slate-500">FX Edge</span>
-                  <span className="text-emerald-400 font-bold">{isAirtimeCelo ? '0%' : '5%'}</span>
-                </div>
-                <div className="bg-[#0b0f19] p-3 flex justify-between col-span-2">
-                  <span className="text-slate-500">Exit Gate</span>
-                  <span className="text-purple-400 font-bold">{isAirtimeCelo ? 'CYCLE 1' : 'CYCLE 5'}</span>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-[11px] font-bold text-slate-400 tracking-widest uppercase mb-3">RANKED OPPORTUNITIES</h3>
-              <div className="space-y-2">
-                <div
-                  onClick={() => setActiveOpp('airtime_celo')}
-                  className={`border rounded-xl p-3 flex justify-between items-center group cursor-pointer transition-colors ${activeOpp === 'airtime_celo' ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-[#111827] border-[#1e2d3d] hover:bg-[#1a2638] opacity-70'}`}
-                >
-                  <div>
-                    <p className={`text-sm font-bold mb-1 ${activeOpp === 'airtime_celo' ? 'text-emerald-400' : 'text-slate-300'}`}>Airtel → USDA → Celo Exit</p>
-                    <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">PATH: N2-N7-N9  RSK 2%  LIQ 98</p>
-                  </div>
-                  <div className="text-right">
-                    <p className={`text-sm font-bold font-mono ${activeOpp === 'airtime_celo' ? 'text-emerald-400' : 'text-orange-400'}`}>+6.38%</p>
-                    {activeOpp === 'airtime_celo' && <p className="text-[10px] text-emerald-500/70 font-bold tracking-widest uppercase flex items-center justify-end gap-1"><Play className="w-3 h-3" fill="currentColor" /> SELECTED</p>}
-                  </div>
-                </div>
-
-                <div
-                  onClick={() => setActiveOpp('telkom')}
-                  className={`border rounded-xl p-3 flex justify-between items-center group cursor-pointer transition-colors ${activeOpp === 'telkom' ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-[#111827] border-[#1e2d3d] hover:bg-[#1a2638] opacity-70'}`}
-                >
-                  <div>
-                    <p className={`text-sm font-bold mb-1 ${activeOpp === 'telkom' ? 'text-emerald-400' : 'text-slate-300'}`}>Telkom → T-Kash → USDA → ×5 Rollover → Celo</p>
-                    <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">PATH: N1-N4-N7-N9  RSK 10%  LIQ 91</p>
-                  </div>
-                  <div className="text-right">
-                    <p className={`text-sm font-bold font-mono ${activeOpp === 'telkom' ? 'text-emerald-400' : 'text-slate-300'}`}>+252.32%</p>
-                    {activeOpp === 'telkom' && <p className="text-[10px] text-emerald-500/70 font-bold tracking-widest uppercase flex items-center justify-end gap-1"><Play className="w-3 h-3" fill="currentColor" /> SELECTED</p>}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // ==========================================
-  // PAGE 3: SPREAD ENGINE
-  // ==========================================
   const renderSpreadEngine = () => (
     <div className="space-y-6 animate-in fade-in duration-300">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -821,11 +768,11 @@ export default function MarketMakerPage() {
         </div>
         <div className="bg-[#111827] border border-[#1e2d3d] rounded-xl p-4 shadow-lg shadow-black/20">
           <p className="text-[11px] text-gray-500 uppercase tracking-wider font-semibold mb-1">Binance P2P (Ref)</p>
-          <p className="text-2xl font-bold text-white font-mono">{fmt(binanceRate)} KES</p>
+          <p className="text-2xl font-bold text-white font-mono">{fmt(spreadConfig.reference)} KES</p>
         </div>
         <div className="bg-[#111827] border border-[#1e2d3d] rounded-xl p-4 shadow-lg shadow-black/20">
           <p className="text-[11px] text-gray-500 uppercase tracking-wider font-semibold mb-1">CBK Official (Ref)</p>
-          <p className="text-2xl font-bold text-gray-400 font-mono">{fmt(cbkRate)} KES</p>
+          <p className="text-2xl font-bold text-gray-400 font-mono">129.50 KES</p>
         </div>
       </div>
 
@@ -834,7 +781,7 @@ export default function MarketMakerPage() {
         Pricing Configuration
       </h2>
 
-      <div className={`bg-[#111827] border rounded-2xl p-6 transition-colors shadow-xl ${!usdaRoute.active || globalKillSwitch ? 'border-red-500/50 opacity-80' : 'border-[#1e2d3d]'}`}>
+      <div className={`bg-[#111827] border rounded-2xl p-6 transition-colors shadow-xl ${!spreadConfig.active || globalKillSwitch ? 'border-red-500/50 opacity-80' : 'border-[#1e2d3d]'}`}>
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20 shrink-0">
@@ -850,13 +797,13 @@ export default function MarketMakerPage() {
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full md:w-auto">
             <label className="flex items-center gap-2 cursor-pointer bg-[#0d1420] px-3 py-2 rounded-lg border border-[#1e2d3d]">
               <span className="text-xs font-semibold text-gray-300">Auto-Peg to Binance</span>
-              <input type="checkbox" className="w-4 h-4 rounded bg-gray-800 border-gray-600 text-blue-500" checked={usdaRoute.autoPeg} onChange={() => setUsdaRoute({ ...usdaRoute, autoPeg: !usdaRoute.autoPeg })} />
+              <input type="checkbox" className="w-4 h-4 rounded bg-gray-800 border-gray-600 text-blue-500" checked={spreadConfig.autoPeg} onChange={() => handleSpreadUpdate({ autoPeg: !spreadConfig.autoPeg })} />
             </label>
             <button
-              onClick={() => setUsdaRoute({ ...usdaRoute, active: !usdaRoute.active })}
-              className={`text-xs px-4 py-2.5 rounded-lg border font-bold tracking-wide uppercase whitespace-nowrap ${usdaRoute.active && !globalKillSwitch ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}
+              onClick={() => handleSpreadUpdate({ active: !spreadConfig.active })}
+              className={`text-xs px-4 py-2.5 rounded-lg border font-bold tracking-wide uppercase whitespace-nowrap ${spreadConfig.active && !globalKillSwitch ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}
             >
-              {globalKillSwitch ? 'SYSTEM HALTED' : usdaRoute.active ? 'ROUTE LIVE' : 'ROUTE PAUSED'}
+              {globalKillSwitch ? 'SYSTEM HALTED' : spreadConfig.active ? 'ROUTE LIVE' : 'ROUTE PAUSED'}
             </button>
           </div>
         </div>
@@ -867,14 +814,14 @@ export default function MarketMakerPage() {
             <div className="relative">
               <input
                 type="number"
-                value={usdaRoute.bid}
-                onChange={(e) => setUsdaRoute({ ...usdaRoute, bid: parseFloat(e.target.value) })}
-                disabled={usdaRoute.autoPeg || globalKillSwitch}
+                value={spreadConfig.bid}
+                onChange={(e) => handleSpreadUpdate({ bid: parseFloat(e.target.value) })}
+                disabled={spreadConfig.autoPeg || globalKillSwitch}
                 className="w-full bg-[#111827] border border-[#1e2d3d] rounded-xl py-3 pl-4 pr-16 text-white text-lg font-mono focus:border-blue-500 outline-none disabled:opacity-50 shadow-inner"
               />
               <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-mono font-bold">KES</span>
             </div>
-            <p className="text-emerald-400 text-xs mt-2 font-medium">Spread Profit: +{(binanceRate - usdaRoute.bid).toFixed(2)} KES per USD</p>
+            <p className="text-emerald-400 text-xs mt-2 font-medium">Spread Profit: +{(spreadConfig.reference - spreadConfig.bid).toFixed(2)} KES per USD</p>
           </div>
 
           <div>
@@ -882,23 +829,20 @@ export default function MarketMakerPage() {
             <div className="relative">
               <input
                 type="number"
-                value={usdaRoute.ask}
-                onChange={(e) => setUsdaRoute({ ...usdaRoute, ask: parseFloat(e.target.value) })}
-                disabled={usdaRoute.autoPeg || globalKillSwitch}
+                value={spreadConfig.ask}
+                onChange={(e) => handleSpreadUpdate({ ask: parseFloat(e.target.value) })}
+                disabled={spreadConfig.autoPeg || globalKillSwitch}
                 className="w-full bg-[#111827] border border-[#1e2d3d] rounded-xl py-3 pl-4 pr-16 text-white text-lg font-mono focus:border-blue-500 outline-none disabled:opacity-50 shadow-inner"
               />
               <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-mono font-bold">KES</span>
             </div>
-            <p className="text-emerald-400 text-xs mt-2 font-medium">Spread Profit: +{(usdaRoute.ask - binanceRate).toFixed(2)} KES per USD</p>
+            <p className="text-emerald-400 text-xs mt-2 font-medium">Spread Profit: +{(spreadConfig.ask - spreadConfig.reference).toFixed(2)} KES per USD</p>
           </div>
         </div>
       </div>
     </div>
   );
 
-  // ==========================================
-  // PAGE 4: OTC REBALANCE DESK
-  // ==========================================
   const renderOTCDesk = () => {
     const mobileMoney = dbVaults['N4_MPESA'] || 0;
 
@@ -975,18 +919,15 @@ export default function MarketMakerPage() {
     );
   };
 
-  // ==========================================
-  // PAGE 5: EXECUTION TERMINAL
-  // ==========================================
   const renderTerminal = () => (
     <div className="space-y-6 animate-in fade-in duration-300">
 
       <div className="bg-[#111827] border border-[#1e2d3d] rounded-2xl overflow-hidden shadow-xl">
         <div className="p-5 border-b border-[#1e2d3d] flex items-center gap-3">
-          <Terminal className="w-5 h-5 text-indigo-400" />
+          <TerminalSquare className="w-5 h-5 text-indigo-400" />
           <h2 className="text-lg font-bold text-white">Active Arbitration Routes</h2>
         </div>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto w-full">
           <table className="w-full text-left text-sm whitespace-nowrap">
             <thead>
               <tr className="bg-[#0b0f17] text-gray-500 text-xs uppercase tracking-wider">
@@ -1083,6 +1024,7 @@ export default function MarketMakerPage() {
     <div className="min-h-screen bg-[#0b0f19] text-gray-200 flex flex-col">
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
+        {/* Main Header */}
         <header className="bg-[#0b0f19] px-4 md:px-6 pt-6 pb-2 shrink-0">
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-4 border-b border-[#1e2d3d] pb-5">
             <div>
@@ -1097,31 +1039,24 @@ export default function MarketMakerPage() {
             <div className="flex items-center gap-4 md:gap-8 text-right flex-wrap lg:flex-nowrap w-full lg:w-auto">
               <div className="hidden sm:block">
                 <p className="text-[9px] md:text-[10px] text-slate-500 font-bold tracking-widest uppercase">KES/USD Internal</p>
-                <p className="text-emerald-400 font-bold font-mono text-sm">{cbkRate.toFixed(2)}</p>
+                <p className="text-emerald-400 font-bold font-mono text-sm">{spreadConfig.reference.toFixed(2)}</p>
               </div>
               <div className="hidden sm:block">
                 <p className="text-[9px] md:text-[10px] text-slate-500 font-bold tracking-widest uppercase">Active Cycle</p>
                 <p className="text-purple-400 font-bold font-mono text-sm">4/5</p>
               </div>
-              <div className="hidden sm:block">
-                <p className="text-[9px] md:text-[10px] text-slate-500 font-bold tracking-widest uppercase">Cycle Capital</p>
-                <p className="text-orange-400 font-bold font-mono text-sm">$212.93</p>
-              </div>
               <div className="flex-1 sm:flex-none text-left sm:text-right">
-                <p className="text-[9px] md:text-[10px] text-slate-500 font-bold tracking-widest uppercase">Pool Value</p>
-                <p className="text-white font-bold font-mono text-sm">${fmt(totalPortfolioUSD)}</p>
+                <button
+                  onClick={toggleKillSwitch}
+                  className={`ml-0 lg:ml-4 flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-bold text-xs transition-all shadow-lg border w-full sm:w-auto ${globalKillSwitch
+                      ? 'bg-red-600/20 text-red-500 border-red-500/50 animate-pulse'
+                      : 'bg-[#111827] hover:bg-red-500/10 text-red-500 border-red-500/30'
+                    }`}
+                >
+                  <Power className="w-4 h-4" />
+                  {globalKillSwitch ? 'SYSTEM HALTED' : 'KILL SWITCH'}
+                </button>
               </div>
-
-              <button
-                onClick={toggleKillSwitch}
-                className={`ml-0 lg:ml-4 flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-bold text-xs transition-all shadow-lg border w-full sm:w-auto ${globalKillSwitch
-                    ? 'bg-red-600/20 text-red-500 border-red-500/50 animate-pulse'
-                    : 'bg-[#111827] hover:bg-red-500/10 text-red-500 border-red-500/30'
-                  }`}
-              >
-                <Power className="w-4 h-4" />
-                {globalKillSwitch ? 'SYSTEM HALTED' : 'KILL SWITCH'}
-              </button>
             </div>
           </div>
 
@@ -1148,6 +1083,7 @@ export default function MarketMakerPage() {
           </div>
         </header>
 
+        {/* Main Content Area */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar bg-[#0b0f19]">
           {activeView === 'dashboard' && renderDashboard()}
           {activeView === 'corridor' && renderCorridor()}

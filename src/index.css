@@ -3,52 +3,125 @@
 @tailwind utilities;
 
 @layer base {
-  * {
+  *,
+  *::before,
+  *::after {
     box-sizing: border-box;
   }
+
+  html,
   body {
-    background-color: #0a0e17;
+    min-height: 100%;
+  }
+
+  body {
+    background-color: #06090F;
+    background-image:
+      radial-gradient(circle at top left, rgba(56, 189, 248, 0.14), transparent 22%),
+      radial-gradient(circle at bottom right, rgba(34, 197, 94, 0.10), transparent 20%),
+      radial-gradient(circle at 50% 18%, rgba(248, 113, 113, 0.08), transparent 16%),
+      linear-gradient(180deg, #070b14 0%, #06090F 45%, #020408 100%);
+    background-attachment: fixed;
     color: #f9fafb;
     font-family: 'Inter', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
   }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      radial-gradient(circle at 24% 12%, rgba(255, 255, 255, 0.04), transparent 18%),
+      radial-gradient(circle at 78% 8%, rgba(255, 255, 255, 0.03), transparent 16%);
+    opacity: 0.75;
+    z-index: -1;
+  }
+
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
+
   ::-webkit-scrollbar-track {
-    background: #111827;
+    background: transparent;
   }
+
   ::-webkit-scrollbar-thumb {
-    background: #374151;
+    background: #1E2533;
     border-radius: 3px;
+    transition: background 0.3s ease;
   }
+
   ::-webkit-scrollbar-thumb:hover {
-    background: #4b5563;
+    background: #f59e0b;
   }
+
   select option {
     background-color: #1f2937;
     color: #f9fafb;
+  }
+
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 30px #0F1520 inset !important;
+    -webkit-text-fill-color: white !important;
+    transition: background-color 5000s ease-in-out 0s;
+  }
+
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  input[type=number] {
+    -moz-appearance: textfield;
+  }
+
+  ::selection {
+    background: #10b981;
+    color: #000;
   }
 }
 
 @layer components {
   .mesh-card {
-    @apply bg-[#111827] border border-[#1e2d3d] rounded-xl;
+    @apply bg-[#0B0E14] border border-[#1E2533] rounded-2xl shadow-xl transition-all duration-300;
   }
+
   .mesh-input {
-    @apply w-full bg-[#0d1420] border border-[#1e2d3d] rounded-lg px-3 py-2 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-emerald-400 transition-colors;
+    @apply w-full bg-[#0F1520] border border-[#1E2533] rounded-xl px-4 py-3 text-white text-sm font-semibold placeholder-gray-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 transition-all duration-200;
   }
+
   .mesh-select {
-    @apply w-full bg-[#0d1420] border border-[#1e2d3d] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-400 transition-colors appearance-none cursor-pointer;
+    @apply w-full bg-[#0F1520] border border-[#1E2533] rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-500 transition-all duration-200 appearance-none cursor-pointer;
   }
+
   .mesh-btn-primary {
-    @apply w-full bg-emerald-400 hover:bg-emerald-300 text-gray-900 font-semibold py-2.5 rounded-lg transition-all duration-200 text-sm;
+    @apply w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-extrabold tracking-wide py-3.5 rounded-xl transition-all duration-300 shadow-lg shadow-amber-900/20 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
   }
+
+  .mesh-btn-success {
+    @apply w-full bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-400 hover:to-green-400 text-black font-extrabold tracking-wide py-3.5 rounded-xl transition-all duration-300 shadow-lg shadow-emerald-900/20 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
   .mesh-btn-ghost {
-    @apply px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-white/5;
+    @apply px-4 py-2.5 text-sm font-bold text-gray-400 hover:text-white transition-colors rounded-xl hover:bg-[#172130] border border-transparent hover:border-[#1E2533];
   }
-  .stat-card {
-    @apply mesh-card p-5 flex flex-col gap-3;
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #1E2533;
+    border-radius: 4px;
   }
 }

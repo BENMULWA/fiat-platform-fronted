@@ -1,29 +1,39 @@
+// @ts-nocheck
+
+
+import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import LoginPage from './pages/LoginPage'
 import AppLayout from './components/Layout/AppLayout'
 
 // --- ADMIN PAGES ---
-import DashboardPage from './pages/DashboardPage' // The Master Vault
+import DashboardPage from './pages/DashboardPage'
 import MarketMakerPage from './pages/MarketMakerPage'
 import GeneralLedgerPage from './pages/GeneralLedgerPage'
 import RatesInventoryPage from './pages/RatesInventoryPage'
-
-// --- RETAIL PAGES ---
-import TraderWorkspace from './pages/TradeWorkspace' // The Retail Wallet
-import TradePage from './pages/TradePage'
-import OnOffRampPage from './pages/OnOffRampPage'
 import AirtimeLedgerPage from './pages/AirtimeLedgerPage'
 
-// --- SHARED PAGES ---
+// --- RETAIL PAGES ---
+// Default Exports (No curly braces)
+import RetailDashboardPage from './pages/retail/RetailDashboardPage'
+import WalletsPage from './pages/retail/WalletsPage'
+import TradePage from './pages/retail/TradePage'
 
+// Named Exports (Requires curly braces {})
+import { DepositPage } from './pages/retail/DepositPage'
+import { WithdrawPage } from './pages/retail/WithdrawPage'
+import { RedeemAirtimePage } from './pages/retail/RedeemAirtimePage'
+import { ImpalaCoinPage } from './pages/retail/ImpalaCoinPage'
+import { TransactionsPage } from './pages/retail/TransactionsPage'
+import { ProfilePage } from './pages/retail/ProfilePage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth()
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#0a0e17] flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen bg-[#06090F] flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
@@ -31,45 +41,42 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function AppRoutes() {
-  const { user, isLoading } = useAuth()
+  const { user, isLoading, viewAsAdmin } = useAuth()
+
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#0a0e17] flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen bg-[#06090F] flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
+
   return (
     <Routes>
-      {/* 1. Default Route (Logs you into the Retail Wallet by default) */}
-      <Route path="/" element={user ? <Navigate to="/wallet" replace /> : <LoginPage />} />
+      <Route path="/" element={user ? <Navigate to={viewAsAdmin ? "/vault" : "/dashboard"} replace /> : <LoginPage />} />
 
-      {/* 2. Protected App Layout containing our sidebar and content */}
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <AppLayout />
-          </ProtectedRoute>
-        }
-      >
+      <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+
         {/* --- RETAIL ROUTES --- */}
-        <Route path="wallet" element={<TraderWorkspace />} />
+        <Route path="dashboard" element={<RetailDashboardPage />} />
+        <Route path="wallet" element={<WalletsPage />} />
+        <Route path="deposits" element={<DepositPage />} />
+        <Route path="withdrawals" element={<WithdrawPage />} />
         <Route path="trade" element={<TradePage />} />
-        <Route path="ramp" element={<OnOffRampPage />} />
+        <Route path="redeem-airtime" element={<RedeemAirtimePage />} />
+        <Route path="mint-imp" element={<ImpalaCoinPage />} />
+        <Route path="transactions" element={<TransactionsPage />} />
+        <Route path="profile" element={<ProfilePage />} />
 
         {/* --- ADMIN ROUTES --- */}
         <Route path="vault" element={<DashboardPage />} />
         <Route path="market-maker" element={<MarketMakerPage />} />
         <Route path="general-ledger" element={<GeneralLedgerPage />} />
-        <Route path="rates" element={<RatesInventoryPage />} />
-
-        {/* --- SHARED ROUTES --- */}
         <Route path="airtime-ledger" element={<AirtimeLedgerPage />} />
+        <Route path="rates" element={<RatesInventoryPage />} />
       </Route>
 
-      {/* 3. Catch-all: If user types a bad URL, send them back to their wallet */}
-      <Route path="*" element={<Navigate to="/wallet" replace />} />
+      <Route path="*" element={<Navigate to={viewAsAdmin ? "/vault" : "/dashboard"} replace />} />
     </Routes>
   )
 }
