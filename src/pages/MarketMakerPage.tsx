@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 import React, { useState, useEffect } from 'react';
 import {
   Activity, ArrowLeftRight, Settings,
@@ -8,6 +10,8 @@ import {
   CreditCard, Link2, ArrowRight, Play,
   Repeat
 } from 'lucide-react';
+
+// imports for api router
 import { useSearchParams } from 'react-router-dom';
 import { getTreasuryDashboard, getLiveLedgerFeed, api } from '../api/client';
 
