@@ -14,16 +14,16 @@ import { useAuth } from '../../contexts/AuthContext'
 // --- SECTION 1: MAIN ---
 const retailNavMain = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/wallet', label: 'My Wallet', icon: Wallet },
+  { to: '/wallets', label: 'My Wallet', icon: Wallet },
 ]
 
 // --- SECTION 2: USER ACTIONS ---
 const retailNavActions = [
-  { to: '/deposits', label: 'Deposits', icon: ArrowDownRight },      // Green
-  { to: '/withdrawals', label: 'Withdrawals', icon: ArrowUpRight }, // Orange
-  { to: '/trade', label: 'Swap', icon: ArrowRightLeft },               // Blue
-  { to: '/airtime-ledger', label: 'Redeem Airtime', icon: Radio },    // Default Color
-  { to: '/mint-imp', label: 'Mint / Burn IMP', icon: Coins },             // Default Color
+  { to: '/deposit', label: 'Deposits', icon: ArrowDownRight },      // Green
+  { to: '/withdraw', label: 'Withdrawals', icon: ArrowUpRight }, // Orange
+  { to: '/swap', label: 'Swap', icon: ArrowRightLeft },               // Blue
+  { to: '/redeem-airtime', label: 'Redeem Airtime', icon: Radio },    // Default Color
+  { to: '/impala-coin', label: 'Impala Coin', icon: Coins },            // Default Color
 ]
 
 // --- SECTION 3: ACCOUNT ---
@@ -36,7 +36,7 @@ const retailNavAccount = [
 // --- ADMIN MENU (Unchanged) ---
 const adminNavItems = [
   { to: '/vault', label: 'Vault', icon: LayoutDashboard },
-  { to: '/airtime-ledger', label: 'Airtime Ledger', icon: Link2 },
+  { to: '/redeem-airtime', label: 'Redeem Airtime', icon: Radio },
   { to: '/general-ledger', label: 'General Ledger', icon: BookOpen },
   { to: '/rates', label: 'Rates & Inventory', icon: Globe },
 ]
@@ -46,7 +46,7 @@ const marketMakerSubItems = [
   { id: 'corridor', label: 'Channel Corridor', icon: Repeat },
   { id: 'engine', label: 'Spread Engine', icon: Settings },
   { id: 'otc', label: 'OTC Desk', icon: DollarSign },
-  { 决定: 'terminal', label: 'Execution Terminal', icon: TerminalSquare },
+  { id: 'terminal', label: 'Execution Terminal', icon: TerminalSquare },
 ]
 
 interface SidebarProps {
@@ -76,7 +76,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
     }
   }
 
-  // 🔥 DYNAMIC NAV ITEMS BASED ON ROLE
+  //DYNAMIC NAV ITEMS BASED ON ROLE
   const mainItems = viewAsAdmin ? [] : retailNavMain
   const actionItems = viewAsAdmin ? [] : retailNavActions
   const accountItems = viewAsAdmin ? [] : retailNavAccount
@@ -237,9 +237,9 @@ export default function Sidebar({ onClose }: SidebarProps) {
       <div className="px-4 pb-6 pt-4 bg-[#050b14] border-t border-[#1a2a40] space-y-3 shadow-[0_-4px_20px_rgba(0,0,0,0.2)]">
         {user && (
           <button
-            onClick={() => {
+              onClick={() => {
               toggleViewAsAdmin()
-              navigate(viewAsAdmin ? '/wallet' : '/market-maker?tab=dashboard')
+              navigate(viewAsAdmin ? '/wallets' : '/market-maker?tab=dashboard')
             }}
             className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-[#0d1a2d] border border-[#1e3a5f]/50 hover:border-emerald-500/30 transition-colors"
           >

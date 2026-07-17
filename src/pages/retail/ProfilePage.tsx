@@ -1,129 +1,220 @@
-import { useState } from 'react';
-import { Shield, Smartphone, Globe, Upload, CheckCircle, Plus } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { CheckCircle2, Smartphone, Globe, Link, AlertCircle, Clock, Lock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { updateProfile, getKycStatus } from '../../api/client';
+import { useNavigate } from 'react-router-dom';
 
-export const ProfilePage: React.FC = () => {
+export const ProfilePage = () => {
     const { user } = useAuth();
-    const [isEditing, setIsEditing] = useState(false);
-    const [kycLevel, setKycLevel] = useState<1 | 2 | 3>(1);
+    const navigate = useNavigate();
 
-    const activeUser = user || { name: 'Retail User', email: 'user@meshex.com', phone: '+254712345678', kycLevel: 1 };
+    // Local state for the editable fields
+    const [fullName, setFullName] = useState(user?.name || '');
+    const [email, setEmail] = useState(user?.email || '');
+    const [phone, setPhone] = useState('');
+
+    const [isSaving, setIsSaving] = useState(false);
+    const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+    const [kycStatus, setKycStatus] = useState<'pending' | 'verified' | 'unverified'>(user?.kycStatus as any || 'unverified');
+
+    useEffect(() => {
+        const fetchStatus = async () => {
+            try {
+                const res = await getKycStatus();
+                if (res.data?.kycStatus) {
+                    setKycStatus(res.data.kycStatus);
+                }
+            } catch (err) {
+                console.warn('KYC status unavailable', err);
+            }
+        };
+        fetchStatus();
+    }, []);
+
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsSaving(true);
+        setToastMessage(null);
+
+        try {
+            await updateProfile({ name: fullName, email, phone });
+            setToastMessage({ type: 'success', text: 'Profile saved securely!' });
+        } catch (err) {
+            console.error(err);
+            setToastMessage({ type: 'error', text: 'Failed to update profile.' });
+        } finally {
+            setIsSaving(false);
+            setTimeout(() => setToastMessage(null), 4000);
+        }
+    };
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 max-w-7xl mx-auto">
+        <div className="max-w-6xl mx-auto animate-in fade-in duration-500 text-gray-200 p-4 md:p-6">
 
-            {/* Left Column: Account Settings */}
-            <div className="lg:col-span-7 space-y-6">
-                <div className="bg-[#0B0E14] border border-[#1E2533] rounded-2xl p-8 shadow-xl">
-                    <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-base font-bold text-white tracking-wide">Personal Information</h2>
-                        <button onClick={() => setIsEditing(!isEditing)} className="text-xs font-bold text-amber-500 hover:text-amber-400 transition-all">
-                            {isEditing ? 'Save Changes' : 'Edit Profile'}
-                        </button>
-                    </div>
-
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block text-[10px] font-bold text-gray-500 mb-2 uppercase">Full Name</label>
-                            <input type="text" disabled={!isEditing} defaultValue={activeUser.name} className="w-full bg-[#0F1520] border border-[#1E2533] disabled:opacity-60 disabled:cursor-not-allowed rounded-xl py-2.5 px-4 text-xs font-semibold text-white focus:border-amber-500 focus:outline-none transition-all" />
-                        </div>
-                        <div>
-                            <label className="block text-[10px] font-bold text-gray-500 mb-2 uppercase">Email Address</label>
-                            <input type="email" disabled={!isEditing} defaultValue={activeUser.email} className="w-full bg-[#0F1520] border border-[#1E2533] disabled:opacity-60 disabled:cursor-not-allowed rounded-xl py-2.5 px-4 text-xs font-semibold text-white focus:border-amber-500 focus:outline-none transition-all" />
-                        </div>
-                        <div>
-                            <label className="block text-[10px] font-bold text-gray-500 mb-2 uppercase">Verified Mobile Phone</label>
-                            <input type="text" disabled={!isEditing} defaultValue={activeUser.phone || "+254712345678"} className="w-full bg-[#0F1520] border border-[#1E2533] disabled:opacity-60 disabled:cursor-not-allowed rounded-xl py-2.5 px-4 text-xs font-semibold text-white focus:border-amber-500 focus:outline-none transition-all" />
-                        </div>
-                    </div>
+            { }
+            <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-3">
+                    <h1 className="text-2xl font-bold text-white tracking-tight">Profile</h1>
+                    <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
+                        Retail
+                    </span>
                 </div>
 
-                {/* Linked Integrations */}
-                <div className="bg-[#0B0E14] border border-[#1E2533] rounded-2xl p-8 shadow-xl">
-                    <h2 className="text-base font-bold text-white tracking-wide mb-6">Linked Wallets</h2>
-                    <div className="space-y-4">
-                        <div className="flex items-center justify-between p-4 bg-[#0F1520] border border-[#1E2533] rounded-xl">
-                            <div className="flex items-center gap-3">
-                                <Smartphone className="w-5 h-5 text-emerald-500" />
-                                <div>
-                                    <p className="text-xs font-bold text-white">M-Pesa Express</p>
-                                    <p className="text-[10px] text-gray-500">Connected to phone number +254712345678</p>
-                                </div>
-                            </div>
-                            <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 uppercase">Linked</span>
-                        </div>
-                        <div className="flex items-center justify-between p-4 bg-[#0F1520] border border-[#1E2533] rounded-xl">
-                            <div className="flex items-center gap-3">
-                                <Globe className="w-5 h-5 text-amber-500" />
-                                <div>
-                                    <p className="text-xs font-bold text-white">Valora Wallet Mapping</p>
-                                    <p className="text-[10px] text-gray-500">Mapped to internal Celo exit treasury rules</p>
-                                </div>
-                            </div>
-                            <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 uppercase">Linked</span>
-                        </div>
-                        <button className="w-full py-3 border border-dashed border-[#1E2533] hover:border-gray-600 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-gray-400 hover:text-white transition-all">
-                            <Plus className="w-4 h-4 text-blue-500" /> Connect Cardano Nami Wallet
-                        </button>
+                {toastMessage && (
+                    <div className={`px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold shadow-lg animate-in slide-in-from-right-4 ${toastMessage.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
+                        {toastMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                        {toastMessage.text}
                     </div>
-                </div>
+                )}
             </div>
 
-            {/* Right Column: KYC Center */}
-            <div className="lg:col-span-5 space-y-6">
-                <div className="bg-[#0B0E14] border border-[#1E2533] rounded-2xl p-8 relative overflow-hidden shadow-xl">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full filter blur-xl" />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-                    <div className="flex items-center gap-2 mb-6">
-                        <Shield className="w-5 h-5 text-amber-500" />
-                        <h2 className="text-base font-bold text-white tracking-wide">KYC Compliance Center</h2>
-                    </div>
-
-                    <div className="space-y-6">
-                        {/* Level 1 */}
-                        <div className="flex gap-4 p-4 bg-[#0F1520] border border-[#1E2533] rounded-xl relative">
-                            <CheckCircle className="w-5 h-5 text-emerald-500 shrink-0" />
-                            <div>
-                                <h3 className="text-xs font-bold text-white">Level 1 — Basic Verified</h3>
-                                <p className="text-[10px] text-gray-500 mt-1 leading-relaxed">Email verification and local phone mapping complete. Limits locked at 50,000 KES.</p>
-                            </div>
+                { }
+                <div className="space-y-6">
+                    <div className="bg-[#0F1520] border border-[#1E2533] rounded-2xl p-6 shadow-lg">
+                        <div className="flex items-center justify-between mb-6">
+                            <h2 className="text-sm font-bold text-white tracking-wide">Personal Information</h2>
+                            {kycStatus === 'verified' && (
+                                <span className="flex items-center gap-1 text-[10px] text-gray-500 uppercase tracking-wider font-bold">
+                                    <Lock className="w-3 h-3" /> Identity Locked
+                                </span>
+                            )}
                         </div>
 
-                        {/* Level 2 */}
-                        <div className={`flex gap-4 p-4 rounded-xl border relative transition-all ${kycLevel >= 2 ? 'bg-[#0F1520] border-[#1E2533]' : 'bg-[#0F1520]/50 border-dashed border-[#1E2533]'}`}>
-                            <div className="shrink-0 mt-0.5">
-                                {kycLevel >= 2 ? <CheckCircle className="w-5 h-5 text-emerald-500" /> : <div className="w-5 h-5 rounded-full border-2 border-gray-600 flex items-center justify-center text-xs font-bold font-mono text-gray-500">2</div>}
-                            </div>
-                            <div className="flex-1">
-                                <div className="flex items-center justify-between">
-                                    <h3 className="text-xs font-bold text-white">Level 2 — National Identity</h3>
-                                    <span className="text-[8px] bg-amber-500/10 text-amber-500 font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider">Required for Web3</span>
+                        <form onSubmit={handleSave} className="space-y-5">
+                            <div>
+                                <label className="block text-[10px] font-bold text-gray-500 mb-2 uppercase tracking-wider">
+                                    {kycStatus === 'verified' ? 'Full Name (Legal)' : 'Full Name'}
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        value={fullName}
+                                        onChange={(e) => setFullName(e.target.value)}
+                                        disabled={kycStatus === 'verified'}
+                                        className="w-full bg-[#0B0E14] border border-[#1E2533] focus:border-emerald-500 focus:outline-none rounded-xl py-3 px-4 text-sm font-semibold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    />
+                                    {kycStatus === 'verified' && <Lock className="absolute right-4 top-3.5 w-4 h-4 text-gray-600" />}
                                 </div>
-                                <p className="text-[10px] text-gray-500 mt-1 leading-relaxed">Required to execute Cardano-Celo bridge integrations. Unlimited daily volume.</p>
-                                {kycLevel < 2 && (
-                                    <div className="mt-4 pt-4 border-t border-[#1E2533] space-y-3">
-                                        <div className="border border-dashed border-[#1E2533] rounded-lg p-4 flex flex-col items-center justify-center hover:bg-[#172130] cursor-pointer transition-all">
-                                            <Upload className="w-6 h-6 text-gray-500 mb-2" />
-                                            <p className="text-[10px] text-gray-400 font-bold">Upload National ID Card or Passport</p>
-                                            <p className="text-[8px] text-gray-600 mt-1">Acceptable types: PNG, JPEG, PDF up to 10MB</p>
-                                        </div>
-                                        <button onClick={() => setKycLevel(2)} className="w-full py-2 bg-amber-500 hover:bg-amber-600 text-black font-bold text-xs rounded-lg transition-all">Submit & Screen</button>
-                                    </div>
-                                )}
                             </div>
-                        </div>
 
-                        {/* Level 3 */}
-                        <div className={`flex gap-4 p-4 rounded-xl border relative transition-all ${kycLevel >= 3 ? 'bg-[#0F1520] border-[#1E2533]' : 'bg-[#0F1520]/30 border-dashed border-[#1E2533] opacity-60'}`}>
-                            <div className="shrink-0 mt-0.5">
-                                {kycLevel >= 3 ? <CheckCircle className="w-5 h-5 text-emerald-500" /> : <div className="w-5 h-5 rounded-full border-2 border-gray-700 flex items-center justify-center text-xs font-bold font-mono text-gray-600">3</div>}
-                            </div>
                             <div>
-                                <h3 className="text-xs font-bold text-white">Level 3 — Enterprise Compliance</h3>
-                                <p className="text-[10px] text-gray-500 mt-1 leading-relaxed">Merchant verification, proof of address, and corporate registration validation.</p>
+                                <label className="block text-[10px] font-bold text-gray-500 mb-2 uppercase tracking-wider">Email</label>
+                                <input
+                                    type="email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    className="w-full bg-[#0B0E14] border border-[#1E2533] focus:border-emerald-500 focus:outline-none rounded-xl py-3 px-4 text-sm font-semibold text-white transition-colors"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] font-bold text-gray-500 mb-2 uppercase tracking-wider">Phone</label>
+                                <input
+                                    type="text"
+                                    value={phone}
+                                    onChange={(e) => setPhone(e.target.value)}
+                                    className="w-full bg-[#0B0E14] border border-[#1E2533] focus:border-emerald-500 focus:outline-none rounded-xl py-3 px-4 text-sm font-semibold text-white transition-colors font-mono"
+                                />
+                            </div>
+
+                            <div className="pt-2">
+                                <button
+                                    type="submit"
+                                    disabled={isSaving}
+                                    className="bg-[#EAB308] hover:bg-[#D97706] text-black font-bold text-xs px-6 py-2.5 rounded-lg transition-colors shadow-lg disabled:opacity-50"
+                                >
+                                    {isSaving ? 'Saving...' : 'Save Changes'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                { }
+                <div className="space-y-6">
+
+                    {/* DYNAMIC KYC Box */}
+                    <div className="bg-[#0F1520] border border-[#1E2533] rounded-2xl p-6 shadow-lg">
+                        <h2 className="text-sm font-bold text-white tracking-wide mb-4">KYC Status</h2>
+                        <div className="flex items-center gap-3">
+                            {kycStatus === 'verified' ? (
+                                <>
+                                    <span className="flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded text-xs font-bold">
+                                        <CheckCircle2 className="w-3.5 h-3.5" /> Verified
+                                    </span>
+                                    <span className="text-xs text-gray-400 font-medium">
+                                        Identity linked to: <span className="text-white font-bold">{user?.name || 'Account'}</span>
+                                    </span>
+                                </>
+                            ) : kycStatus === 'pending' ? (
+                                <>
+                                    <span className="flex items-center gap-1.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded text-xs font-bold">
+                                        <Clock className="w-3.5 h-3.5" /> Pending
+                                    </span>
+                                    <span className="text-xs text-gray-400 font-medium">Documents under review</span>
+                                </>
+                            ) : (
+                                <>
+                                    <span className="flex items-center gap-1.5 bg-red-500/10 text-red-400 border border-red-500/20 px-2.5 py-1 rounded text-xs font-bold">
+                                        <AlertCircle className="w-3.5 h-3.5" /> Unverified
+                                    </span>
+                                    <button onClick={() => navigate('/kyc')} className="text-xs text-blue-400 hover:text-blue-300 underline font-medium">
+                                        Complete KYC to unlock trading
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Security Box */}
+                    <div className="bg-[#0F1520] border border-[#1E2533] rounded-2xl p-6 shadow-lg">
+                        <h2 className="text-sm font-bold text-white tracking-wide mb-4">Security</h2>
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between py-2 border-b border-[#1E2533]/50">
+                                <span className="text-xs text-gray-300 font-medium">Two-Factor Auth</span>
+                                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">Enabled</span>
+                            </div>
+                            <div className="flex items-center justify-between py-2">
+                                <span className="text-xs text-gray-300 font-medium">Login Notifications</span>
+                                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">On</span>
                             </div>
                         </div>
                     </div>
+
+                    {/* Linked Wallets Box */}
+                    <div className="bg-[#0F1520] border border-[#1E2533] rounded-2xl p-6 shadow-lg">
+                        <h2 className="text-sm font-bold text-white tracking-wide mb-4">Linked Wallets</h2>
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between py-3 border-b border-[#1E2533]/50">
+                                <div className="flex items-center gap-3">
+                                    <Smartphone className="w-4 h-4 text-emerald-500" />
+                                    <span className="text-xs text-gray-300 font-medium">M-Pesa</span>
+                                </div>
+                                <span className="text-[10px] font-bold text-emerald-400">Connected</span>
+                            </div>
+
+                            <div className="flex items-center justify-between py-3 border-b border-[#1E2533]/50">
+                                <div className="flex items-center gap-3">
+                                    <Globe className="w-4 h-4 text-orange-500" />
+                                    <span className="text-xs text-gray-300 font-medium">Valora</span>
+                                </div>
+                                <span className="text-[10px] font-bold text-emerald-400">Connected</span>
+                            </div>
+
+                            <div className="flex items-center justify-between py-3">
+                                <div className="flex items-center gap-3">
+                                    <Link className="w-4 h-4 text-blue-500" />
+                                    <span className="text-xs text-gray-300 font-medium">Cardano</span>
+                                </div>
+                                <button className="text-[10px] font-bold text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 px-3 py-1 rounded transition-colors border border-blue-500/20">
+                                    Connect
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
             </div>
         </div>

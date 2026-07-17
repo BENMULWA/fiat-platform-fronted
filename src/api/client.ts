@@ -18,15 +18,25 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 )
 
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('meshex_token')
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+    return config
+  },
+  (error) => Promise.reject(error)
+)
+
 api.interceptors.response.use(
   res => res,
   err => {
     if (err.response?.status === 401) {
-      // ⚠️ DEV MODE: We have commented out the auto-logout tripwire!
-      console.warn("⚠️ 401 Unauthorized - Ignoring auto-logout for development");
-      // localStorage.removeItem('meshex_token')
-      // localStorage.removeItem('meshex_user')
-      // window.location.href = '/'
+      // 🚀 STRICT LOGOUT: Wipes the bad token and forces the browser to the login screen!
+      localStorage.removeItem('meshex_token');
+      localStorage.removeItem('meshex_user');
+      window.location.href = '/';
     }
     return Promise.reject(err)
   }
@@ -37,31 +47,34 @@ export const getDashboard = () => api.get('/api/dashboard')
 
 // Market Maker
 export const getQuotes = () => api.get('/api/market-maker/quotes')
-export const createQuote = (data: object) => api.post('/api/market-maker/quotes', data)
+export const createQuote = (data: any) => api.post('/api/market-maker/quotes', data)
 export const deleteQuote = (id: string) => api.delete(`/api/market-maker/quotes/${id}`)
 export const toggleQuote = (id: string) => api.patch(`/api/market-maker/quotes/${id}/toggle`)
 export const bookDeal = (id: string) => api.post(`/api/market-maker/quotes/${id}/book`)
- 
 
 // Trade
 export const getOrderBook = () => api.get('/api/trade/orderbook')
 export const getTradeHistory = () => api.get('/api/trade/history')
-export const placeOrder = (data: object) => api.post('/api/trade/orders', data)
+export const placeOrder = (data: any) => api.post('/api/trade/orders', data)
 
 // On/Off Ramp
-export const executeRamp = (data: object) => api.post('/api/ramp/execute', data)
-export const executeInternalSwap = (data: object) => api.post('/api/ramp/swap', data)
+export const executeRamp = (data: any) => api.post('/api/ramp/execute', data)
+export const executeInternalSwap = (data: any) => api.post('/api/ramp/swap', data)
 export const getRampHistory = () => api.get('/api/ramp/history')
 
-// Retail Wallet
+// Retail Routes
 export const getRetailWallet = () => api.get('/api/retail/wallet')
+export const updateProfile = (data: any) => api.put('/api/retail/profile', data)
 
+// KYC Endpoints
+export const getKycStatus = () => api.get('/api/retail/kyc/status');
+export const submitKyc = (data: any) => api.post('/api/retail/kyc/submit', data);
 
 // Airtime Ledger
 export const getAirtimeSummary = () => api.get('/api/airtime/summary')
 export const getAirtimeHistory = () => api.get('/api/airtime/history')
-export const mintAirt = (data: object) => api.post('/api/airtime/mint', data)
-export const redeemAirt = (data: object) => api.post('/api/airtime/redeem', data)
+export const mintAirt = (data: any) => api.post('/api/airtime/mint', data)
+export const redeemAirt = (data: any) => api.post('/api/airtime/redeem', data)
 
 // General Ledger
 export const getLedgerSummary = () => api.get('/api/ledger/summary')
@@ -74,7 +87,7 @@ export const getLiveLedgerFeed = (limit: number = 50) =>
 
 // Rates & Inventory
 export const getDiscountRates = () => api.get('/api/rates/discount')
-export const addDiscountRate = (data: object) => api.post('/api/rates/discount', data)
+export const addDiscountRate = (data: any) => api.post('/api/rates/discount', data)
 export const getInventory = () => api.get('/api/rates/inventory')
 
 // Tokens
@@ -84,10 +97,10 @@ export const getTokenBalance = (asAdmin: boolean) =>
 // Cardano / USDA
 export const getCardanoWallet = () => api.get('/api/cardano/wallet')
 export const getCardanoTxHistory = (limit = 20) => api.get('/api/cardano/transactions', { params: { limit } })
-export const verifyCardanoDeposit = (data: object) => api.post('/api/cardano/on-ramp/verify', data)
-export const withdrawUsda = (data: object) => api.post('/api/cardano/withdraw', data)
-export const estimateCardanoFee = (data: object) => api.post('/api/cardano/estimate-fee', data)
-export const platformTopUp = (data: object) => api.post('/api/cardano/topup', data)
+export const verifyCardanoDeposit = (data: any) => api.post('/api/cardano/on-ramp/verify', data)
+export const withdrawUsda = (data: any) => api.post('/api/cardano/withdraw', data)
+export const estimateCardanoFee = (data: any) => api.post('/api/cardano/estimate-fee', data)
+export const platformTopUp = (data: any) => api.post('/api/cardano/topup', data)
 
 // Fetch the master wallet balance for the dashboard
 export const getMasterWalletBalance = () => api.get('/api/cardano/master-wallet/balance')
@@ -97,9 +110,7 @@ export const getTreasuryDashboard = () => api.get('/api/treasury/dashboard')
 export const simulateTreasurySwap = (data: any) => api.post('/api/treasury/simulate-swap', data)
 export const resetTreasurySandbox = () => api.post('/api/treasury/reset-sandbox')
 
-
 // Dynamic Dealing Desk Apis
-
 export const getMarketMakerOpportunities = () => api.get('/api/market-maker/opportunities')
 export const getSpreadConfig = () => api.get('/api/market-maker/spread')
 export const updateSpreadConfig = (data: any) => api.post('/api/market-maker/spread', data)
@@ -108,10 +119,10 @@ export const updateSpreadConfig = (data: any) => api.post('/api/market-maker/spr
 export const toggleTreasuryKillSwitch = (active: boolean) => api.post('/api/treasury/kill-switch', { active })
 export const executeHftCorridor = (data: { amount: number, corridor_id: string }) => api.post('/api/treasury/corridor/execute-hft', data)
 
-
 // Valora APIs
+export const verifyValoraDeposit = (data: any) => api.post('/api/valora/on-ramp/verify', data);
 export const executeValoraWithdraw = (data: { amount: number; identifier: string }) =>
-  axios.post('/api/valora/withdraw', data);
+  api.post('/api/valora/withdraw', data);
 
 export const registerValoraPhone = (data: { phone: string; celo_address: string }) =>
-  axios.post('/api/valora/register-phone', data);
+  api.post('/api/valora/register-phone', data);
