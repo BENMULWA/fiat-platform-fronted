@@ -1,18 +1,20 @@
 //@ts-nocheck
-
 import React, { useState } from 'react';
-import { Smartphone, Wallet, CheckCircle, ShieldAlert, ArrowUp, Loader2, Sparkles, Hexagon, Clock, ArrowRightLeft } from 'lucide-react';
+import { Smartphone, Wallet, CheckCircle, ShieldAlert, ArrowUp, Loader2, Hexagon, Clock, Globe } from 'lucide-react';
 import { executeRamp, withdrawUsda, executeValoraWithdraw } from '../../api/client';
 
 export const WithdrawPage = () => {
-    const [method, setMethod] = useState<'mpesa' | 'valora' | 'cardano'>('mpesa');
+    const [method, setMethod] = useState<'mpesa' | 'minipay' | 'cardano'>('mpesa');
     const [amount, setAmount] = useState('');
     const [counterparty, setCounterparty] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-    const activeAsset = method === 'mpesa' ? 'KES' : method === 'valora' ? 'cUSD' : 'USDA';
-    const themeColor = method === 'mpesa' ? 'emerald' : method === 'valora' ? 'orange' : 'blue';
+    // State for multi-asset Celo selector
+    const [celoAsset, setCeloAsset] = useState<'USDC' | 'USDT' | 'cUSD'>('USDC')
+
+    const activeAsset = method === 'mpesa' ? 'KES' : method === 'minipay' ? celoAsset : 'USDA';
+    const themeColor = method === 'mpesa' ? 'emerald' : method === 'minipay' ? 'orange' : 'blue';
 
     const handleWithdraw = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -34,10 +36,11 @@ export const WithdrawPage = () => {
                     idempotency_key: idempotencyKey,
                     counterparty: 'Cardano off-ramp'
                 });
-            } else if (method === 'valora') {
+            } else if (method === 'minipay') {
                 await executeValoraWithdraw({
                     amount: Number(amount),
-                    identifier: counterparty
+                    identifier: counterparty,
+                    //asset: celoAsset
                 });
             } else {
                 await executeRamp({
@@ -51,7 +54,7 @@ export const WithdrawPage = () => {
                     counterparty
                 });
             }
-            setMessage({ type: 'success', text: "Withdrawal processed successfully." });
+            setMessage({ type: 'success', text: "Withdrawal broadcasted successfully." });
             setAmount('');
             setCounterparty('');
         } catch (err: any) {
@@ -62,187 +65,204 @@ export const WithdrawPage = () => {
     };
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 max-w-7xl mx-auto animate-in fade-in duration-500">
+        <div className="max-w-[1200px] mx-auto animate-in fade-in duration-500 pt-4 px-4 md:px-0">
 
-            {/* LEFT COLUMN: WITHDRAWAL GATEWAY */}
-            <div className="lg:col-span-7 bg-[#0B0E14] border border-[#1E2533] rounded-2xl p-8 flex flex-col justify-between min-h-[580px] shadow-xl">
-                <div>
-                    <div className="flex items-center gap-2 mb-6">
-                        <Sparkles className={`w-5 h-5 text-${themeColor}-500 transition-colors`} />
-                        <h2 className="text-xl font-extrabold text-white tracking-wide">Withdraw Gateway</h2>
-                    </div>
+            <div className="mb-6">
+                <h2 className="text-2xl font-bold text-white tracking-tight">Withdraw Funds</h2>
+            </div>
 
-                    <div className="space-y-3 mb-6">
-                        {/* M-Pesa Button */}
-                        <button
-                            onClick={() => { setMethod('mpesa'); setMessage(null); }}
-                            className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all duration-200 ${method === 'mpesa' ? 'bg-emerald-500/10 border-emerald-500 text-white shadow-md' : 'bg-[#0F1520] border-[#1E2533] text-gray-400 hover:border-gray-500'}`}
-                        >
-                            <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-lg ${method === 'mpesa' ? 'bg-emerald-500/20' : 'bg-[#1E2533]'}`}>
-                                    <Smartphone className={`w-5 h-5 ${method === 'mpesa' ? 'text-emerald-500' : 'text-gray-500'}`} />
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
+
+                {/* LEFT COLUMN: WITHDRAWAL GATEWAY */}
+                <div className="lg:col-span-7 bg-[#0F1520] border border-[#1E2533] rounded-3xl p-6 md:p-8 flex flex-col justify-between shadow-2xl">
+                    <div>
+                        <div className="flex items-center gap-3 mb-8">
+                            <div className={`p-2 rounded-lg bg-${themeColor}-500/10 border border-${themeColor}-500/20`}>
+                                <ArrowUp className={`w-5 h-5 text-${themeColor}-400`} />
+                            </div>
+                            <h2 className="text-xl font-bold text-white tracking-wide">Withdraw Gateway</h2>
+                        </div>
+
+                        <div className="space-y-3 mb-8">
+                            <button
+                                onClick={() => { setMethod('mpesa'); setMessage(null); }}
+                                className={`w-full flex items-center p-4 rounded-2xl border transition-all duration-300 ${method === 'mpesa' ? 'bg-[#172130] border-[#00d282] shadow-[0_0_15px_rgba(0,210,130,0.1)]' : 'bg-[#0B0E14] border-[#1E2533] text-gray-400 hover:border-gray-500'}`}
+                            >
+                                <div className={`p-2.5 rounded-xl shrink-0 mr-4 ${method === 'mpesa' ? 'bg-[#00d282]/20 text-[#00d282]' : 'bg-[#1E2533] text-gray-500'}`}>
+                                    <Smartphone className="w-5 h-5" />
                                 </div>
-                                <div className="text-left">
-                                    <p className="font-bold text-sm text-white">Mobile Money (M-Pesa)</p>
-                                    <p className="text-[11px] text-gray-500">Direct fiat payout to your phone</p>
+                                <div className="text-left flex-1">
+                                    <p className={`font-bold text-sm ${method === 'mpesa' ? 'text-white' : 'text-gray-300'}`}>Mobile Money (M-Pesa)</p>
+                                    <p className="text-[11px] text-gray-500 mt-0.5">Direct fiat payout to your phone</p>
+                                </div>
+                            </button>
+
+                            <button
+                                onClick={() => { setMethod('minipay'); setMessage(null); }}
+                                className={`w-full flex items-center p-4 rounded-2xl border transition-all duration-300 ${method === 'minipay' ? 'bg-[#172130] border-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.1)]' : 'bg-[#0B0E14] border-[#1E2533] text-gray-400 hover:border-gray-500'}`}
+                            >
+                                <div className={`p-2.5 rounded-xl shrink-0 mr-4 ${method === 'minipay' ? 'bg-orange-500/20 text-orange-400' : 'bg-[#1E2533] text-gray-500'}`}>
+                                    <Wallet className="w-5 h-5" />
+                                </div>
+                                <div className="text-left flex-1">
+                                    <p className={`font-bold text-sm ${method === 'minipay' ? 'text-white' : 'text-gray-300'}`}>Valora Wallet (cUSD)</p>
+                                    <p className="text-[11px] text-gray-500 mt-0.5">Stablecoin withdrawal via Celo</p>
+                                </div>
+                            </button>
+
+                            <button
+                                onClick={() => { setMethod('cardano'); setMessage(null); }}
+                                className={`w-full flex items-center p-4 rounded-2xl border transition-all duration-300 ${method === 'cardano' ? 'bg-[#172130] border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.1)]' : 'bg-[#0B0E14] border-[#1E2533] text-gray-400 hover:border-gray-500'}`}
+                            >
+                                <div className={`p-2.5 rounded-xl shrink-0 mr-4 ${method === 'cardano' ? 'bg-blue-500/20 text-blue-400' : 'bg-[#1E2533] text-gray-500'}`}>
+                                    <Hexagon className="w-5 h-5" />
+                                </div>
+                                <div className="text-left flex-1">
+                                    <p className={`font-bold text-sm ${method === 'cardano' ? 'text-white' : 'text-gray-300'}`}>Cardano Wallet</p>
+                                    <p className="text-[11px] text-gray-500 mt-0.5">Native blockchain withdrawals</p>
+                                </div>
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleWithdraw} className="space-y-6">
+
+                            {/* Amount & Asset Selector */}
+                            <div className="bg-[#0B0E14] border border-[#1E2533] rounded-2xl p-5 focus-within:border-emerald-500/50 transition-colors">
+                                <div className="flex items-center justify-between mb-3">
+                                    <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest">Amount to Withdraw</label>
+
+                                    {method === 'minipay' && (
+                                        <div className="flex bg-[#111827] border border-[#1e2d3d] rounded-lg overflow-hidden p-0.5">
+                                            {['USDC', 'USDT', 'cUSD'].map(asset => (
+                                                <button
+                                                    key={asset}
+                                                    type="button"
+                                                    onClick={() => setCeloAsset(asset as any)}
+                                                    className={`px-3 py-1 text-[10px] font-bold uppercase transition-all rounded-md ${celoAsset === asset ? 'bg-[#1e2d3d] text-white shadow-sm' : 'text-gray-500 hover:text-gray-400'
+                                                        }`}
+                                                >
+                                                    {asset}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="flex items-center justify-between">
+                                    <input
+                                        type="number"
+                                        placeholder="0.00"
+                                        value={amount}
+                                        onChange={(e) => setAmount(e.target.value)}
+                                        className="w-full bg-transparent outline-none text-3xl font-bold text-white font-mono placeholder-gray-700"
+                                        required
+                                    />
+                                    <span className={`font-bold text-${themeColor}-400 text-lg`}>
+                                        {activeAsset}
+                                    </span>
                                 </div>
                             </div>
-                        </button>
 
-                        {/* Valora Button */}
-                        <button
-                            onClick={() => { setMethod('valora'); setMessage(null); }}
-                            className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all duration-200 ${method === 'valora' ? 'bg-orange-500/10 border-orange-500 text-white shadow-md' : 'bg-[#0F1520] border-[#1E2533] text-gray-400 hover:border-gray-500'}`}
-                        >
-                            <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-lg ${method === 'valora' ? 'bg-orange-500/20' : 'bg-[#1E2533]'}`}>
-                                    <Wallet className={`w-5 h-5 ${method === 'valora' ? 'text-orange-500' : 'text-gray-500'}`} />
-                                </div>
-                                <div className="text-left">
-                                    <p className="font-bold text-sm text-white">Valora Wallet (cUSD)</p>
-                                    <p className="text-[11px] text-gray-500">Stablecoin withdrawal via Celo</p>
-                                </div>
-                            </div>
-                        </button>
-
-                        {/* Cardano Button */}
-                        <button
-                            onClick={() => { setMethod('cardano'); setMessage(null); }}
-                            className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all duration-200 ${method === 'cardano' ? 'bg-blue-500/10 border-blue-500 text-white shadow-md' : 'bg-[#0F1520] border-[#1E2533] text-gray-400 hover:border-gray-500'}`}
-                        >
-                            <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-lg ${method === 'cardano' ? 'bg-blue-500/20' : 'bg-[#1E2533]'}`}>
-                                    <Hexagon className={`w-5 h-5 ${method === 'cardano' ? 'text-blue-500' : 'text-gray-500'}`} />
-                                </div>
-                                <div className="text-left">
-                                    <p className="font-bold text-sm text-white">Cardano Wallet</p>
-                                    <p className="text-[11px] text-gray-500">Native blockchain withdrawals</p>
-                                </div>
-                            </div>
-                        </button>
-                    </div>
-
-                    <form onSubmit={handleWithdraw} className="space-y-5">
-                        <div>
-                            <label className="block text-[11px] font-bold text-gray-500 mb-2 uppercase tracking-wider">Amount to Withdraw</label>
-                            <div className="relative">
+                            {/* Destination Input */}
+                            <div className="bg-[#0B0E14] border border-[#1E2533] rounded-2xl p-5 focus-within:border-emerald-500/50 transition-colors">
+                                <label className="block text-[11px] font-bold text-gray-500 mb-3 uppercase tracking-widest">
+                                    {method === 'mpesa' ? 'Destination Phone Number' : 'Destination Wallet Address'}
+                                </label>
                                 <input
-                                    type="number"
-                                    placeholder="0.00"
-                                    value={amount}
-                                    onChange={(e) => setAmount(e.target.value)}
-                                    className={`w-full bg-[#0F1520] border border-[#1E2533] focus:border-${themeColor}-500 focus:outline-none rounded-xl py-3 pl-4 pr-16 text-sm font-semibold text-white transition-colors`}
+                                    type="text"
+                                    placeholder={method === 'mpesa' ? '2547XXXXXXXX' : '0x...'}
+                                    value={counterparty}
+                                    onChange={(e) => setCounterparty(e.target.value)}
+                                    className="w-full bg-transparent outline-none text-base font-semibold text-white font-mono placeholder-gray-700"
                                     required
                                 />
-                                <span className={`absolute right-4 top-3 text-xs font-bold text-${themeColor}-500 transition-colors`}>
-                                    {activeAsset}
-                                </span>
                             </div>
-                        </div>
 
-                        <div>
-                            <label className="block text-[11px] font-bold text-gray-500 mb-2 uppercase tracking-wider">
-                                {method === 'mpesa' ? 'Destination Phone Number' : 'Destination Wallet Address'}
-                            </label>
-                            <input
-                                type="text"
-                                placeholder={method === 'mpesa' ? '2547XXXXXXXX' : method === 'cardano' ? 'addr1...' : '0x...'}
-                                value={counterparty}
-                                onChange={(e) => setCounterparty(e.target.value)}
-                                className={`w-full bg-[#0F1520] border border-[#1E2533] focus:border-${themeColor}-500 focus:outline-none rounded-xl py-3 px-4 text-sm font-semibold text-white font-mono transition-colors`}
-                                required
-                            />
-                        </div>
+                            {message && (
+                                <div className={`p-4 rounded-xl border flex items-center gap-3 animate-in slide-in-from-top-2 font-medium text-sm ${message.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
+                                    {message.type === 'success' ? <CheckCircle className="w-5 h-5 shrink-0" /> : <ShieldAlert className="w-5 h-5 shrink-0" />}
+                                    <p>{message.text}</p>
+                                </div>
+                            )}
 
-                        {message && (
-                            <div className={`p-4 rounded-xl border flex items-start gap-3 animate-in slide-in-from-top-2 ${message.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
-                                {message.type === 'success' ? <CheckCircle className="w-4 h-4 mt-0.5" /> : <ShieldAlert className="w-4 h-4 mt-0.5" />}
-                                <p className="text-xs font-medium leading-relaxed">{message.text}</p>
-                            </div>
+                            <button
+                                type="submit"
+                                disabled={isSubmitting}
+                                className="w-full py-4 px-4 rounded-xl font-extrabold text-[15px] tracking-wide transition-all duration-300 flex items-center justify-center gap-2 mt-2 bg-[#00d282] hover:bg-[#00e691] text-[#0a1510] shadow-[0_0_20px_rgba(0,210,130,0.15)] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><ArrowUp className="w-5 h-5" /> Confirm Withdrawal</>}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                {/* RIGHT COLUMN: DYNAMIC WITHDRAWAL PROCEDURE */}
+                <div className="lg:col-span-5 bg-[#0F1520] border border-[#1E2533] rounded-3xl p-6 md:p-8 flex flex-col shadow-2xl h-fit">
+                    <h3 className="text-[11px] font-bold text-gray-500 mb-8 uppercase tracking-widest flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-gray-400" /> Withdrawal Procedure
+                    </h3>
+
+                    <div className="space-y-8 flex-1 relative before:absolute before:inset-0 before:ml-[15px] before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-gray-800 before:via-gray-800 before:to-transparent">
+                        {method === 'mpesa' ? (
+                            <>
+                                <div className="relative flex items-start gap-4">
+                                    <div className="w-8 h-8 rounded-full bg-[#00d282]/10 border border-[#00d282]/30 flex items-center justify-center font-mono text-[11px] font-bold text-[#00d282] shrink-0 z-10 shadow-[0_0_10px_rgba(0,210,130,0.2)]">1</div>
+                                    <div className="pt-1">
+                                        <h4 className="text-sm font-bold text-white mb-1.5">Enter Details</h4>
+                                        <p className="text-[13px] text-gray-500 leading-relaxed">Specify the amount of KES you wish to withdraw and your receiving Safaricom M-Pesa number.</p>
+                                    </div>
+                                </div>
+                                <div className="relative flex items-start gap-4">
+                                    <div className="w-8 h-8 rounded-full bg-[#111827] border border-[#1E2533] flex items-center justify-center font-mono text-[11px] font-bold text-gray-500 shrink-0 z-10">2</div>
+                                    <div className="pt-1">
+                                        <h4 className="text-sm font-bold text-white mb-1.5">Treasury Authorization</h4>
+                                        <p className="text-[13px] text-gray-500 leading-relaxed">The platform instantly verifies your balance and authorizes a B2C (Business-to-Customer) payout.</p>
+                                    </div>
+                                </div>
+                                <div className="relative flex items-start gap-4">
+                                    <div className="w-8 h-8 rounded-full bg-[#111827] border border-[#1E2533] flex items-center justify-center font-mono text-[11px] font-bold text-gray-500 shrink-0 z-10">3</div>
+                                    <div className="pt-1">
+                                        <h4 className="text-sm font-bold text-white mb-1.5">Instant Settlement</h4>
+                                        <p className="text-[13px] text-gray-500 leading-relaxed">Funds arrive directly in your M-Pesa account via a Safaricom confirmation message.</p>
+                                    </div>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="relative flex items-start gap-4">
+                                    <div className={`w-8 h-8 rounded-full bg-${themeColor}-500/10 border border-${themeColor}-500/30 flex items-center justify-center font-mono text-[11px] font-bold text-${themeColor === 'orange' ? 'orange-400' : 'blue-400'} shrink-0 z-10 shadow-[0_0_10px_rgba(0,0,0,0.2)]`}>1</div>
+                                    <div className="pt-1">
+                                        <h4 className="text-sm font-bold text-white mb-1.5">Select Asset & Destination</h4>
+                                        <p className="text-[13px] text-gray-500 leading-relaxed">Ensure you have selected the correct stablecoin token before pasting your receiving address.</p>
+                                    </div>
+                                </div>
+                                <div className="relative flex items-start gap-4">
+                                    <div className="w-8 h-8 rounded-full bg-[#111827] border border-[#1E2533] flex items-center justify-center font-mono text-[11px] font-bold text-gray-500 shrink-0 z-10">2</div>
+                                    <div className="pt-1">
+                                        <h4 className="text-sm font-bold text-white mb-1.5">Network Broadcasting</h4>
+                                        <p className="text-[13px] text-gray-500 leading-relaxed">The Treasury Hub signs the transaction and routes the {activeAsset} directly to the blockchain network.</p>
+                                    </div>
+                                </div>
+                                <div className="relative flex items-start gap-4">
+                                    <div className="w-8 h-8 rounded-full bg-[#111827] border border-[#1E2533] flex items-center justify-center font-mono text-[11px] font-bold text-gray-500 shrink-0 z-10">3</div>
+                                    <div className="pt-1">
+                                        <h4 className="text-sm font-bold text-white mb-1.5">On-Chain Finality</h4>
+                                        <p className="text-[13px] text-gray-500 leading-relaxed">Wait 5-10 seconds for the network validators to confirm your transaction block.</p>
+                                    </div>
+                                </div>
+                            </>
                         )}
+                    </div>
 
-                        {/* Dynamic Button Color */}
-                        <button
-                            type="submit"
-                            disabled={isSubmitting}
-                            className={`w-full py-4 px-4 rounded-xl font-bold text-sm tracking-wide transition-all duration-300 flex items-center justify-center gap-2 mt-2 shadow-lg active:scale-[0.98] ${method === 'mpesa' ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-900/20' :
-                                    method === 'valora' ? 'bg-orange-500 hover:bg-orange-400 text-black shadow-orange-900/20' :
-                                        'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20'
-                                }`}
-                        >
-                            {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><ArrowUp className="w-5 h-5" /> Confirm Withdrawal</>}
-                        </button>
-                    </form>
+                    <div className="mt-10 p-5 bg-[#0B0E14] border border-[#1E2533] rounded-xl flex items-start gap-3">
+                        <ShieldAlert className="w-5 h-5 text-gray-500 shrink-0" />
+                        <p className="text-xs text-gray-400 leading-relaxed">
+                            For security purposes, large withdrawals may require additional manual approval from the Treasury Desk. Ensure your destination details are absolutely correct, as blockchain transactions cannot be reversed.
+                        </p>
+                    </div>
                 </div>
+
             </div>
-
-            {/* RIGHT COLUMN: DYNAMIC WITHDRAWAL PROCEDURE */}
-            <div className="lg:col-span-5 bg-[#0B0E14] border border-[#1E2533] rounded-2xl p-8 flex flex-col shadow-xl">
-                <h3 className="text-sm font-bold text-white mb-6 uppercase tracking-wider flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-gray-400" /> Withdrawal Procedure
-                </h3>
-
-                <div className="space-y-6 flex-1">
-                    {method === 'mpesa' ? (
-                        <>
-                            <div className="flex gap-4">
-                                <div className="w-8 h-8 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center font-mono text-xs font-bold text-emerald-400 shrink-0">1</div>
-                                <div>
-                                    <h4 className="text-sm font-bold text-white mb-1">Enter Details</h4>
-                                    <p className="text-xs text-gray-500 leading-relaxed">Specify the amount of KES you wish to withdraw and your receiving Safaricom M-Pesa number.</p>
-                                </div>
-                            </div>
-                            <div className="flex gap-4">
-                                <div className="w-8 h-8 rounded-full bg-[#0F1520] border border-[#1E2533] flex items-center justify-center font-mono text-xs font-bold text-gray-500 shrink-0">2</div>
-                                <div>
-                                    <h4 className="text-sm font-bold text-white mb-1">Treasury Authorization</h4>
-                                    <p className="text-xs text-gray-500 leading-relaxed">The platform instantly verifies your balance and authorizes a B2C (Business-to-Customer) payout.</p>
-                                </div>
-                            </div>
-                            <div className="flex gap-4">
-                                <div className="w-8 h-8 rounded-full bg-[#0F1520] border border-[#1E2533] flex items-center justify-center font-mono text-xs font-bold text-gray-500 shrink-0">3</div>
-                                <div>
-                                    <h4 className="text-sm font-bold text-white mb-1">Instant Settlement</h4>
-                                    <p className="text-xs text-gray-500 leading-relaxed">Funds arrive directly in your M-Pesa account via a Safaricom confirmation message.</p>
-                                </div>
-                            </div>
-                        </>
-                    ) : (
-                        <>
-                            <div className="flex gap-4">
-                                <div className={`w-8 h-8 rounded-full bg-${themeColor}-500/10 border border-${themeColor}-500/30 flex items-center justify-center font-mono text-xs font-bold text-${themeColor}-400 shrink-0 transition-colors`}>1</div>
-                                <div>
-                                    <h4 className="text-sm font-bold text-white mb-1">Provide Destination</h4>
-                                    <p className="text-xs text-gray-500 leading-relaxed">Enter your personal self-custody wallet address. Ensure it is on the correct network ({method === 'valora' ? 'Celo' : 'Cardano'}).</p>
-                                </div>
-                            </div>
-                            <div className="flex gap-4">
-                                <div className="w-8 h-8 rounded-full bg-[#0F1520] border border-[#1E2533] flex items-center justify-center font-mono text-xs font-bold text-gray-500 shrink-0">2</div>
-                                <div>
-                                    <h4 className="text-sm font-bold text-white mb-1">Network Broadcasting</h4>
-                                    <p className="text-xs text-gray-500 leading-relaxed">The Treasury Hub signs the transaction and broadcasts it to the global blockchain network.</p>
-                                </div>
-                            </div>
-                            <div className="flex gap-4">
-                                <div className="w-8 h-8 rounded-full bg-[#0F1520] border border-[#1E2533] flex items-center justify-center font-mono text-xs font-bold text-gray-500 shrink-0">3</div>
-                                <div>
-                                    <h4 className="text-sm font-bold text-white mb-1">Block Confirmation</h4>
-                                    <p className="text-xs text-gray-500 leading-relaxed">Depending on network congestion, the {activeAsset} will appear in your wallet within 1 to 5 minutes.</p>
-                                </div>
-                            </div>
-                        </>
-                    )}
-                </div>
-
-                {/* Security Warning at bottom of right panel */}
-                <div className="mt-8 p-4 bg-[#0F1520] border border-[#1E2533] rounded-xl flex items-start gap-3">
-                    <ShieldAlert className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
-                    <p className="text-[10px] text-gray-400 leading-relaxed">
-                        For security purposes, large withdrawals may require additional manual approval from the Treasury Desk. Ensure your destination details are absolutely correct, as blockchain transactions cannot be reversed.
-                    </p>
-                </div>
-            </div>
-
         </div>
     );
 };

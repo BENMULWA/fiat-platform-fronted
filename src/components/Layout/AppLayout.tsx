@@ -5,18 +5,13 @@ import Sidebar from './Sidebar'
 import { useAuth } from '../../contexts/AuthContext'
 
 export default function AppLayout() {
-  const { user, logout } = useAuth()
+  const { user, logout, viewAsAdmin, toggleViewAsAdmin } = useAuth()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showSettingsMenu, setShowSettingsMenu] = useState(false)
   const [showNotifMenu, setShowNotifMenu] = useState(false)
   const location = useLocation()
-
-  const toggleViewAsAdmin = () => {
-    // Implement admin toggle logic here
-    console.log('Toggling admin view')
-  }
 
   // Close sidebars/menus on route change or resize
   useEffect(() => {
@@ -41,11 +36,12 @@ export default function AppLayout() {
     setShowNotifMenu(false)
   }
 
-  // Derive current page title from route (Optional but looks great)
+  // Derive current page title from route
   const getPageTitle = () => {
     const path = location.pathname
-    if (path.startsWith('/wallet')) return "My Wallet"
-    if (path.startsWith('/trade')) return "Quick Swap"
+    if (path.startsWith('/dashboard')) return "Dashboard"
+    if (path.startsWith('/wallets')) return "My Wallets"
+    if (path.startsWith('/swap')) return "Quick Swap"
     if (path.startsWith('/deposit')) return "Deposit Funds"
     if (path.startsWith('/withdraw')) return "Withdraw Funds"
     if (path.startsWith('/redeem-airtime')) return "Redeem Airtime"
@@ -53,7 +49,21 @@ export default function AppLayout() {
     if (path.startsWith('/transactions')) return "Transactions"
     if (path.startsWith('/profile')) return "Profile"
     if (path.startsWith('/kyc')) return "KYC Verification"
+    if (path.startsWith('/vault')) return "Vault Dashboard"
+    if (path.startsWith('/market-maker')) return "Market Maker Desk"
+    if (path.startsWith('/admin')) return "OTC Operations"
     return "Dashboard"
+  }
+
+  const handleModeSwitch = () => {
+    setShowSettingsMenu(false);
+    toggleViewAsAdmin();
+    // Auto-navigate to the correct home page when switching modes
+    if (!viewAsAdmin) {
+      navigate('/vault');
+    } else {
+      navigate('/dashboard');
+    }
   }
 
   return (
@@ -78,7 +88,7 @@ export default function AppLayout() {
       {/* Main content */}
       <main className="flex-1 min-h-screen overflow-x-hidden lg:ml-[260px]">
 
-        {/* 🟢 UPDATED: Sticky Top Bar (Mobile & Desktop) */}
+        {/* 🟢 Sticky Top Bar (Mobile & Desktop) */}
         <div className="sticky top-0 z-20 bg-[#070f19] border-b border-[#1a2a40]">
           {/* Mobile Top Bar */}
           <div className="flex items-center justify-between px-4 py-3 lg:hidden">
@@ -95,7 +105,6 @@ export default function AppLayout() {
             <div className="flex items-center gap-2">
               <button onClick={() => setShowNotifMenu(!showNotifMenu)} className="relative p-2 rounded-lg hover:bg-white/10 transition-colors">
                 <Bell className="w-5 h-5 text-slate-400" />
-                {/* Notification Dot */}
                 <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
               </button>
               <button onClick={() => setShowUserMenu(!showUserMenu)} className="relative p-2 rounded-lg hover:bg-white/10 transition-colors">
@@ -126,21 +135,21 @@ export default function AppLayout() {
                   onClick={() => { setShowUserMenu(!showUserMenu); setShowSettingsMenu(false); setShowNotifMenu(false) }}
                   className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[#1e2d3d] transition-colors"
                 >
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center text-[10px] font-bold text-white">
-                    {user?.email?.[0]?.toUpperCase() || "U"}
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-[10px] font-bold text-white shadow-inner">
+                    {user?.name?.[0]?.toUpperCase() || "U"}
                   </div>
                   <ChevronDown className="w-4 h-4 text-slate-500" />
                 </button>
 
                 {showUserMenu && (
                   <div className="absolute right-0 top-full mt-2 w-64 bg-[#111827] border border-[#1e2d3d] rounded-xl shadow-2xl shadow-black/40 overflow-hidden z-50">
-                    <div className="p-2 border-b border-[#1e2d3d] px-4 py-2 flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-[#0d1420] flex items-center justify-center text-sm font-bold text-slate-300">
-                        {user?.email?.[0]?.toUpperCase() || "U"}
+                    <div className="p-2 border-b border-[#1e2d3d] px-4 py-3 flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-[#0d1420] flex items-center justify-center text-sm font-bold text-slate-300 border border-[#1e2d3d]">
+                        {user?.name?.[0]?.toUpperCase() || "U"}
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-white">{user?.email || "user@email.com"}</p>
-                        <p className="text-[10px] text-slate-500">Retail User</p>
+                        <p className="text-sm font-semibold text-white">{user?.name || "User"}</p>
+                        <p className="text-[10px] text-slate-500">{viewAsAdmin ? 'Treasury Admin' : 'Retail Account'}</p>
                       </div>
                     </div>
                     <div className="py-1">
@@ -158,7 +167,7 @@ export default function AppLayout() {
                       </button>
                       <button
                         onClick={() => { setShowUserMenu(false); navigate('/kyc') }}
-                        className="w-full text-left px-4 py-2.5 text-sm text-orange-400 hover:bg-orange-500/10 rounded-lg transition-colors flex items-center gap-3"
+                        className="w-full text-left px-4 py-2.5 text-sm text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors flex items-center gap-3"
                       >
                         <ShieldCheck className="w-4 h-4" /> KYC Verification
                       </button>
@@ -179,20 +188,14 @@ export default function AppLayout() {
                 {showSettingsMenu && (
                   <div className="absolute right-0 top-full mt-2 w-56 bg-[#111827] border border-[#1e2d3d] rounded-xl shadow-2xl shadow-black/40 overflow-hidden z-50">
                     <div className="p-2 border-b border-[#1e2d3d] px-4 py-2">
-                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">System</p>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">System Configuration</p>
                     </div>
                     <div className="py-1">
                       <button
-                        onClick={() => { setShowSettingsMenu(false); navigate('/settings') }}
-                        className="w-full text-left px-4 py-2.5 text-sm text-slate-300 hover:bg-[#1a2638] rounded-lg transition-colors flex items-center gap-3"
+                        onClick={handleModeSwitch}
+                        className="w-full text-left px-4 py-2.5 text-sm text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors flex items-center gap-3"
                       >
-                        <Settings className="w-4 h-4 text-slate-400" /> Settings
-                      </button>
-                      <button
-                        onClick={() => { setShowSettingsMenu(false); toggleViewAsAdmin() }}
-                        className="w-full text-left px-4 py-2.5 text-sm text-orange-400 hover:bg-orange-500/10 rounded-lg transition-colors flex items-center gap-3"
-                      >
-                        <Scale className="w-4 h-4 text-orange-400" /> Switch to Admin
+                        <Scale className="w-4 h-4 text-emerald-400" /> {viewAsAdmin ? 'Switch to Retail' : 'Switch to Admin'}
                       </button>
                       <button
                         onClick={() => { setShowSettingsMenu(false); logout(); navigate('/') }}
@@ -208,6 +211,7 @@ export default function AppLayout() {
           </div>
         </div>
 
+        {/* Dynamic Page Content */}
         <div className="p-4 sm:p-6 lg:p-8">
           <Outlet />
         </div>

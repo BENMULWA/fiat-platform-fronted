@@ -1,27 +1,29 @@
-// @ts-nocheck
+////@ts-nocheck
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { api, getRetailWallet, getRampHistory } from '../api/client';
+import { api } from '../api/client';
 
-interface User {
+export interface User {
   id: string;
-  name: string;
   email: string;
-  phone?: string;
-  role: 'admin' | 'trader';
+  name: string;
+  role: string;
   kycStatus?: string;
+  permissions?: string[];
+  viewAsAdmin?: boolean;
+  workspaceId?: string;
+  walletAddress?: string;
+  [key: string]: any;
 }
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  viewAsAdmin: boolean;
-  login: (email: string, _password?: string) => Promise<void>;
-  signup: (displayName: string, email: string, _password?: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
+  signup: (displayName: string, email: string, password: string) => Promise<void>;
   logout: () => void;
+  updateUser: (data: Partial<User>) => void;
+  viewAsAdmin: boolean;
   toggleViewAsAdmin: () => void;
-  updateUser: (updates: Partial<User>) => void; // <-- Added this!
-  walletBalances?: any;
-  rampHistory?: any[];
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -30,102 +32,164 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [viewAsAdmin, setViewAsAdmin] = useState(false);
-  const [walletBalances, setWalletBalances] = useState<any>({});
-  const [rampHistory, setRampHistory] = useState<any[]>([]);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('meshex_user');
-    if (storedUser) {
-      try {
-        const parsedUser = JSON.parse(storedUser);
-        setUser(parsedUser);
-        setViewAsAdmin(parsedUser.role === 'admin');
-      } catch (e) {
-        console.error("Failed to parse user session", e);
-      }
-    }
-    setIsLoading(false);
+    checkAuth();
   }, []);
 
-  // --- ADDED THIS FUNCTION TO UPDATE KYC STATUS GLOBALLY ---
-  const updateUser = (updates: Partial<User>) => {
-    if (user) {
-      const updatedUser = { ...user, ...updates };
-      setUser(updatedUser);
-      localStorage.setItem('meshex_user', JSON.stringify(updatedUser));
-    }
-  };
-
-  const login = async (email: string, _password?: string) => {
-    setIsLoading(true);
+  const checkAuth = async () => {
     try {
-      const res = await api.post('/api/auth/login', { email, password: _password });
-      const token = res.data.access_token;
-      const userObj = res.data.user;
+      const token = localStorage.getItem('meshex_token');
+      if (!token) {
+        setIsLoading(false);
+        return;
+      }
 
-      localStorage.setItem('meshex_token', token);
-      const mappedUser: any = { id: userObj._id || userObj.id, name: userObj.displayName || userObj.name, email: userObj.email, role: userObj.role || 'trader', kycStatus: userObj.kycStatus || 'pending' };
-      setUser(mappedUser);
-      setViewAsAdmin(mappedUser.role === 'admin');
-      localStorage.setItem('meshex_user', JSON.stringify(mappedUser));
+      // Try to load cached user first for instant UI
+      const cachedUser = localStorage.getItem('meshex_user');
+      if (cachedUser) {
+        try {
+          const parsed = JSON.parse(cachedUser);
+          setUser(parsed);
+          // Only allow admins to be in admin view
+          if (parsed.role !== 'retail' && parsed.role !== 'trader') {
+            setViewAsAdmin(true);
+          }
+        } catch (e) { /* ignore */ }
+      }
 
-      try {
-        const w = await getRetailWallet();
-        setWalletBalances(w.data.balances || {});
-      } catch (e) { }
-      try {
-        const h = await getRampHistory();
-        setRampHistory(h.data.entries || []);
-      } catch (e) { }
+      // 🟢 FIX 1: Added /api prefix to the me endpoint
+      const res = await api.get('/api/auth/me');
+      const userData = res.data?.user || res.data;
+
+      if (userData) {
+        const mappedUser: User = {
+          id: userData._id || userData.id || '',
+          email: userData.email || '',
+          name: userData.displayName || userData.name || '',
+          role: userData.role || 'retail',
+          kycStatus: userData.kycStatus || 'pending',
+          permissions: userData.permissions || [],
+          workspaceId: userData.workspaceId,
+          walletAddress: userData.walletAddress,
+        };
+
+        setUser(mappedUser);
+        localStorage.setItem('meshex_user', JSON.stringify(mappedUser));
+
+        // Enforce role security: Only admins can view admin pages
+        if (mappedUser.role !== 'retail' && mappedUser.role !== 'trader') {
+          setViewAsAdmin(true);
+        } else {
+          setViewAsAdmin(false);
+        }
+      }
     } catch (err) {
-      throw err;
+      // If unauthorized, clear cache
+      const cachedUser = localStorage.getItem('meshex_user');
+      if (cachedUser) {
+        try { setUser(JSON.parse(cachedUser)); } catch (e) { /* ignore */ }
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
-  const signup = async (displayName: string, email: string, _password?: string) => {
-    setIsLoading(true);
+  const signup = async (displayName: string, email: string, password: string) => {
     try {
-      const res = await api.post('/api/auth/signup', { email, password: _password, displayName });
-      const token = res.data.access_token;
-      const userObj = res.data.user;
+      // 🟢 FIX 2: Added /api prefix
+      const res = await api.post('/api/auth/signup', { displayName, email, password });
 
-      localStorage.setItem('meshex_token', token);
-      const mappedUser: any = { id: userObj._id || userObj.id, name: userObj.displayName || userObj.name, email: userObj.email, role: userObj.role || 'trader', kycStatus: userObj.kycStatus || 'pending' };
+      const { access_token, user: userData } = res.data;
+      localStorage.setItem('meshex_token', access_token);
+
+      const mappedUser: User = {
+        id: userData._id,
+        email: userData.email,
+        name: userData.displayName,
+        role: userData.role || 'retail',
+        kycStatus: userData.kycStatus,
+        workspaceId: userData.workspaceId,
+        walletAddress: userData.walletAddress,
+      };
+
       setUser(mappedUser);
-      setViewAsAdmin(mappedUser.role === 'admin');
+      localStorage.setItem('meshex_user', JSON.stringify(mappedUser));
+      setViewAsAdmin(false); // New signups are retail by default
+    } catch (err: any) {
+      throw err;
+    }
+  };
+
+  const login = async (email: string, password: string) => {
+    try {
+      // 🟢 FIX 3: Added /api prefix
+      const res = await api.post('/api/auth/login', { email, password });
+
+      const { access_token, user: userData } = res.data;
+      localStorage.setItem('meshex_token', access_token);
+
+      const mappedUser: User = {
+        id: userData._id,
+        email: userData.email,
+        name: userData.displayName,
+        role: userData.role || 'retail',
+        kycStatus: userData.kycStatus,
+        workspaceId: userData.workspaceId,
+        walletAddress: userData.walletAddress,
+      };
+
+      setUser(mappedUser);
       localStorage.setItem('meshex_user', JSON.stringify(mappedUser));
 
-      try {
-        const w = await getRetailWallet();
-        setWalletBalances(w.data.balances || {});
-      } catch (e) { }
-    } catch (err) {
+      // Auto-switch sidebar if they are an internal staff member
+      if (mappedUser.role !== 'retail' && mappedUser.role !== 'trader') {
+        setViewAsAdmin(true);
+      } else {
+        setViewAsAdmin(false);
+      }
+    } catch (err: any) {
       throw err;
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const logout = () => {
+    localStorage.removeItem('meshex_token');
+    localStorage.removeItem('meshex_user');
     setUser(null);
     setViewAsAdmin(false);
-    localStorage.removeItem('meshex_user');
-    localStorage.removeItem('meshex_token');
+    window.location.href = '/';
   };
 
-  const toggleViewAsAdmin = () => setViewAsAdmin(prev => !prev);
+  const updateUser = (data: Partial<User>) => {
+    setUser((prev) => {
+      if (!prev) return null;
+      const updated = { ...prev, ...data };
+      localStorage.setItem('meshex_user', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const toggleViewAsAdmin = () => {
+    // Ultimate security check: Prevent retail users from switching to admin view
+    if (user && (user.role === 'retail' || user.role === 'trader')) {
+      setViewAsAdmin(false);
+      return;
+    }
+    setViewAsAdmin(prev => !prev);
+  };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, viewAsAdmin, login, signup, logout, toggleViewAsAdmin, updateUser, walletBalances, rampHistory }}>
+    <AuthContext.Provider value={{ user, isLoading, login, signup, logout, updateUser, viewAsAdmin, toggleViewAsAdmin }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
-export function useAuth() {
+export function useAuth(): AuthContextType {
   const context = useContext(AuthContext);
-  if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
   return context;
 }

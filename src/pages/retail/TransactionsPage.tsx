@@ -40,42 +40,29 @@ export const TransactionsPage = () => {
     const formatToEAT = (dateInput: any) => {
         if (!dateInput) return 'N/A';
         try {
+            // Check if it's a valid ISO Date object (from our new createdAt field)
+            const date = new Date(dateInput);
+            if (!isNaN(date.getTime())) {
+                return new Intl.DateTimeFormat('en-GB', {
+                    timeZone: 'Africa/Nairobi',
+                    year: 'numeric',
+                    month: 'short',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                }).format(date).replace(',', '');
+            }
+
+            // Fallback for legacy date strings
             const dateStr = String(dateInput);
-            
-            // If the backend sends friendly text, just return it
             if (['today', 'just now', 'recently'].includes(dateStr.toLowerCase())) {
                 return dateStr;
             }
-
-            let date = new Date(dateStr);
-
-            // FIX: Handle "DD/MM/YYYY" format (like "17/07/2026 00:00")
-            // JS Date parser gets confused by DD/MM/YYYY and creates an Invalid Date.
-            if (isNaN(date.getTime()) && dateStr.includes('/')) {
-                const [datePart, timePart] = dateStr.split(' ');
-                if (datePart) {
-                    const [dd, mm, yyyy] = datePart.split('/');
-                    if (dd && mm && yyyy) {
-                        // Reconstruct as standard ISO YYYY-MM-DD
-                        date = new Date(`${yyyy}-${mm}-${dd}T${timePart || '00:00'}:00`);
-                    }
-                }
-            }
-
-            // If JS STILL cannot parse the date, fallback to returning the raw string
-            if (isNaN(date.getTime())) return dateStr;
-
-            return new Intl.DateTimeFormat('en-GB', {
-                timeZone: 'Africa/Nairobi',
-                year: 'numeric',
-                month: 'short', // e.g. "Jul"
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                hour12: false
-            }).format(date).replace(',', '');
+            return dateStr;
         } catch (e) {
-            return String(dateInput); // Absolute fallback to prevent crashes
+            return String(dateInput);
         }
     };
 
@@ -210,14 +197,14 @@ export const TransactionsPage = () => {
 
                                     return (
                                         <tr key={tx.id} className="hover:bg-[#0F1520] transition-colors group">
-                                            {/* Date */}
-                                            <td className="py-4 px-6 text-xs text-gray-400 font-mono">
-                                                {formatToEAT(tx.date || tx.createdAt)}
+                                            {/* Date - Prioritize exact ISO timestamp */}
+                                            <td className="py-4 px-6 text-xs text-gray-400 font-mono whitespace-nowrap">
+                                                {formatToEAT(tx.createdAt || tx.date)}
                                             </td>
 
                                             {/* Type Badge */}
                                             <td className="py-4 px-6">
-                                                {getTypeBadge(tx.direction)}
+                                            
                                             </td>
 
                                             {/* Amount */}

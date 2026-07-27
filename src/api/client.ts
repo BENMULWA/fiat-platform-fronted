@@ -1,128 +1,253 @@
-import axios from 'axios' //axios are used to make http requests to the backend api
+import axios from 'axios';
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '',
   headers: { 'Content-Type': 'application/json' },
-  timeout: 60000, // 60 seconds timeout for requests
-})
+  timeout: 60000,
+});
 
-// Attach the token
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('meshex_token')
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
-    }
-    return config
-  },
-  (error) => Promise.reject(error)
-)
+// ==========================================
+// INTERCEPTORS
+// ==========================================
 
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('meshex_token')
+    const token = localStorage.getItem('meshex_token');
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`
+      config.headers.Authorization = `Bearer ${token}`;
     }
-    return config
+    return config;
   },
   (error) => Promise.reject(error)
-)
+);
 
 api.interceptors.response.use(
-  res => res,
-  err => {
+  (res) => res,
+  (err) => {
     if (err.response?.status === 401) {
-      // 🚀 STRICT LOGOUT: Wipes the bad token and forces the browser to the login screen!
       localStorage.removeItem('meshex_token');
       localStorage.removeItem('meshex_user');
       window.location.href = '/';
     }
-    return Promise.reject(err)
+    return Promise.reject(err);
   }
-)
+);
 
-// Dashboard
-export const getDashboard = () => api.get('/api/dashboard')
+// ==========================================
+// DASHBOARD
+// ==========================================
 
-// Market Maker
-export const getQuotes = () => api.get('/api/market-maker/quotes')
-export const createQuote = (data: any) => api.post('/api/market-maker/quotes', data)
-export const deleteQuote = (id: string) => api.delete(`/api/market-maker/quotes/${id}`)
-export const toggleQuote = (id: string) => api.patch(`/api/market-maker/quotes/${id}/toggle`)
-export const bookDeal = (id: string) => api.post(`/api/market-maker/quotes/${id}/book`)
+export const getDashboard = () => api.get('/api/dashboard');
 
-// Trade
-export const getOrderBook = () => api.get('/api/trade/orderbook')
-export const getTradeHistory = () => api.get('/api/trade/history')
-export const placeOrder = (data: any) => api.post('/api/trade/orders', data)
+// ==========================================
+// MARKET MAKER
+// ==========================================
 
-// On/Off Ramp
-export const executeRamp = (data: any) => api.post('/api/ramp/execute', data)
-export const executeInternalSwap = (data: any) => api.post('/api/ramp/swap', data)
-export const getRampHistory = () => api.get('/api/ramp/history')
+export const getQuotes = () => api.get('/api/market-maker/quotes');
+export const createQuote = (data: any) => api.post('/api/market-maker/quotes', data);
+export const deleteQuote = (id: string) => api.delete(`/api/market-maker/quotes/${id}`);
+export const toggleQuote = (id: string) => api.patch(`/api/market-maker/quotes/${id}/toggle`);
+export const bookDeal = (id: string) => api.post(`/api/market-maker/quotes/${id}/book`);
 
-// Retail Routes
-export const getRetailWallet = () => api.get('/api/retail/wallet')
-export const updateProfile = (data: any) => api.put('/api/retail/profile', data)
+// ==========================================
+// TRADE
+// ==========================================
 
-// KYC Endpoints
+export const getOrderBook = () => api.get('/api/trade/orderbook');
+export const getTradeHistory = () => api.get('/api/trade/history');
+export const placeOrder = (data: any) => api.post('/api/trade/orders', data);
+
+// ==========================================
+// ON/OFF RAMP
+// ==========================================
+
+export const executeRamp = (data: any) => api.post('/api/ramp/execute', data);
+export const executeInternalSwap = (data: any) => api.post('/api/ramp/swap', data);
+export const getRampHistory = () => api.get('/api/ramp/history');
+
+// ==========================================
+// RETAIL ROUTES
+// ==========================================
+
+export const getRetailWallet = () => api.get('/api/retail/wallet');
+export const updateProfile = (data: any) => api.put('/api/retail/profile', data);
+
+// ==========================================
+// KYC ENDPOINTS
+// ==========================================
+
 export const getKycStatus = () => api.get('/api/retail/kyc/status');
 export const submitKyc = (data: any) => api.post('/api/retail/kyc/submit', data);
 
-// Airtime Ledger
-export const getAirtimeSummary = () => api.get('/api/airtime/summary')
-export const getAirtimeHistory = () => api.get('/api/airtime/history')
-export const mintAirt = (data: any) => api.post('/api/airtime/mint', data)
-export const redeemAirt = (data: any) => api.post('/api/airtime/redeem', data)
+// ==========================================
+// AIRTIME LEDGER
+// ==========================================
 
-// General Ledger
-export const getLedgerSummary = () => api.get('/api/ledger/summary')
+export const getAirtimeSummary = () => api.get('/api/airtime/summary');
+export const getAirtimeHistory = () => api.get('/api/airtime/history');
+export const mintAirt = (data: any) => api.post('/api/airtime/mint', data);
+export const redeemAirt = (data: any) => api.post('/api/airtime/redeem', data);
+
+// ==========================================
+// GENERAL LEDGER
+// ==========================================
+
+export const getLedgerSummary = () => api.get('/api/ledger/summary');
 export const getLedgerEntries = (flow?: string, search?: string) =>
-  api.get('/api/ledger/entries', { params: { flow, search } })
+  api.get('/api/ledger/entries', { params: { flow, search } });
 
-// The Live Tape HFT Feed!
 export const getLiveLedgerFeed = (limit: number = 50) =>
-  api.get('/api/ledger/feed', { params: { limit } })
+  api.get('/api/ledger/feed', { params: { limit } });
 
-// Rates & Inventory
-export const getDiscountRates = () => api.get('/api/rates/discount')
-export const addDiscountRate = (data: any) => api.post('/api/rates/discount', data)
-export const getInventory = () => api.get('/api/rates/inventory')
+// ==========================================
+// RATES & INVENTORY
+// ==========================================
 
-// Tokens
+export const getDiscountRates = () => api.get('/api/rates/discount');
+export const addDiscountRate = (data: any) => api.post('/api/rates/discount', data);
+export const getInventory = () => api.get('/api/rates/inventory');
+
+// ==========================================
+// TOKENS
+// ==========================================
+
 export const getTokenBalance = (asAdmin: boolean) =>
-  api.get('/api/tokens/balance', { params: { as_admin: asAdmin } })
+  api.get('/api/tokens/balance', { params: { as_admin: asAdmin } });
 
-// Cardano / USDA
-export const getCardanoWallet = () => api.get('/api/cardano/wallet')
-export const getCardanoTxHistory = (limit = 20) => api.get('/api/cardano/transactions', { params: { limit } })
-export const verifyCardanoDeposit = (data: any) => api.post('/api/cardano/on-ramp/verify', data)
-export const withdrawUsda = (data: any) => api.post('/api/cardano/withdraw', data)
-export const estimateCardanoFee = (data: any) => api.post('/api/cardano/estimate-fee', data)
-export const platformTopUp = (data: any) => api.post('/api/cardano/topup', data)
+// ==========================================
+// CARDANO / USDA
+// ==========================================
 
-// Fetch the master wallet balance for the dashboard
-export const getMasterWalletBalance = () => api.get('/api/cardano/master-wallet/balance')
+export const getCardanoWallet = () => api.get('/api/cardano/wallet');
+export const getCardanoTxHistory = (limit: number = 20) =>
+  api.get('/api/cardano/transactions', { params: { limit } });
+export const verifyCardanoDeposit = (data: any) => api.post('/api/cardano/on-ramp/verify', data);
+export const withdrawUsda = (data: any) => api.post('/api/cardano/withdraw', data);
+export const estimateCardanoFee = (data: any) => api.post('/api/cardano/estimate-fee', data);
+export const platformTopUp = (data: any) => api.post('/api/cardano/topup', data);
+export const getMasterWalletBalance = () => api.get('/api/cardano/master-wallet/balance');
 
-// --- TREASURY & MARKET MAKER ---
-export const getTreasuryDashboard = () => api.get('/api/treasury/dashboard')
-export const simulateTreasurySwap = (data: any) => api.post('/api/treasury/simulate-swap', data)
-export const resetTreasurySandbox = () => api.post('/api/treasury/reset-sandbox')
+// ==========================================
+// TREASURY & MARKET MAKER
+// ==========================================
 
-// Dynamic Dealing Desk Apis
-export const getMarketMakerOpportunities = () => api.get('/api/market-maker/opportunities')
-export const getSpreadConfig = () => api.get('/api/market-maker/spread')
-export const updateSpreadConfig = (data: any) => api.post('/api/market-maker/spread', data)
+export const getTreasuryDashboard = () => api.get('/api/treasury/dashboard');
+export const simulateTreasurySwap = (data: any) => api.post('/api/treasury/simulate-swap', data);
+export const resetTreasurySandbox = () => api.post('/api/treasury/reset-sandbox');
+export const getMarketMakerOpportunities = () => api.get('/api/market-maker/opportunities');
+export const getSpreadConfig = () => api.get('/api/market-maker/spread');
+export const updateSpreadConfig = (data: any) => api.post('/api/market-maker/spread', data);
 
-// HFT Corridor APIs
-export const toggleTreasuryKillSwitch = (active: boolean) => api.post('/api/treasury/kill-switch', { active })
-export const executeHftCorridor = (data: { amount: number, corridor_id: string }) => api.post('/api/treasury/corridor/execute-hft', data)
+// ==========================================
+// HFT CORRIDOR APIS
+// ==========================================
 
-// Valora APIs
+export const toggleTreasuryKillSwitch = (active: boolean) =>
+  api.post('/api/treasury/kill-switch', { active });
+export const executeHftCorridor = (data: { amount: number; corridor_id: string }) =>
+  api.post('/api/treasury/corridor/execute-hft', data);
+
+// ==========================================
+// VALORA APIS
+// ==========================================
+
 export const verifyValoraDeposit = (data: any) => api.post('/api/valora/on-ramp/verify', data);
 export const executeValoraWithdraw = (data: { amount: number; identifier: string }) =>
   api.post('/api/valora/withdraw', data);
-
 export const registerValoraPhone = (data: { phone: string; celo_address: string }) =>
   api.post('/api/valora/register-phone', data);
+
+// ==========================================
+// OTC ADMIN APIS
+// ==========================================
+
+export const getOtcDashboard = () => api.get('/api/admin/operations-overview');
+
+export const getOtcRetailTransactions = (params: {
+  page?: number;
+  limit?: number;
+  search?: string;
+}) => api.get('/api/admin/retail-transactions', { params });
+
+export const getOtcRetailTransactionDetails = (transactionId: string) =>
+  api.get(`/api/admin/retail-transactions/${transactionId}`);
+
+export const updateOtcRetailTransactionStatus = (transactionId: string, status: string) =>
+  api.patch(`/api/admin/retail-transactions/${transactionId}/status`, { status });
+
+// ==========================================
+// ADMIN FINANCE & COMPLIANCE APIS
+// ==========================================
+
+export const getAdminPayments = () => api.get('/api/admin/finance/payments');
+export const matchAdminPayment = (id: string) =>
+  api.post(`/api/admin/finance/payments/${id}/match`);
+
+export const getAdminTreasury = () => api.get('/api/admin/finance/treasury');
+export const getAdminLiquidity = () => api.get('/api/admin/finance/liquidity');
+
+export const getAdminKycQueue = () => api.get('/api/admin/compliance/kyc');
+export const approveAdminKyc = (id: string) =>
+  api.post(`/api/admin/compliance/kyc/${id}/approve`);
+export const rejectAdminKyc = (id: string) =>
+  api.post(`/api/admin/compliance/kyc/${id}/reject`);
+
+export const getAdminCustomers = () => api.get('/api/admin/finance/customers');
+export const freezeAdminCustomer = (id: string) =>
+  api.post(`/api/admin/compliance/customers/${id}/freeze`);
+export const unfreezeAdminCustomer = (id: string) =>
+  api.post(`/api/admin/compliance/customers/${id}/unfreeze`);
+
+// ==========================================
+// ADMINISTRATION & TEAM MANAGEMENT (RBAC)
+// ==========================================
+
+export const getAdminTeam = () => api.get('/administration/users');
+
+export const createAdminUser = (data: {
+  name: string;
+  email: string;
+  role: string;
+  password: string;
+  permissions: string[];
+}) => api.post('/administration/users', data);
+
+export const toggleAdminUserStatus = (userId: string) =>
+  api.post(`/administration/users/${userId}/toggle`);
+
+export const deleteAdminUser = (userId: string) =>
+  api.delete(`/administration/users/${userId}`);
+
+export const updateAdminUserPermissions = (userId: string, permissions: string[]) =>
+  api.patch(`/administration/users/${userId}/permissions`, { permissions });
+
+export const resetAdminUserPassword = (userId: string, newPassword: string) =>
+  api.post(`/administration/users/${userId}/reset-password`, { password: newPassword });
+
+export const getAdminAuditLogs = (params?: {
+  page?: number;
+  limit?: number;
+  userId?: string;
+}) => api.get('/administration/audit-logs', { params });
+
+export const getAdminSettings = () => api.get('/administration/settings');
+export const updateAdminSettings = (data: any) =>
+  api.patch('/administration/settings', data);
+
+// ==========================================
+// AUTH ENDPOINTS
+// ==========================================
+
+export const loginUser = (data: { email: string; password: string }) => api.post('/api/auth/login', data);
+export const signupUser = (data: any) => api.post('/api/auth/signup', data);
+export const getMe = () => api.get('/api/auth/me');
+export const logoutUser = () => api.post('/api/auth/logout');
+
+
+export default api;
+
+
+
+// Minipay Endpoints
+export const getMinipayTreasuryAddress = () => api.get('/api/minipay/treasury-address');
+export const verifyMinipayDeposit = (data: { amount: number; tx_hash: string; phone_number: string }) => api.post('/api/minipay/verify', data);
