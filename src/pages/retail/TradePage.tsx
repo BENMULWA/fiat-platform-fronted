@@ -1,19 +1,21 @@
 // @ts-nocheck
-import { useState, useEffect, useMemo } from 'react'
-import { ArrowDown, ArrowRightLeft, Clock, CheckCircle2, XCircle, AlertCircle, Wallet, Zap, RefreshCw } from 'lucide-react'
+import React, { useState, useEffect, useMemo } from 'react'
+import { ArrowDown, ArrowRightLeft, Clock, CheckCircle2, XCircle, AlertCircle, Wallet, Zap, Globe, Phone, FileText } from 'lucide-react'
 import { executeRamp, getRampHistory, api } from '../../api/client'
 
-// 🌍 UPDATED: Full East & West African Currency Support
 const ASSETS = [
-    'USDA', 'USDC', 'USDT', 'USD',   // Stablecoins / Fiat
-    'KES', 'UGX', 'TZS', 'RWF', 'BIF', // East Africa
-    'XAF', 'XOF',                      // Central & West Africa (CFA Francs)
-    'AIRT', 'IMP'                      // Synthetics
+    'USDA', 'USDC', 'USDT', 'cUSD', 'USD',
+    'KES', 'UGX', 'TZS', 'RWF', 'BIF',
+    'XAF', 'XOF',
+    'AIRT', 'IMP'
 ];
+
+const isCrypto = (asset: string) => ['USDA', 'USDC', 'USDT', 'cUSD', 'IMP'].includes(asset);
+const isFiat = (asset: string) => ['KES', 'UGX', 'TZS', 'RWF', 'BIF', 'XAF', 'XOF', 'USD'].includes(asset);
 
 export default function TradePage() {
     const [from, setFrom] = useState('KES')
-    const [to, setTo] = useState('USDA')
+    const [to, setTo] = useState('USDT')
     const [amount, setAmount] = useState('')
     const [history, setHistory] = useState([])
 
@@ -21,66 +23,30 @@ export default function TradePage() {
     const [toastError, setToastError] = useState('')
     const [showSuccessModal, setShowSuccessModal] = useState(false)
 
-    // --- LIVE SPREAD ENGINE STATE ---
-    const [liveRates, setLiveRates] = useState({ bid: 128.00, ask: 132.00, active: true });
-    const [ratesLoading, setRatesLoading] = useState(true);
+    const [liveRates, setLiveRates] = useState({ bid: 127.89, ask: 132.00, active: true });
 
-    const fetchLiveRates = async () => {
-        try {
-            setRatesLoading(true);
-            const res = await api.get('/api/market-maker/spread');
-            if (res.data) {
-                setLiveRates({
-                    bid: res.data.bid,
-                    ask: res.data.ask,
-                    active: res.data.active
-                });
-            }
-        } catch (err) {
-            console.error("Failed to fetch live rates", err);
-        } finally {
-            setRatesLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchLiveRates();
-        const rateInterval = setInterval(fetchLiveRates, 10000);
-        return () => clearInterval(rateInterval);
-    }, []);
-
-    // 🧮 DYNAMIC CROSS-CURRENCY CALCULATOR
     const rate = useMemo(() => {
         if (from === to) return 1;
 
-        // Core USDA/KES Route (From Market Maker Desk)
-        if (from === 'USDA' && to === 'KES') return liveRates.bid;
-        if (from === 'KES' && to === 'USDA') return 1 / liveRates.ask;
+        // 🟢 FIX 1: Support ALL crypto assets against KES, not just USDT
+        if (isCrypto(from) && to === 'KES') return liveRates.bid;
+        if (from === 'KES' && isCrypto(to)) return 1 / liveRates.ask;
 
-        // Base USD approximate values for testing (In production, these come from Redis/Binance)
         const usdBaseRates: Record<string, number> = {
-            USDA: 1, USDC: 1, USDT: 1, USD: 1, IMP: 1,
-            KES: 130.50,
-            UGX: 3750.00,
-            TZS: 2580.00,
-            RWF: 1320.00,
-            BIF: 2850.00,
-            XAF: 605.00, // Central African CFA
-            XOF: 605.00, // West African CFA
-            AIRT: 130.50 // Same as KES for Airtime baseline
+            USDA: 1, USDC: 1, USDT: 1, cUSD: 1, USD: 1, IMP: 1,
+            KES: 130.50, UGX: 3750.00, TZS: 2580.00, RWF: 1320.00,
+            BIF: 2850.00, XAF: 605.00, XOF: 605.00, AIRT: 130.50
         };
 
-        // Calculate Cross-Rate (e.g. UGX to XOF)
         const fromUsd = usdBaseRates[from] || 1;
         const toUsd = usdBaseRates[to] || 1;
 
-        // Spread injection (Simulating a 2% spread for non-KES pairs)
-        const rawRate = fromUsd / toUsd;
-        return rawRate * 0.98; // User gets slightly less due to spread
-
+        // 🟢 FIX 2: Corrected the division order for perfect cross-currency math
+        return (toUsd / fromUsd) * 0.98; // 2% spread
     }, [from, to, liveRates]);
 
-    const receiveAmount = (parseFloat(amount) || 0) * rate;
+    const parsedAmount = parseFloat(amount) || 0;
+    const receiveAmount = parsedAmount * rate;
 
     const loadHistory = async () => {
         try {
@@ -106,22 +72,22 @@ export default function TradePage() {
             return;
         }
 
-        const numericAmount = parseFloat(amount)
-        if (!amount || numericAmount <= 0) return
+        if (!amount || parsedAmount <= 0) return
 
         setSubmitting(true)
         setToastError('')
 
         try {
+            // 🟢 FIX 3: Force the channel to be "Internal Ledger" with 0 fees
             await executeRamp({
                 direction: 'swap',
                 channel: 'Internal Ledger',
                 from_asset: from,
                 to_asset: to,
-                amount: numericAmount,
+                amount: parsedAmount,
                 rate,
                 fee: 0,
-                counterparty: 'Self'
+                counterparty: 'Internal Wallet'
             })
 
             setShowSuccessModal(true)
@@ -144,7 +110,6 @@ export default function TradePage() {
     return (
         <div className="animate-in fade-in duration-300 relative p-4 md:p-6 text-gray-200 max-w-6xl mx-auto">
 
-            {/* Success Modal */}
             {showSuccessModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-4">
                     <div className="bg-[#111827] border border-[#1e2d3d] rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl animate-in zoom-in-95 duration-200">
@@ -152,7 +117,9 @@ export default function TradePage() {
                             <CheckCircle2 className="w-10 h-10 text-emerald-400" />
                         </div>
                         <h3 className="text-2xl font-bold text-white mb-2">Swap Successful!</h3>
-                        <p className="text-gray-400 text-sm mb-8 leading-relaxed">Your assets have been instantly exchanged and settled via the Treasury Hub.</p>
+                        <p className="text-gray-400 text-sm mb-8 leading-relaxed">
+                            Your assets have been instantly exchanged within your internal Jasiri wallets.
+                        </p>
                         <button onClick={() => setShowSuccessModal(false)} className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-colors shadow-lg shadow-blue-900/20">
                             Done
                         </button>
@@ -162,11 +129,8 @@ export default function TradePage() {
 
             <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-white tracking-tight">Quick Swap</h1>
-                    <p className="text-gray-500 text-sm mt-1">Instantly exchange assets within your secure wallet with zero network fees.</p>
-                </div>
-                <div className="flex items-center gap-2 bg-[#111827] border border-[#1e2d3d] px-4 py-2 rounded-xl text-blue-400 text-xs font-bold uppercase tracking-wider shadow-sm">
-                    <Zap className="w-4 h-4 text-blue-500 fill-blue-500" /> Instant Settlement
+                    <h1 className="text-2xl font-bold text-white tracking-tight">Internal Swap</h1>
+                    <p className="text-gray-500 text-sm mt-1">Instantly exchange assets between your wallets with zero network fees.</p>
                 </div>
             </div>
 
@@ -180,11 +144,10 @@ export default function TradePage() {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
 
                 {/* LEFT: SWAP ENGINE */}
-                <div className="lg:col-span-5 bg-[#0b0f19] border border-[#1e2d3d] rounded-3xl p-6 shadow-xl relative overflow-hidden h-fit">
+                <div className="lg:col-span-5 relative overflow-hidden h-fit">
                     <div className="space-y-4 relative z-10">
 
-                        {/* FROM ASSET */}
-                        <div className="bg-[#111827] border border-[#1e2d3d] rounded-2xl p-5 transition-colors focus-within:border-blue-500/50">
+                        <div className="bg-[#0b0f19] border border-[#1e2d3d] rounded-2xl p-5 transition-colors focus-within:border-blue-500/50">
                             <div className="flex justify-between items-center mb-3">
                                 <span className="text-xs text-gray-500 font-bold uppercase tracking-wider">You Pay</span>
                             </div>
@@ -195,30 +158,28 @@ export default function TradePage() {
                                     onChange={(e) => setAmount(e.target.value)}
                                     placeholder="0.00"
                                     disabled={!liveRates.active}
-                                    className="bg-transparent text-4xl font-bold w-full outline-none text-white placeholder-gray-700 disabled:opacity-50"
+                                    className="bg-transparent text-4xl font-bold w-full outline-none text-gray-300 placeholder-gray-700 disabled:opacity-50"
                                 />
                                 <select
                                     value={from}
                                     onChange={e => { setFrom(e.target.value); setAmount(''); }}
-                                    className="bg-[#1e2d3d] text-white font-bold px-4 py-2.5 rounded-xl outline-none cursor-pointer appearance-none text-center min-w-[90px]"
+                                    className="bg-[#1e2d3d] text-white font-bold px-4 py-2.5 rounded-xl outline-none cursor-pointer appearance-none text-center min-w-[100px]"
                                 >
                                     {ASSETS.map(a => <option key={a} value={a}>{a}</option>)}
                                 </select>
                             </div>
                         </div>
 
-                        {/* FLIP BUTTON */}
                         <div className="flex justify-center -my-6 relative z-20">
                             <button
                                 onClick={handleFlip}
                                 className="bg-[#0b0f19] border border-[#1e2d3d] p-2 rounded-full hover:bg-[#1e2d3d] transition-colors shadow-lg"
                             >
-                                <ArrowDown className="w-5 h-5 text-blue-400" />
+                                <ArrowDown className="w-4 h-4 text-blue-400" />
                             </button>
                         </div>
 
-                        {/* TO ASSET */}
-                        <div className="bg-[#111827] border border-[#1e2d3d] rounded-2xl p-5">
+                        <div className="bg-[#0b0f19] border border-[#1e2d3d] rounded-2xl p-5">
                             <div className="flex justify-between items-center mb-3">
                                 <span className="text-xs text-gray-500 font-bold uppercase tracking-wider">You Receive</span>
                                 <span className="text-[10px] text-blue-400 font-mono font-medium bg-blue-500/10 px-2 py-1 rounded border border-blue-500/20">
@@ -229,32 +190,32 @@ export default function TradePage() {
                                 <input
                                     type="text"
                                     readOnly
-                                    value={receiveAmount > 0 ? receiveAmount.toFixed(2) : '0.00'}
+                                    value={receiveAmount > 0 ? receiveAmount.toFixed(4) : '0.00'}
                                     className="bg-transparent text-4xl font-bold w-full outline-none text-emerald-400"
                                 />
                                 <select
                                     value={to}
                                     onChange={e => { setTo(e.target.value); setAmount(''); }}
-                                    className="bg-[#1e2d3d] text-white font-bold px-4 py-2.5 rounded-xl outline-none cursor-pointer appearance-none text-center min-w-[90px]"
+                                    className="bg-[#1e2d3d] text-white font-bold px-4 py-2.5 rounded-xl outline-none cursor-pointer appearance-none text-center min-w-[100px]"
                                 >
                                     {ASSETS.map(a => <option key={a} value={a}>{a}</option>)}
                                 </select>
                             </div>
                         </div>
 
-                        {/* INFO PANEL */}
-                        <div className="bg-transparent border border-[#1e2d3d] rounded-xl p-4 flex items-center justify-between mt-2">
+                        {/* 🟢 FIX 4: Removed Destination Inputs and Explicit Gas Fee Receipts entirely */}
+                        <div className="bg-[#111827] border border-[#1e2d3d] rounded-xl p-4 mt-2 flex items-center justify-between shadow-inner">
                             <div className="flex items-center gap-2 text-gray-400">
-                                <Wallet className="w-4 h-4 text-slate-500" />
-                                <span className="text-xs font-medium text-slate-400">Internal Ledger Transfer</span>
+                                <Wallet className="w-4 h-4" />
+                                <span className="text-xs font-medium">Internal Ledger Swap</span>
                             </div>
-                            <span className="text-xs text-emerald-400 font-mono font-bold tracking-wide">0 Network Fees</span>
+                            <span className="text-xs text-emerald-400 font-mono font-bold">0 Network Fees</span>
                         </div>
 
                         <button
                             onClick={handleSwap}
-                            disabled={submitting || parseFloat(amount) <= 0 || !amount || !liveRates.active}
-                            className="w-full py-4 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-600 text-white font-bold text-lg rounded-xl transition-colors shadow-lg shadow-blue-900/20 mt-4"
+                            disabled={submitting || parsedAmount <= 0 || !liveRates.active}
+                            className="w-full py-4 bg-[#1e2d3d] hover:bg-blue-600 disabled:bg-[#0b0f19] disabled:border disabled:border-[#1e2d3d] disabled:text-gray-600 text-white font-bold text-lg rounded-xl transition-colors shadow-lg shadow-blue-900/20 mt-4"
                         >
                             {submitting ? 'Processing...' : !liveRates.active ? 'Trading Halted' : 'Confirm Swap'}
                         </button>
@@ -262,8 +223,8 @@ export default function TradePage() {
                 </div>
 
                 {/* RIGHT: SWAP HISTORY */}
-                <div className="lg:col-span-7 bg-[#0b0f19] border border-[#1e2d3d] rounded-3xl p-6 shadow-xl flex flex-col min-h-[500px]">
-                    <h2 className="text-white font-bold text-lg mb-6 flex items-center gap-2">
+                <div className="lg:col-span-7 bg-[#0b0f19] border border-[#1e2d3d] rounded-3xl p-6 shadow-xl flex flex-col h-fit min-h-[500px]">
+                    <h2 className="text-white font-bold text-lg mb-6 flex items-center gap-2 border-b border-[#1e2d3d] pb-4">
                         <Clock className="w-5 h-5 text-slate-400" />
                         Swap History
                     </h2>
@@ -283,7 +244,7 @@ export default function TradePage() {
                                     <div className="flex items-center gap-2 text-xs text-slate-500 font-medium ml-10">
                                         <span>{r.date || 'Today'}</span>
                                         <span className="w-1 h-1 rounded-full bg-slate-600"></span>
-                                        <span>{r.timeAgo || 'Just now'}</span>
+                                        <span>To: Internal Wallet</span>
                                     </div>
                                 </div>
                                 <div className="sm:text-right pl-10 sm:pl-0">
@@ -298,7 +259,7 @@ export default function TradePage() {
                         {history.length === 0 && (
                             <div className="text-center py-10 border-2 border-dashed border-[#1e2d3d] rounded-2xl flex flex-col items-center justify-center h-48">
                                 <ArrowRightLeft className="w-8 h-8 text-gray-600 mb-3" />
-                                <p className="text-gray-400 text-sm font-medium">No swaps yet.</p>
+                                <p className="text-gray-400 text-sm font-medium">No external swaps yet.</p>
                             </div>
                         )}
                     </div>

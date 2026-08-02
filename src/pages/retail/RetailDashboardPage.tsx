@@ -1,35 +1,28 @@
 // @ts-nocheck
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowDown, ArrowUp, RefreshCw, Phone,
   DollarSign, Bitcoin, Hexagon, CircleDollarSign,
-  ArrowRightLeft, ArrowDownRight, ArrowUpRight, CheckCircle2, Radio
+  ArrowRightLeft, ArrowDownRight, ArrowUpRight, CheckCircle2,
+  Wallet, Radio
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getRetailWallet, getRampHistory } from '../../api/client';
 
 interface Balances {
-  KES: number; USDA: number; USDT: number; USDC: number; USD: number;
+  KES: number; USDA: number; USDT: number; USDC: number; cUSD: number; USD: number;
   UGX: number; TZS: number; RWF: number; BIF: number; XAF: number; XOF: number;
   AIRT: number; IMP: number; BTC: number; ETH: number;
 }
 
 const getFlagUrl = (assetCode: string) => {
   const codeToIso: Record<string, string> = {
-    'KES': 'ke',
-    'UGX': 'ug',
-    'TZS': 'tz',
-    'RWF': 'rw',
-    'BIF': 'bi',
-    'XAF': 'cm',
-    'XOF': 'sn',
-    'USD': 'us'
+    'KES': 'ke', 'UGX': 'ug', 'TZS': 'tz', 'RWF': 'rw',
+    'BIF': 'bi', 'XAF': 'cm', 'XOF': 'sn', 'USD': 'us'
   };
   const isoCode = codeToIso[assetCode];
-  if (isoCode) {
-    return `https://flagcdn.com/w40/${isoCode}.png`;
-  }
+  if (isoCode) return `https://flagcdn.com/w40/${isoCode}.png`;
   return null;
 };
 
@@ -37,13 +30,13 @@ export default function RetailDashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
+  const [anchorCurrency, setAnchorCurrency] = useState<'KES' | 'USD'>('KES');
   const [balances, setBalances] = useState<Balances>({
-    KES: 0, USDA: 0, USDT: 0, USDC: 0, USD: 0,
+    KES: 0, USDA: 0, USDT: 0, USDC: 0, cUSD: 0, USD: 0,
     UGX: 0, TZS: 0, RWF: 0, BIF: 0, XAF: 0, XOF: 0,
     AIRT: 0, IMP: 0, BTC: 0, ETH: 0
   });
   const [history, setHistory] = useState<any[]>([]);
-  const [prevHistory, setPrevHistory] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [webhookToast, setWebhookToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
 
@@ -64,26 +57,7 @@ export default function RetailDashboardPage() {
         }
 
         if (historyRes.status === 'fulfilled' && historyRes.value.data?.entries) {
-          // Slice top 5 for the dashboard
           const newEntries = historyRes.value.data.entries.slice(0, 5);
-
-          setPrevHistory(oldEntries => {
-            if (oldEntries.length > 0) {
-              newEntries.forEach((newTx: any) => {
-                const oldTx = oldEntries.find(old => old.id === newTx.id);
-                if (oldTx && oldTx.status === 'processing' && newTx.status !== 'processing') {
-                  if (newTx.status === 'completed') {
-                    setWebhookToast({ message: `${newTx.direction === 'on' ? 'Deposit' : 'Withdrawal'} of ${newTx.fromAmount} ${newTx.fromAsset} arrived!`, type: 'success' });
-                  } else {
-                    setWebhookToast({ message: `Transaction of ${newTx.fromAmount} ${newTx.fromAsset} failed.`, type: 'error' });
-                  }
-                  setTimeout(() => setWebhookToast(null), 5000);
-                }
-              });
-            }
-            return newEntries;
-          });
-
           setHistory(newEntries);
         }
       } catch (error) {
@@ -102,45 +76,46 @@ export default function RetailDashboardPage() {
   }, []);
 
   const usdBaseRates: Record<string, number> = {
-    USDA: 1, USDC: 1, USDT: 1, USD: 1, IMP: 1,
+    USDA: 1, USDC: 1, USDT: 1, cUSD: 1, USD: 1, IMP: 1,
     KES: 130.50, UGX: 3750.00, TZS: 2580.00, RWF: 1320.00,
     BIF: 2850.00, XAF: 605.00, XOF: 605.00, AIRT: 130.50,
     BTC: 1 / 64000, ETH: 1 / 3500
   };
 
-  let totalPortfolioKES = 0;
-  Object.keys(balances).forEach((key) => {
-    const balance = balances[key as keyof Balances] || 0;
-    const rateToUsd = usdBaseRates[key] || 1;
-    const valueInUsd = balance / rateToUsd;
-    const valueInKes = valueInUsd * usdBaseRates.KES;
-    totalPortfolioKES += valueInKes;
-  });
+  const totalPortfolioValue = useMemo(() => {
+    let totalUsd = 0;
+    Object.keys(balances).forEach((key) => {
+      const balance = balances[key as keyof Balances] || 0;
+      const rateToUsd = usdBaseRates[key] || 1;
+      totalUsd += (balance / rateToUsd);
+    });
+    return anchorCurrency === 'KES' ? totalUsd * usdBaseRates.KES : totalUsd;
+  }, [balances, anchorCurrency]);
 
-  const previewWalletCards = [
-    { id: 'KES', name: 'Kenyan Shilling', balance: balances.KES, gradient: 'from-emerald-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-emerald-500/30 hover:border-emerald-500/60', text: 'text-emerald-400' },
-    { id: 'USDA', name: 'USDA Stablecoin', balance: balances.USDA, icon: DollarSign, gradient: 'from-amber-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-amber-500/30 hover:border-amber-500/60', text: 'text-amber-400' },
-    { id: 'USDT', name: 'Tether (USDT)', balance: balances.USDT, icon: CircleDollarSign, gradient: 'from-blue-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-blue-500/30 hover:border-blue-500/60', text: 'text-blue-400' },
-    { id: 'USDC', name: 'USD Coin (USDC)', balance: balances.USDC, icon: CircleDollarSign, gradient: 'from-indigo-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-indigo-500/30 hover:border-indigo-500/60', text: 'text-indigo-400' },
-    { id: 'UGX', name: 'Ugandan Shilling', balance: balances.UGX, gradient: 'from-yellow-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-yellow-500/30 hover:border-yellow-500/60', text: 'text-yellow-400' },
-    { id: 'AIRT', name: 'Tokenized Airtime', balance: balances.AIRT, icon: Radio, gradient: 'from-rose-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-rose-500/30 hover:border-rose-500/60', text: 'text-rose-400' },
-  ];
+  const sortedWalletCards = useMemo(() => {
+    const cards = [
+      { id: 'KES', name: 'Kenyan Shilling', balance: balances.KES, gradient: 'from-emerald-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-emerald-500/30', text: 'text-emerald-400' },
+      { id: 'USDA', name: 'USDA Stablecoin', balance: balances.USDA, icon: DollarSign, gradient: 'from-amber-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-amber-500/30', text: 'text-amber-400' },
+      { id: 'USDT', name: 'Tether (USDT)', balance: balances.USDT, icon: CircleDollarSign, gradient: 'from-blue-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-blue-500/30', text: 'text-blue-400' },
+      { id: 'USDC', name: 'USD Coin (USDC)', balance: balances.USDC, icon: CircleDollarSign, gradient: 'from-indigo-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-indigo-500/30', text: 'text-indigo-400' },
+      { id: 'cUSD', name: 'Celo Dollar (cUSD)', balance: balances.cUSD, icon: CircleDollarSign, gradient: 'from-green-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-green-500/30', text: 'text-green-400' },
+      { id: 'UGX', name: 'Ugandan Shilling', balance: balances.UGX, gradient: 'from-yellow-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-yellow-500/30', text: 'text-yellow-400' },
+      { id: 'AIRT', name: 'Tokenized Airtime', balance: balances.AIRT, icon: Radio, gradient: 'from-rose-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-rose-500/30', text: 'text-rose-400' },
+      { id: 'BTC', name: 'Bitcoin', balance: balances.BTC, icon: Bitcoin, gradient: 'from-orange-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-orange-500/30', text: 'text-orange-400' },
+    ];
 
-  // --- Real-time EAT Timestamp Formatter ---
+    // Auto-sort by highest USD equivalent value
+    return cards.map(card => ({
+      ...card,
+      usdValue: card.balance / (usdBaseRates[card.id] || 1)
+    })).sort((a, b) => b.usdValue - a.usdValue).slice(0, 6); // Take top 6 for preview
+  }, [balances]);
+
   const formatTimeEAT = (isoDate: string | null | undefined, fallbackAgo: string) => {
     if (!isoDate) return fallbackAgo || 'Recently';
     const d = new Date(isoDate);
     if (isNaN(d.getTime())) return fallbackAgo || 'Recently';
-
-    return new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Africa/Nairobi',
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true
-    }).format(d).replace(',', ' ·');
+    return new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Nairobi', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: true }).format(d).replace(',', ' ·');
   };
 
   return (
@@ -159,17 +134,24 @@ export default function RetailDashboardPage() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
-            Welcome, {user?.name?.split(' ')[0] || 'Trader'}
+            Welcome, {user?.name?.split(' ')[0] || user?.displayName?.split(' ')[0] || 'User'}
           </h1>
           <p className="text-gray-400 text-sm mt-1">Here's your portfolio overview</p>
         </div>
 
+        {/* ANCHOR CURRENCY TOGGLE IN PORTFOLIO CARD */}
         <div className="bg-[#0B0E14] border border-[#1E2533] rounded-2xl p-6 shadow-xl min-w-[300px]">
-          <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Total Portfolio Value</p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Total Portfolio Value</p>
+            <div className="flex bg-[#111827] border border-[#1E2533] p-1 rounded-lg">
+              <button onClick={() => setAnchorCurrency('KES')} className={`text-[10px] font-bold px-3 py-1 rounded transition-colors ${anchorCurrency === 'KES' ? 'bg-[#1E2533] text-white' : 'text-gray-500 hover:text-gray-300'}`}>KES</button>
+              <button onClick={() => setAnchorCurrency('USD')} className={`text-[10px] font-bold px-3 py-1 rounded transition-colors ${anchorCurrency === 'USD' ? 'bg-[#1E2533] text-white' : 'text-gray-500 hover:text-gray-300'}`}>USD</button>
+            </div>
+          </div>
           <div className="flex items-end gap-3">
             <h2 className="text-4xl font-extrabold text-amber-500 font-mono tracking-tight flex items-baseline gap-2">
-              <span className="text-xl text-amber-500/80 mb-1">KES</span>
-              {totalPortfolioKES.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <span className="text-xl text-amber-500/80 mb-1">{anchorCurrency}</span>
+              {totalPortfolioValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </h2>
           </div>
         </div>
@@ -191,19 +173,19 @@ export default function RetailDashboardPage() {
         </button>
       </div>
 
-      {/* Wallets Grid Preview */}
+      {/* Wallets Grid Preview (Auto-Sorted) */}
       <div>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Your Active Wallets</h3>
-          <button onClick={() => navigate('/wallets')} className="text-xs font-bold text-amber-500 hover:text-amber-400">View All ({Object.keys(balances).length}) →</button>
+          <button onClick={() => navigate('/wallets')} className="text-xs font-bold text-amber-500 hover:text-amber-400">View All →</button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {previewWalletCards.map((w) => {
+          {sortedWalletCards.map((w) => {
             const flagUrl = getFlagUrl(w.id);
             const IconComponent = w.icon;
 
             return (
-              <div key={w.id} className={`bg-gradient-to-br ${w.gradient} border ${w.border} rounded-2xl p-6 transition-all shadow-xl backdrop-blur-md group hover:-translate-y-0.5 duration-300`}>
+              <div key={w.id} className={`bg-gradient-to-br ${w.gradient} border ${w.border} hover:border-opacity-60 rounded-2xl p-6 transition-all shadow-xl backdrop-blur-md group hover:-translate-y-0.5 duration-300`}>
                 <div className="flex justify-between items-start mb-6">
                   <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-[#0F1520]/80 border border-[#1E2533] shadow-inner overflow-hidden p-2">
                     {flagUrl ? (
@@ -253,7 +235,6 @@ export default function RetailDashboardPage() {
                   <div>
                     <p className="text-sm font-bold text-white capitalize">{tx.direction === 'on' ? 'Deposit' : tx.direction === 'off' ? 'Withdrawal' : 'Swap'}</p>
                     <p className="text-xs text-gray-500 mt-0.5 whitespace-nowrap">
-                      {/* 🟢 Render precise real-time EAT timestamp */}
                       {formatTimeEAT(tx.createdAt, tx.timeAgo)}
                     </p>
                   </div>

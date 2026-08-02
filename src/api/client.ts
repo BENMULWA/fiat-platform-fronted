@@ -58,12 +58,27 @@ export const getTradeHistory = () => api.get('/api/trade/history');
 export const placeOrder = (data: any) => api.post('/api/trade/orders', data);
 
 // ==========================================
-// ON/OFF RAMP
+// ON/OFF RAMP & MULTI-CHAIN GATEWAYS
 // ==========================================
 
 export const executeRamp = (data: any) => api.post('/api/ramp/execute', data);
 export const executeInternalSwap = (data: any) => api.post('/api/ramp/swap', data);
 export const getRampHistory = () => api.get('/api/ramp/history');
+
+/// 🟢 FIXED: Dynamic Address & Memo Fetcher
+export const getDepositDetails = async (asset: string, network: string) => {
+  let url = '';
+  if (network === 'stellar') {
+    url = `/api/stellar/deposit-info?asset=${asset}&network=stellar`;
+  } else if (network === 'celo') {
+    url = `/api/valora/deposit-details`;
+  } else if (network === 'cardano') {
+    url = `/api/cardano/wallet`;
+  } else {
+    url = `/api/stellar/deposit-info?asset=${asset}&network=${network}`;
+  }
+  return api.get(url);
+};
 
 // ==========================================
 // RETAIL ROUTES
@@ -71,6 +86,16 @@ export const getRampHistory = () => api.get('/api/ramp/history');
 
 export const getRetailWallet = () => api.get('/api/retail/wallet');
 export const updateProfile = (data: any) => api.put('/api/retail/profile', data);
+
+// ==========================================
+// 🟢 NEW: STELLAR & AUTO-LISTENER ENDPOINTS
+// ==========================================
+
+export const initiateCryptoDeposit = (data: { asset: string, amount: number }) =>
+  api.post('/api/stellar/deposit/initiate', data);
+
+export const checkDepositStatus = (depositId: string) =>
+  api.get(`/api/stellar/deposit/${depositId}/status`);
 
 // ==========================================
 // KYC ENDPOINTS
@@ -119,8 +144,7 @@ export const getTokenBalance = (asAdmin: boolean) =>
 // ==========================================
 
 export const getCardanoWallet = () => api.get('/api/cardano/wallet');
-export const getCardanoTxHistory = (limit: number = 20) =>
-  api.get('/api/cardano/transactions', { params: { limit } });
+export const getCardanoTxHistory = (limit: number = 20) => api.get('/api/cardano/transactions', { params: { limit } });
 export const verifyCardanoDeposit = (data: any) => api.post('/api/cardano/on-ramp/verify', data);
 export const withdrawUsda = (data: any) => api.post('/api/cardano/withdraw', data);
 export const estimateCardanoFee = (data: any) => api.post('/api/cardano/estimate-fee', data);
@@ -151,9 +175,11 @@ export const executeHftCorridor = (data: { amount: number; corridor_id: string }
 // VALORA APIS
 // ==========================================
 
-export const verifyValoraDeposit = (data: any) => api.post('/api/valora/on-ramp/verify', data);
-export const executeValoraWithdraw = (data: { amount: number; identifier: string }) =>
+export const verifyValoraDeposit = (data: { amount: number; tx_hash: string; asset: string; counterparty?: string }) => api.post('/api/valora/on-ramp/verify', data);
+
+export const executeValoraWithdraw = (data: { amount: number; identifier: string; asset: string }) =>
   api.post('/api/valora/withdraw', data);
+
 export const registerValoraPhone = (data: { phone: string; celo_address: string }) =>
   api.post('/api/valora/register-phone', data);
 
@@ -243,11 +269,4 @@ export const signupUser = (data: any) => api.post('/api/auth/signup', data);
 export const getMe = () => api.get('/api/auth/me');
 export const logoutUser = () => api.post('/api/auth/logout');
 
-
 export default api;
-
-
-
-// Minipay Endpoints
-export const getMinipayTreasuryAddress = () => api.get('/api/minipay/treasury-address');
-export const verifyMinipayDeposit = (data: { amount: number; tx_hash: string; phone_number: string }) => api.post('/api/minipay/verify', data);

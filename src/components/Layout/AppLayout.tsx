@@ -1,6 +1,9 @@
+
+//@ts-nocheck
+
 import { useState, useEffect } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Menu, Bell, User, LogOut, Settings, ChevronDown, FileText, ShieldCheck, Scale } from 'lucide-react'
+import { Menu, Bell, User, LogOut, Settings, ChevronDown, FileText, ShieldCheck, Scale, CircleAlert, CheckCircle2 } from 'lucide-react'
 import Sidebar from './Sidebar'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -8,6 +11,8 @@ export default function AppLayout() {
   const { user, logout, viewAsAdmin, toggleViewAsAdmin } = useAuth()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  // Dropdown States
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showSettingsMenu, setShowSettingsMenu] = useState(false)
   const [showNotifMenu, setShowNotifMenu] = useState(false)
@@ -29,7 +34,6 @@ export default function AppLayout() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  // Close menus when clicking outside
   const closeAllMenus = () => {
     setShowUserMenu(false)
     setShowSettingsMenu(false)
@@ -48,30 +52,16 @@ export default function AppLayout() {
     if (path.startsWith('/impala-coin')) return "Impala Coin"
     if (path.startsWith('/transactions')) return "Transactions"
     if (path.startsWith('/profile')) return "Profile"
-    if (path.startsWith('/kyc')) return "KYC Verification"
-    if (path.startsWith('/vault')) return "Vault Dashboard"
-    if (path.startsWith('/market-maker')) return "Market Maker Desk"
-    if (path.startsWith('/admin')) return "OTC Operations"
-    return "Dashboard"
-  }
-
-  const handleModeSwitch = () => {
-    setShowSettingsMenu(false);
-    toggleViewAsAdmin();
-    // Auto-navigate to the correct home page when switching modes
-    if (!viewAsAdmin) {
-      navigate('/vault');
-    } else {
-      navigate('/dashboard');
-    }
+    if (path.startsWith('/kyc')) return "Identity Verification"
+    return "Workspace"
   }
 
   return (
-    <div className="flex min-h-screen bg-[#0a0e17] text-gray-200">
+    <div className="flex min-h-screen bg-[#06090F] text-gray-200">
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-30 bg-black/70 backdrop-blur-sm lg:hidden"
           onClick={closeAllMenus}
         />
       )}
@@ -86,133 +76,141 @@ export default function AppLayout() {
       </div>
 
       {/* Main content */}
-      <main className="flex-1 min-h-screen overflow-x-hidden lg:ml-[260px]">
+      <main className="flex-1 min-h-screen overflow-x-hidden lg:ml-[260px] flex flex-col relative">
 
-        {/* 🟢 Sticky Top Bar (Mobile & Desktop) */}
-        <div className="sticky top-0 z-20 bg-[#070f19] border-b border-[#1a2a40]">
+        {/* 🟢 TOP BAR (JASIRI BRANDING & NOTIFICATIONS) */}
+        <div className="sticky top-0 z-20 bg-[#06090F]/90 backdrop-blur-md border-b border-[#1E2533]">
+
           {/* Mobile Top Bar */}
           <div className="flex items-center justify-between px-4 py-3 lg:hidden">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors text-gray-300"
-              aria-label="Open menu"
+              className="w-10 h-10 flex items-center justify-center rounded-xl bg-[#111827] border border-[#1E2533] text-gray-300"
             >
               <Menu className="w-5 h-5" />
             </button>
-            <span className="text-white font-semibold text-sm flex-1 text-center">Meshex</span>
+            <span className="text-white font-black text-lg flex-1 text-center tracking-wide">JASIRI</span>
 
             {/* Mobile Right Icons */}
-            <div className="flex items-center gap-2">
-              <button onClick={() => setShowNotifMenu(!showNotifMenu)} className="relative p-2 rounded-lg hover:bg-white/10 transition-colors">
-                <Bell className="w-5 h-5 text-slate-400" />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
-              </button>
-              <button onClick={() => setShowUserMenu(!showUserMenu)} className="relative p-2 rounded-lg hover:bg-white/10 transition-colors">
-                <User className="w-5 h-5 text-slate-400" />
+            <div className="flex items-center gap-3">
+              <button onClick={() => setShowNotifMenu(!showNotifMenu)} className="relative p-2">
+                <Bell className="w-5 h-5 text-gray-400" />
+                <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full border border-[#06090F]" />
               </button>
             </div>
           </div>
 
           {/* Desktop Top Bar */}
-          <div className="hidden lg:flex items-center justify-between px-6 py-3">
+          <div className="hidden lg:flex items-center justify-between px-8 py-4">
             <div className="flex items-center gap-3">
-              <h1 className="text-sm font-bold text-slate-300">{getPageTitle()}</h1>
+              <h1 className="text-base font-bold text-white tracking-wide">{getPageTitle()}</h1>
             </div>
 
-            <div className="flex items-center gap-2 relative">
-              {/* Notifications */}
-              <button
-                onClick={() => { setShowNotifMenu(!showNotifMenu); setShowSettingsMenu(false); setShowUserMenu(false) }}
-                className="relative p-2 rounded-lg hover:bg-[#1e2d3d] transition-colors"
-              >
-                <Bell className="w-5 h-5 text-slate-400" />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
+            <div className="flex items-center gap-4 relative">
+
+              {/* 1. NOTIFICATION BELL */}
+              <div className="relative">
+                <button
+                  onClick={() => { setShowNotifMenu(!showNotifMenu); setShowUserMenu(false); }}
+                  className="relative p-2 text-gray-400 hover:text-white transition-colors"
+                >
+                  <Bell className="w-5 h-5" />
+                  <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full border border-[#06090F]" />
+                </button>
+
+                {/* NOTIFICATION DROPDOWN */}
+                {showNotifMenu && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowNotifMenu(false)} />
+                    <div className="absolute right-0 top-full mt-3 w-80 bg-[#0B0E14] border border-[#1E2533] rounded-2xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2">
+                      <div className="p-4 border-b border-[#1E2533] flex justify-between items-center bg-[#111827]">
+                        <h3 className="text-sm font-bold text-white">Notifications</h3>
+                        <span className="text-[10px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full font-bold">2 New</span>
+                      </div>
+                      <div className="max-h-[300px] overflow-y-auto">
+                        <div className="p-4 border-b border-[#1E2533]/50 hover:bg-[#111827] transition-colors cursor-pointer flex gap-3">
+                          <div className="w-8 h-8 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                            <ShieldCheck className="w-4 h-4 text-blue-400" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-white mb-0.5">Welcome to Jasiri Capital</p>
+                            <p className="text-xs text-gray-400 leading-relaxed">Your account has been created successfully. Complete KYC to begin trading.</p>
+                            <p className="text-[10px] text-gray-500 mt-2 font-mono">Just now</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="p-3 border-t border-[#1E2533] text-center bg-[#111827] hover:bg-[#1A2533] cursor-pointer transition-colors">
+                        <span className="text-xs text-[#00d282] font-bold">Mark all as read</span>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* 2. USER AVATAR & DROPDOWN */}
+              <div className="relative">
+                <button
+                  onClick={() => { setShowUserMenu(!showUserMenu); setShowNotifMenu(false); }}
+                  className="flex items-center gap-1.5 hover:opacity-80 transition-opacity ml-1"
+                >
+                  <div className="w-8 h-8 rounded-full bg-[#00d282] text-[#06090F] flex items-center justify-center font-bold text-sm uppercase">
+                    {user?.name?.[0] || user?.displayName?.[0] || 'U'}
+                  </div>
+                  <ChevronDown className="w-4 h-4 text-gray-400" />
+                </button>
+
+                {/* USER PROFILE DROPDOWN */}
+                {showUserMenu && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
+                    <div className="absolute right-0 top-full mt-3 w-64 bg-[#0B0E14] border border-[#1E2533] rounded-2xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2">
+                      <div className="p-4 border-b border-[#1E2533] bg-[#111827]">
+                        <p className="text-sm font-bold text-white truncate">{user?.name || user?.displayName || 'Jasiri User'}</p>
+                        <p className="text-xs text-gray-400 truncate mt-0.5">{user?.email || 'user@jasiri.com'}</p>
+                        {user?.kycStatus === 'verified' && (
+                          <span className="inline-block mt-2 text-[9px] bg-[#00d282]/10 text-[#00d282] border border-[#00d282]/20 px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                            Verified Account
+                          </span>
+                        )}
+                      </div>
+                      <div className="p-2">
+                        <button onClick={() => { navigate('/profile'); setShowUserMenu(false); }} className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-[#1A2533] rounded-lg flex items-center gap-3 transition-colors">
+                          <User className="w-4 h-4" /> My Profile
+                        </button>
+
+                        {/* Admin Mode Toggle moved here for cleanliness */}
+                        {(user?.role === 'admin' || user?.role === 'super_admin') && (
+                          <button
+                            onClick={() => { toggleViewAsAdmin(); setShowUserMenu(false); }}
+                            className="w-full text-left px-4 py-2.5 text-sm text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 rounded-lg flex items-center gap-3 transition-colors mt-1"
+                          >
+                            <ShieldCheck className="w-4 h-4" /> {viewAsAdmin ? 'Switch to Retail' : 'Switch to Admin'}
+                          </button>
+                        )}
+                      </div>
+                      <div className="p-2 border-t border-[#1E2533]">
+                        <button className="p-2 text-gray-400 hover:text-white transition-colors ml-1">
+                          <Settings className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* 3. SETTINGS ICON 
+              <button className="p-2 text-gray-400 hover:text-white transition-colors ml-1">
+                <Settings className="w-5 h-5" />
               </button>
 
-              {/* User Avatar / Profile Dropdown */}
-              <div className="relative">
-                <button
-                  onClick={() => { setShowUserMenu(!showUserMenu); setShowSettingsMenu(false); setShowNotifMenu(false) }}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[#1e2d3d] transition-colors"
-                >
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-[10px] font-bold text-white shadow-inner">
-                    {user?.name?.[0]?.toUpperCase() || "U"}
-                  </div>
-                  <ChevronDown className="w-4 h-4 text-slate-500" />
-                </button>
+              */}
 
-                {showUserMenu && (
-                  <div className="absolute right-0 top-full mt-2 w-64 bg-[#111827] border border-[#1e2d3d] rounded-xl shadow-2xl shadow-black/40 overflow-hidden z-50">
-                    <div className="p-2 border-b border-[#1e2d3d] px-4 py-3 flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-[#0d1420] flex items-center justify-center text-sm font-bold text-slate-300 border border-[#1e2d3d]">
-                        {user?.name?.[0]?.toUpperCase() || "U"}
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-white">{user?.name || "User"}</p>
-                        <p className="text-[10px] text-slate-500">{viewAsAdmin ? 'Treasury Admin' : 'Retail Account'}</p>
-                      </div>
-                    </div>
-                    <div className="py-1">
-                      <button
-                        onClick={() => { setShowUserMenu(false); navigate('/profile') }}
-                        className="w-full text-left px-4 py-2.5 text-sm text-slate-300 hover:bg-[#1a2638] rounded-lg transition-colors flex items-center gap-3"
-                      >
-                        <User className="w-4 h-4 text-slate-400" /> My Profile
-                      </button>
-                      <button
-                        onClick={() => { setShowUserMenu(false); navigate('/transactions') }}
-                        className="w-full text-left px-4 py-2.5 text-sm text-slate-300 hover:bg-[#1a2638] rounded-lg transition-colors flex items-center gap-3"
-                      >
-                        <FileText className="w-4 h-4 text-slate-400" /> Transaction History
-                      </button>
-                      <button
-                        onClick={() => { setShowUserMenu(false); navigate('/kyc') }}
-                        className="w-full text-left px-4 py-2.5 text-sm text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors flex items-center gap-3"
-                      >
-                        <ShieldCheck className="w-4 h-4" /> KYC Verification
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Settings Dropdown */}
-              <div className="relative">
-                <button
-                  onClick={() => { setShowSettingsMenu(!showSettingsMenu); setShowUserMenu(false); setShowNotifMenu(false) }}
-                  className="p-2 rounded-lg hover:bg-[#1e2d3d] transition-colors"
-                >
-                  <Settings className="w-5 h-5 text-slate-400" />
-                </button>
-
-                {showSettingsMenu && (
-                  <div className="absolute right-0 top-full mt-2 w-56 bg-[#111827] border border-[#1e2d3d] rounded-xl shadow-2xl shadow-black/40 overflow-hidden z-50">
-                    <div className="p-2 border-b border-[#1e2d3d] px-4 py-2">
-                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">System Configuration</p>
-                    </div>
-                    <div className="py-1">
-                      <button
-                        onClick={handleModeSwitch}
-                        className="w-full text-left px-4 py-2.5 text-sm text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors flex items-center gap-3"
-                      >
-                        <Scale className="w-4 h-4 text-emerald-400" /> {viewAsAdmin ? 'Switch to Retail' : 'Switch to Admin'}
-                      </button>
-                      <button
-                        onClick={() => { setShowSettingsMenu(false); logout(); navigate('/') }}
-                        className="w-full text-left px-4 py-2.5 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors flex items-center gap-3"
-                      >
-                        <LogOut className="w-4 h-4 text-red-400" /> Sign out
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
             </div>
           </div>
         </div>
 
         {/* Dynamic Page Content */}
-        <div className="p-4 sm:p-6 lg:p-8">
+        <div className="p-4 sm:p-6 lg:p-8 flex-1">
           <Outlet />
         </div>
       </main>

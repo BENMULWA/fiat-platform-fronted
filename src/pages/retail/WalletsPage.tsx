@@ -1,40 +1,31 @@
 // @ts-nocheck
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
-    ArrowDown, ArrowUp, RefreshCw, Phone,
-    DollarSign, Bitcoin, Hexagon, CircleDollarSign, Banknote, Coins, Radio
+    ArrowDown, ArrowUp, RefreshCw,
+    DollarSign, Bitcoin, Hexagon, CircleDollarSign, Coins, Radio
 } from 'lucide-react';
 import { getRetailWallet, getRampHistory } from '../../api/client';
 
-// Shared Interface for all 15 supported assets
 interface Balances {
-    KES: number; USDA: number; USDT: number; USDC: number; USD: number;
+    KES: number; USDA: number; USDT: number; USDC: number; cUSD: number; USD: number;
     UGX: number; TZS: number; RWF: number; BIF: number; XAF: number; XOF: number;
     AIRT: number; IMP: number; BTC: number; ETH: number;
 }
 
-// 🟢 Flag helper function using a highly reliable open-source CDN
 const getFlagUrl = (assetCode: string) => {
     const codeToIso: Record<string, string> = {
-        'KES': 'ke',
-        'UGX': 'ug',
-        'TZS': 'tz',
-        'RWF': 'rw',
-        'BIF': 'bi',
-        'XAF': 'cm', // Using Cameroon as representation for Central African CFA
-        'XOF': 'sn', // Using Senegal as representation for West African CFA
-        'USD': 'us'
+        'KES': 'ke', 'UGX': 'ug', 'TZS': 'tz', 'RWF': 'rw',
+        'BIF': 'bi', 'XAF': 'cm', 'XOF': 'sn', 'USD': 'us'
     };
     const isoCode = codeToIso[assetCode];
-    if (isoCode) {
-        return `https://flagcdn.com/w40/${isoCode}.png`;
-    }
+    if (isoCode) return `https://flagcdn.com/w40/${isoCode}.png`;
     return null;
 };
 
 export default function WalletsPage() {
+    const [anchorCurrency, setAnchorCurrency] = useState<'KES' | 'USD'>('KES');
     const [balances, setBalances] = useState<Balances>({
-        KES: 0, USDA: 0, USDT: 0, USDC: 0, USD: 0,
+        KES: 0, USDA: 0, USDT: 0, USDC: 0, cUSD: 0, USD: 0,
         UGX: 0, TZS: 0, RWF: 0, BIF: 0, XAF: 0, XOF: 0,
         AIRT: 0, IMP: 0, BTC: 0, ETH: 0
     });
@@ -45,13 +36,8 @@ export default function WalletsPage() {
         let isMounted = true;
         const fetchWalletData = async () => {
             try {
-                const [walletRes, txRes] = await Promise.allSettled([
-                    getRetailWallet(),
-                    getRampHistory()
-                ]);
-
+                const [walletRes, txRes] = await Promise.allSettled([getRetailWallet(), getRampHistory()]);
                 if (!isMounted) return;
-
                 if (walletRes.status === 'fulfilled' && walletRes.value.data?.balances) {
                     setBalances(prev => ({ ...prev, ...walletRes.value.data.balances }));
                 }
@@ -70,64 +56,69 @@ export default function WalletsPage() {
         return () => { isMounted = false; clearInterval(interval); };
     }, []);
 
-    // 🟢 PROFESSIONAL ASSET DEFINITIONS WITH GRADIENTS
-    const walletCards = [
-        { id: 'KES', name: 'Kenyan Shilling', balance: balances.KES, type: 'fiat', gradient: 'from-emerald-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-emerald-500/30 hover:border-emerald-500/60', text: 'text-emerald-400' },
-        { id: 'USDA', name: 'USDA Stablecoin', balance: balances.USDA, icon: DollarSign, type: 'crypto', gradient: 'from-amber-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-amber-500/30 hover:border-amber-500/60', text: 'text-amber-400' },
-        { id: 'USDT', name: 'Tether (USDT)', balance: balances.USDT, icon: CircleDollarSign, type: 'crypto', gradient: 'from-blue-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-blue-500/30 hover:border-blue-500/60', text: 'text-blue-400' },
-        { id: 'USDC', name: 'USD Coin (USDC)', balance: balances.USDC, icon: CircleDollarSign, type: 'crypto', gradient: 'from-indigo-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-indigo-500/30 hover:border-indigo-500/60', text: 'text-indigo-400' },
-        { id: 'USD', name: 'US Dollar', balance: balances.USD, type: 'fiat', gradient: 'from-green-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-green-500/30 hover:border-green-500/60', text: 'text-green-400' },
-        { id: 'UGX', name: 'Ugandan Shilling', balance: balances.UGX, type: 'fiat', gradient: 'from-yellow-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-yellow-500/30 hover:border-yellow-500/60', text: 'text-yellow-400' },
-        { id: 'TZS', name: 'Tanzanian Shilling', balance: balances.TZS, type: 'fiat', gradient: 'from-sky-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-sky-500/30 hover:border-sky-500/60', text: 'text-sky-400' },
-        { id: 'RWF', name: 'Rwandan Franc', balance: balances.RWF, type: 'fiat', gradient: 'from-teal-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-teal-500/30 hover:border-teal-500/60', text: 'text-teal-400' },
-        { id: 'BIF', name: 'Burundian Franc', balance: balances.BIF, type: 'fiat', gradient: 'from-pink-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-pink-500/30 hover:border-pink-500/60', text: 'text-pink-400' },
-        { id: 'XAF', name: 'Central African CFA', balance: balances.XAF, type: 'fiat', gradient: 'from-fuchsia-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-fuchsia-500/30 hover:border-fuchsia-500/60', text: 'text-fuchsia-400' },
-        { id: 'XOF', name: 'West African CFA', balance: balances.XOF, type: 'fiat', gradient: 'from-cyan-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-cyan-500/30 hover:border-cyan-500/60', text: 'text-cyan-400' },
-        { id: 'AIRT', name: 'Tokenized Airtime', balance: balances.AIRT, icon: Radio, type: 'synthetic', gradient: 'from-rose-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-rose-500/30 hover:border-rose-500/60', text: 'text-rose-400' },
-        { id: 'IMP', name: 'Impala Coin', balance: balances.IMP, icon: Coins, type: 'synthetic', gradient: 'from-purple-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-purple-500/30 hover:border-purple-500/60', text: 'text-purple-400' },
-        { id: 'BTC', name: 'Bitcoin', balance: balances.BTC, icon: Bitcoin, type: 'crypto', gradient: 'from-orange-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-orange-500/30 hover:border-orange-500/60', text: 'text-orange-400' },
-        { id: 'ETH', name: 'Ethereum', balance: balances.ETH, icon: Hexagon, type: 'crypto', gradient: 'from-purple-400/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-purple-400/30 hover:border-purple-400/60', text: 'text-purple-300' },
-    ];
+    const usdBaseRates: Record<string, number> = {
+        USDA: 1, USDC: 1, USDT: 1, cUSD: 1, USD: 1, IMP: 1,
+        KES: 130.50, UGX: 3750.00, TZS: 2580.00, RWF: 1320.00,
+        BIF: 2850.00, XAF: 605.00, XOF: 605.00, AIRT: 130.50,
+        BTC: 1 / 64000, ETH: 1 / 3500
+    };
 
-    // --- Real-time EAT Timestamp Formatter ---
+    const sortedWalletCards = useMemo(() => {
+        const cards = [
+            { id: 'KES', name: 'Kenyan Shilling', balance: balances.KES, gradient: 'from-emerald-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-emerald-500/30 hover:border-emerald-500/60', text: 'text-emerald-400' },
+            { id: 'USDA', name: 'USDA Stablecoin', balance: balances.USDA, icon: DollarSign, gradient: 'from-amber-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-amber-500/30 hover:border-amber-500/60', text: 'text-amber-400' },
+            { id: 'USDT', name: 'Tether (USDT)', balance: balances.USDT, icon: CircleDollarSign, gradient: 'from-blue-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-blue-500/30 hover:border-blue-500/60', text: 'text-blue-400' },
+            { id: 'USDC', name: 'USD Coin (USDC)', balance: balances.USDC, icon: CircleDollarSign, gradient: 'from-indigo-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-indigo-500/30 hover:border-indigo-500/60', text: 'text-indigo-400' },
+            { id: 'cUSD', name: 'Celo Dollar', balance: balances.cUSD, icon: CircleDollarSign, gradient: 'from-green-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-green-500/30 hover:border-green-500/60', text: 'text-green-400' },
+            { id: 'USD', name: 'US Dollar', balance: balances.USD, gradient: 'from-green-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-green-500/30 hover:border-green-500/60', text: 'text-green-400' },
+            { id: 'UGX', name: 'Ugandan Shilling', balance: balances.UGX, gradient: 'from-yellow-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-yellow-500/30 hover:border-yellow-500/60', text: 'text-yellow-400' },
+            { id: 'TZS', name: 'Tanzanian Shilling', balance: balances.TZS, gradient: 'from-sky-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-sky-500/30 hover:border-sky-500/60', text: 'text-sky-400' },
+            { id: 'RWF', name: 'Rwandan Franc', balance: balances.RWF, gradient: 'from-teal-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-teal-500/30 hover:border-teal-500/60', text: 'text-teal-400' },
+            { id: 'BIF', name: 'Burundian Franc', balance: balances.BIF, gradient: 'from-pink-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-pink-500/30 hover:border-pink-500/60', text: 'text-pink-400' },
+            { id: 'XAF', name: 'Central African CFA', balance: balances.XAF, gradient: 'from-fuchsia-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-fuchsia-500/30 hover:border-fuchsia-500/60', text: 'text-fuchsia-400' },
+            { id: 'XOF', name: 'West African CFA', balance: balances.XOF, gradient: 'from-cyan-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-cyan-500/30 hover:border-cyan-500/60', text: 'text-cyan-400' },
+            { id: 'AIRT', name: 'Tokenized Airtime', balance: balances.AIRT, icon: Radio, gradient: 'from-rose-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-rose-500/30 hover:border-rose-500/60', text: 'text-rose-400' },
+            { id: 'IMP', name: 'Impala Coin', balance: balances.IMP, icon: Coins, gradient: 'from-purple-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-purple-500/30 hover:border-purple-500/60', text: 'text-purple-400' },
+            { id: 'BTC', name: 'Bitcoin', balance: balances.BTC, icon: Bitcoin, gradient: 'from-orange-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-orange-500/30 hover:border-orange-500/60', text: 'text-orange-400' },
+            { id: 'ETH', name: 'Ethereum', balance: balances.ETH, icon: Hexagon, gradient: 'from-indigo-400/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-indigo-400/30 hover:border-indigo-400/60', text: 'text-indigo-300' },
+        ];
+
+        return cards.map(card => ({
+            ...card,
+            usdValue: card.balance / (usdBaseRates[card.id] || 1)
+        })).sort((a, b) => b.usdValue - a.usdValue);
+    }, [balances]);
+
     const formatTimeEAT = (isoDate: string | null | undefined, fallbackAgo: string) => {
         if (!isoDate) return fallbackAgo || 'Recently';
         const d = new Date(isoDate);
         if (isNaN(d.getTime())) return fallbackAgo || 'Recently';
-
-        return new Intl.DateTimeFormat('en-GB', {
-            timeZone: 'Africa/Nairobi',
-            month: 'short',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: true
-        }).format(d).replace(',', ' ·');
+        return new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Nairobi', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: true }).format(d).replace(',', ' ·');
     };
 
     return (
         <div className={`max-w-7xl mx-auto space-y-8 transition-opacity duration-500 animate-in fade-in ${isLoading ? 'opacity-50' : 'opacity-100'}`}>
 
-            {/* Page Title & Subtitle */}
+            {/* Page Title & Sort Info */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-white tracking-tight">Your Multi-Currency Wallets</h1>
                     <p className="text-gray-400 text-sm mt-0.5">Track fiat balances, stablecoins, and synthetics across African corridors</p>
                 </div>
+                <div className="text-xs bg-[#0F1520] border border-[#1E2533] px-3 py-1.5 rounded-lg text-gray-500 font-medium">
+                    Auto-sorted by highest value
+                </div>
             </div>
 
-            {/* Professional Cards Grid with Gradients & Flags */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {walletCards.map((w) => {
+            {/* Professional Cards Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                {sortedWalletCards.map((w) => {
                     const flagUrl = getFlagUrl(w.id);
                     const IconComponent = w.icon;
 
                     return (
                         <div key={w.id} className={`bg-gradient-to-br ${w.gradient} border ${w.border} rounded-2xl p-6 transition-all shadow-xl backdrop-blur-md group hover:-translate-y-0.5 duration-300`}>
                             <div className="flex justify-between items-start mb-6">
-
-                                {/* ICON / FLAG RENDERING */}
                                 <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-[#0F1520]/80 border border-[#1E2533] shadow-inner overflow-hidden p-2">
                                     {flagUrl ? (
                                         <img src={flagUrl} alt={`${w.id} flag`} className="w-8 h-6 object-cover rounded shadow" />
@@ -137,20 +128,22 @@ export default function WalletsPage() {
                                         <div className="w-6 h-6 rounded-full bg-emerald-500 shadow-md" />
                                     )}
                                 </div>
-
                                 <div className="text-right">
                                     <span className="text-xs font-extrabold text-white uppercase tracking-widest bg-[#0F1520] px-2.5 py-1 rounded-lg border border-[#1E2533]">
                                         {w.id}
                                     </span>
                                 </div>
                             </div>
-
                             <p className="text-xs text-gray-400 font-semibold tracking-wide mb-1">{w.name}</p>
                             <p className="text-3xl font-extrabold text-white font-mono tracking-tight group-hover:text-amber-400 transition-colors">
                                 {w.balance.toLocaleString(undefined, {
                                     minimumFractionDigits: w.id === 'BTC' || w.id === 'ETH' ? 4 : 2,
                                     maximumFractionDigits: w.id === 'BTC' || w.id === 'ETH' ? 4 : 2
                                 })}
+                            </p>
+                            {/* Anchor Value Subtext */}
+                            <p className="text-[10px] text-gray-500 font-mono mt-1">
+                                ≈ ${(w.usdValue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </p>
                         </div>
                     );
@@ -190,7 +183,6 @@ export default function WalletsPage() {
                                         {tx.direction === 'swap' ? 'Swap' : tx.direction === 'on' ? 'Deposit' : 'Withdrawal'}
                                     </td>
                                     <td className="py-4 px-6 text-xs text-gray-400 font-mono whitespace-nowrap">
-                                        {/* 🟢 Apply precise EAT formatter here */}
                                         {formatTimeEAT(tx.createdAt, tx.timeAgo)}
                                     </td>
                                     <td className="py-4 px-6 text-right font-bold text-sm text-white font-mono">

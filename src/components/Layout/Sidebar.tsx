@@ -438,7 +438,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
       ========================================== */}
       <div className="px-4 pb-6 pt-4 bg-[#050b14] border-t border-[#1a2a40] space-y-3 shrink-0 shadow-[0_-4px_20px_rgba(0,0,0,0.2)]">
 
-        {/* User Info Display */}
+        {/* User Info Display 
         {user && (
           <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-[#0d1a2d] border border-[#1e3a5f]/50">
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${viewAsAdmin
@@ -456,6 +456,8 @@ export default function Sidebar({ onClose }: SidebarProps) {
             </div>
           </div>
         )}
+
+        */}
 
         {/* Logout Button */}
         <button
