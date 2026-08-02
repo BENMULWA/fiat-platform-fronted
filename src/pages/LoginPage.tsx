@@ -378,6 +378,9 @@ function LandingFooter({ theme }: { theme: Theme }) {
         <div className="space-y-4 text-center lg:text-left">
           <h3 className={`text-2xl sm:text-3xl font-bold ${t.text}`}>Experience Seamless Trading</h3>
           <p className={`${t.subtext} text-sm leading-relaxed max-w-md mx-auto lg:mx-0`}>Manage your fiat and crypto liquidity from one unified dashboard.</p>
+          <button className="inline-flex items-center gap-2 text-emerald-500 font-bold text-sm hover:text-emerald-400 transition-colors">
+            <Play className="w-4 h-4" /> Watch Demo Video
+          </button>
         </div>
         <div className="flex justify-center">
           <div className="relative w-[220px] sm:w-[260px]">
