@@ -130,7 +130,7 @@ export default function LoginPage() {
               <img src={mamlakaLogo} alt="Mamlaka" className="w-4 h-4 lg:w-5 lg:h-5 object-contain" />
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-white font-bold text-xl lg:text-2xl tracking-wide">Meshex</span>
+              <span className="text-white font-bold text-xl lg:text-2xl tracking-wide">JASIRI CAPITAL</span>
             </div>
           </header>
 
