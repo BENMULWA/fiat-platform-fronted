@@ -65,20 +65,16 @@ export const executeRamp = (data: any) => api.post('/api/ramp/execute', data);
 export const executeInternalSwap = (data: any) => api.post('/api/ramp/swap', data);
 export const getRampHistory = () => api.get('/api/ramp/history');
 
-/// 🟢 FIXED: Dynamic Address & Memo Fetcher
-export const getDepositDetails = async (asset: string, network: string) => {
-  let url = '';
-  if (network === 'stellar') {
-    url = `/api/stellar/deposit-info?asset=${asset}&network=stellar`;
-  } else if (network === 'celo') {
-    url = `/api/valora/deposit-details`;
-  } else if (network === 'cardano') {
-    url = `/api/cardano/wallet`;
-  } else {
-    url = `/api/stellar/deposit-info?asset=${asset}&network=${network}`;
-  }
-  return api.get(url);
-};
+// 🟢 ALREADY EXISTS: Treasury fetcher
+export const getDepositDetails = (asset: string, network: string) =>
+  api.get('/api/treasury/deposit-info', { params: { asset, network } });
+
+// 🟢 NEW: ADD THESE TWO LINES FOR CELO AUTO-DETECTION
+export const initiateValoraDeposit = (data: { asset: string, amount: number }) =>
+  api.post('/api/valora/deposit/initiate', data);
+
+export const checkValoraDepositStatus = (depositId: string) =>
+  api.get(`/api/valora/deposit/${depositId}/status`);
 
 // ==========================================
 // RETAIL ROUTES

@@ -5,7 +5,8 @@ import {
   ArrowDown, ArrowUp, RefreshCw, Phone,
   DollarSign, Bitcoin, Hexagon, CircleDollarSign,
   ArrowRightLeft, ArrowDownRight, ArrowUpRight, CheckCircle2,
-  Wallet, Radio
+  Wallet, Radio, Clock
+  
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getRetailWallet, getRampHistory } from '../../api/client';
@@ -183,6 +184,7 @@ export default function RetailDashboardPage() {
           {sortedWalletCards.map((w) => {
             const flagUrl = getFlagUrl(w.id);
             const IconComponent = w.icon;
+            const isCrypto = ['BTC', 'ETH', 'USDC', 'USDT', 'cUSD', 'USDA', 'IMP'].includes(w.id);
 
             return (
               <div key={w.id} className={`bg-gradient-to-br ${w.gradient} border ${w.border} hover:border-opacity-60 rounded-2xl p-6 transition-all shadow-xl backdrop-blur-md group hover:-translate-y-0.5 duration-300`}>
@@ -205,8 +207,8 @@ export default function RetailDashboardPage() {
                 <p className="text-xs text-gray-400 font-semibold tracking-wide mb-1">{w.name}</p>
                 <p className="text-3xl font-extrabold text-white font-mono tracking-tight group-hover:text-amber-400 transition-colors">
                   {w.balance.toLocaleString(undefined, {
-                    minimumFractionDigits: w.id === 'BTC' || w.id === 'ETH' ? 4 : 2,
-                    maximumFractionDigits: w.id === 'BTC' || w.id === 'ETH' ? 4 : 2
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: isCrypto ? 4 : 2
                   })}
                 </p>
               </div>

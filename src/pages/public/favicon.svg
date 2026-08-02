@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Jasiri Emerald Background -->
+  <rect width="32" height="32" rx="8" fill="#10b981"/>
+  
+  <!-- Bold "J" Letter -->
+  <path d="M11 8h10v4h-6v10.5c0 2.5-4 2.5-4 0V8z" fill="white"/>
+  
+  <!-- Exchange/Arbitrage Arrow -->
+  <path d="M22 6l4 4M22 6v4h4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
