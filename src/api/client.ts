@@ -185,10 +185,13 @@ export const registerValoraPhone = (data: { phone: string; celo_address: string 
 
 export const getOtcDashboard = () => api.get('/api/admin/operations-overview');
 
+export const getChartAnalytics = (days: number = 7) => api.get('/api/admin/analytics/chart-data', { params: { days } });
+
 export const getOtcRetailTransactions = (params: {
   page?: number;
   limit?: number;
   search?: string;
+  userId?: string;
 }) => api.get('/api/admin/retail-transactions', { params });
 
 export const getOtcRetailTransactionDetails = (transactionId: string) =>
@@ -196,6 +199,7 @@ export const getOtcRetailTransactionDetails = (transactionId: string) =>
 
 export const updateOtcRetailTransactionStatus = (transactionId: string, status: string) =>
   api.patch(`/api/admin/retail-transactions/${transactionId}/status`, { status });
+
 
 // ==========================================
 // ADMIN FINANCE & COMPLIANCE APIS

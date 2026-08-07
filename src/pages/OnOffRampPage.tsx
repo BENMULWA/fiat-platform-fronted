@@ -134,7 +134,8 @@ export default function OnOffRampPage() {
         if (direction === 'off') {
           await executeValoraWithdraw({
             amount: numericAmount,
-            identifier: counterparty
+            identifier: counterparty,
+            asset: 'cUSD'
           })
           setSuccessMessage(`cUSD is broadcasting to the Celo network! Check your Valora app.`)
         } else {

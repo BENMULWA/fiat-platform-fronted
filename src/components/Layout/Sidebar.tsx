@@ -55,7 +55,7 @@ const otcSections = [
   {
     title: 'TRADING',
     items: [
-      { id: 'dealer-workspace', path: '/admin/dashboard', label: 'Dealer Workspace', icon: Briefcase },
+      { id: 'dealer-workspace', path: '/admin/dealer-workspace', label: 'Dealer Workspace', icon: Briefcase },
       { id: 'retail-transactions', path: '/admin/retail-transactions', label: 'Retail Transactions', icon: Receipt }
     ]
   },

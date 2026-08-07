@@ -1,7 +1,14 @@
+// @ts-nocheck
 import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
-import LoginPage from './pages/LoginPage'
+
+// --- AUTH & PUBLIC PAGES ---
+import LandingPage from './pages/LandingPage'
+import Login from './pages/Login'
+import Signup from './pages/Signup'
+import ForgotPasswordPage from './pages/ForgotPasswordPage'
+import ResetPasswordPage from './pages/ResetPasswordPage'
 import AppLayout from './components/Layout/AppLayout'
 
 // --- ADMIN PAGES ---
@@ -17,8 +24,9 @@ import { RetailTransactionsPage } from './pages/OTC Dashboard/RetailTransactions
 import PaymentsPage from './pages/OTC Dashboard/Payments';
 import { TreasuryPage } from './pages/OTC Dashboard/Treasury';
 import LiquidityPage from './pages/OTC Dashboard/Liquidity';
-import KycAmlPage from './pages/OTC Dashboard/KycAml';
+import KycAmlPage from './pages/OTC Dashboard/KycAml'
 import CustomersPage from './pages/OTC Dashboard/Customers';
+import DealerWorkspace from './pages/OTC Dashboard/DealerWorkspace';
 
 // --- RETAIL PAGES ---
 import RetailDashboardPage from './pages/retail/RetailDashboardPage'
@@ -47,9 +55,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return user ? <>{children}</> : <Navigate to="/" replace />
 }
 
-// GAte Keeper Wrapper: Forced KYC Gateway
-// If a retail user is not verified, they are blocked from seeing the dashboard
-// and immediately redirected to the KYC page.
+// Gate Keeper Wrapper: Forced KYC Gateway
 function KycProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading, viewAsAdmin } = useAuth()
   const location = useLocation()
@@ -79,6 +85,7 @@ function KycProtectedRoute({ children }: { children: React.ReactNode }) {
 // ------------------------------------------------------------------
 function AppRoutes() {
   const { user, isLoading, viewAsAdmin } = useAuth()
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[#06090F] flex items-center justify-center">
@@ -89,8 +96,14 @@ function AppRoutes() {
 
   return (
     <Routes>
-      <Route path="/" element={user ? <Navigate to={viewAsAdmin ? "/vault" : "/dashboard"} replace /> : <LoginPage />} />
+      {/* PUBLIC ROUTES */}
+      <Route path="/" element={user ? <Navigate to={viewAsAdmin ? "/admin/dashboard" : "/dashboard"} replace /> : <LandingPage />} />
+      <Route path="/login" element={user ? <Navigate to={viewAsAdmin ? "/admin/dashboard" : "/dashboard"} replace /> : <Login />} />
+      <Route path="/signup" element={user ? <Navigate to={viewAsAdmin ? "/admin/dashboard" : "/dashboard"} replace /> : <Signup />} />
+      <Route path="/forgot-password" element={user ? <Navigate to={viewAsAdmin ? "/admin/dashboard" : "/dashboard"} replace /> : <ForgotPasswordPage />} />
+      <Route path="/reset-password/:token" element={user ? <Navigate to={viewAsAdmin ? "/admin/dashboard" : "/dashboard"} replace /> : <ResetPasswordPage />} />
 
+      {/* PROTECTED LAYOUT */}
       <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
 
         {/* 🟢 STRICT RETAIL GATEWAY: All core pages are now KYC Protected */}
@@ -107,7 +120,7 @@ function AppRoutes() {
         <Route path="profile" element={<ProfilePage />} />
         <Route path="kyc" element={<KYCpage />} />
 
-        {/* ADMIN ROUTES */}
+        {/* ADMIN ROUTES (Legacy) */}
         <Route path="vault" element={<DashboardPage />} />
         <Route path="market-maker" element={<MarketMakerPage />} />
         <Route path="general-ledger" element={<GeneralLedgerPage />} />
@@ -118,6 +131,7 @@ function AppRoutes() {
         <Route path="admin/retail-transactions" element={<RetailTransactionsPage />} />
         <Route path="admin/payments" element={<PaymentsPage />} />
         <Route path="admin/treasury" element={<TreasuryPage />} />
+        <Route path="admin/dealer-workspace" element={<DealerWorkspace />} />
         <Route path="admin/liquidity" element={<LiquidityPage />} />
         <Route path="admin/kyc" element={<KycAmlPage />} />
         <Route path="admin/customers" element={<CustomersPage />} />
@@ -125,7 +139,7 @@ function AppRoutes() {
 
       </Route>
 
-      <Route path="*" element={<Navigate to={viewAsAdmin ? "/vault" : "/dashboard"} replace />} />
+      <Route path="*" element={<Navigate to={viewAsAdmin ? "/admin/dashboard" : "/dashboard"} replace />} />
     </Routes>
   )
 }

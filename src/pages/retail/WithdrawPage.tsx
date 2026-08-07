@@ -28,23 +28,23 @@ type NetworkOption = {
 
 const ASSET_NETWORKS: Record<string, NetworkOption[]> = {
     USDT: [
-        { id: 'stellar', name: 'Stellar', fee: 0.01, time: '~5 Secs', min: 1, speed: 'instant', recommended: true },
-        { id: 'celo', name: 'Celo', fee: 0.005, time: '~5 Secs', min: 1, speed: 'instant' },
+        { id: 'stellar', name: 'Stellar', fee: 0.01, time: '~5 Secs', min: 0.5, speed: 'instant', recommended: true },
+        { id: 'celo', name: 'Celo', fee: 0.005, time: '~5 Secs', min: 0.5, speed: 'instant' },
         { id: 'tron', name: 'Tron (TRC20)', fee: 1.00, time: '~3 Mins', min: 5, speed: 'fast' },
-        { id: 'polygon', name: 'Polygon', fee: 0.10, time: '~3 Mins', min: 1, speed: 'fast' },
+        { id: 'polygon', name: 'Polygon', fee: 0.10, time: '~3 Mins', min: 0.5, speed: 'fast' },
         { id: 'ethereum', name: 'Ethereum (ERC20)', fee: 4.50, time: '~5 Mins', min: 10, speed: 'slow' }
     ],
     USDC: [
-        { id: 'stellar', name: 'Stellar', fee: 0.01, time: '~5 Secs', min: 1, speed: 'instant', recommended: true },
-        { id: 'celo', name: 'Celo', fee: 0.005, time: '~5 Secs', min: 1, speed: 'instant' },
-        { id: 'polygon', name: 'Polygon', fee: 0.10, time: '~3 Mins', min: 1, speed: 'fast' },
+        { id: 'stellar', name: 'Stellar', fee: 0.01, time: '~5 Secs', min: 0.5, speed: 'instant', recommended: true },
+        { id: 'celo', name: 'Celo', fee: 0.005, time: '~5 Secs', min: 0.01, speed: 'instant' },
+        { id: 'polygon', name: 'Polygon', fee: 0.10, time: '~3 Mins', min: 0.5, speed: 'fast' },
         { id: 'tron', name: 'Tron (TRC20)', fee: 1.00, time: '~3 Mins', min: 5, speed: 'fast' },
     ],
     USDA: [
-        { id: 'cardano', name: 'Cardano', fee: 0.17, time: '~10 Mins', min: 2, speed: 'slow' }
+        { id: 'cardano', name: 'Cardano', fee: 0.17, time: '~10 Mins', min: 0.5, speed: 'slow' }
     ],
     cUSD: [
-        { id: 'celo', name: 'Celo', fee: 0.005, time: '~5 Secs', min: 1, speed: 'instant' }
+        { id: 'celo', name: 'Celo', fee: 0.005, time: '~5 Secs', min: 0.5, speed: 'instant' }
     ],
     BTC: [
         { id: 'bitcoin', name: 'Bitcoin', fee: 2.50, time: '~30 Mins', min: 15, speed: 'slow' }
@@ -342,7 +342,7 @@ export default function WithdrawPage() {
 
                 <div className="flex items-center gap-3 bg-[#111827] border border-[#1E2533] rounded-full px-5 py-2.5">
                     <span className="text-xs text-gray-500">Available</span>
-                    <span className="text-sm font-bold text-white">{availableBalance.toLocaleString(undefined, { minimumFractionDigits: 1 })}</span>
+                    <span className="text-sm font-bold text-white">{availableBalance.toLocaleString(undefined, { minimumFractionDigits: 0.01 })}</span>
                     <span className="text-xs text-gray-400 font-medium">{activeAsset}</span>
                 </div>
             </div>

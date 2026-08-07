@@ -1,242 +1,249 @@
-import React, { useEffect, useState } from 'react';
-import { CheckCircle2, ShieldCheck, Upload, Loader2, AlertCircle, Lock, X, ArrowRight, Camera, KeyRound } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
-import { getKycStatus, submitKyc } from '../../api/client';
-import { useNavigate } from 'react-router-dom';
+//@ts-nocheck
+import React, { useState, useEffect } from 'react';
+import { RefreshCw, CheckCircle2, XCircle, AlertTriangle, ShieldCheck, Clock, Eye, ArrowUpRight } from 'lucide-react';
+import { getAdminKycQueue, approveAdminKyc, rejectAdminKyc } from '../../api/client';
 
-export default function KYCpage() {
-    const { user, updateUser } = useAuth();
-    const navigate = useNavigate();
+// 🟢 MOCK DATA FOR AML & ALERTS (Until you build the specific Python endpoints for these)
+const MOCK_AML_FLAGS = [
+    { id: 'aml-1', entity: 'Wangari Ndirangu', type: 'Unusual Pattern', details: 'Multiple rapid swaps below reporting threshold.', severity: 'high', date: '2 hours ago' },
+    { id: 'aml-2', entity: 'Global Trade Ltd', type: 'PEP Match', details: 'Director matches politically exposed persons database.', severity: 'high', date: '5 hours ago' },
+    { id: 'aml-3', entity: 'John Doe', type: 'Velocity Check', details: 'Exceeded daily deposit limits by 300%.', severity: 'medium', date: '1 day ago' },
+];
 
-    const [form, setForm] = useState({
-        fullName: user?.name || '',
-        idNumber: '',
-        email: user?.email || '',
-        phone: '',
-        pin: '',
-        fileName: '',
-        selfieName: ''
-    });
+const MOCK_RISK_ALERTS = [
+    { id: 'risk-1', message: 'USDT liquidity below 30% threshold — settlement delays possible.', severity: 'high', timeAgo: '5 mins ago', status: 'active' },
+    { id: 'risk-2', message: 'Client Wangari Ndirangu — unusual trading pattern detected (Circular funding).', severity: 'high', timeAgo: '45 mins ago', status: 'active' },
+    { id: 'risk-3', message: 'M-Pesa STK push failure rate spiked to 15% in the last hour.', severity: 'medium', timeAgo: '1 hr ago', status: 'investigating' },
+    { id: 'risk-4', message: 'Celo RPC node latency exceeded 2000ms. Auto-detection might be delayed.', severity: 'low', timeAgo: '2 hrs ago', status: 'acknowledged' },
+];
 
-    const [status, setStatus] = useState<'pending' | 'verified' | 'unverified'>(user?.kycStatus as any || 'unverified');
-    const [loading, setLoading] = useState(false);
-    const [toast, setToast] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+export default function KycRiskPage() {
+    const [activeTab, setActiveTab] = useState<'kyc' | 'aml' | 'alerts'>('kyc');
+    const [data, setData] = useState<any>({ kpis: {}, queue: [] });
+    const [isLoading, setIsLoading] = useState(true);
+    const [actionLoading, setActionLoading] = useState<string | null>(null);
+    const [amlFlags, setAmlFlags] = useState(MOCK_AML_FLAGS);
+    const [riskAlerts, setRiskAlerts] = useState(MOCK_RISK_ALERTS);
 
-    useEffect(() => {
-        const fetchStatus = async () => {
-            try {
-                const res = await getKycStatus();
-                if (res.data?.kycStatus) {
-                    setStatus(res.data.kycStatus);
-                    updateUser({ kycStatus: res.data.kycStatus });
-                }
-            } catch (err) {
-                console.warn('KYC status unavailable', err);
-            }
-        };
-        fetchStatus();
-    }, []);
-
-    // --- PERMANENT REDIRECT FOR VERIFIED USERS ---
-    useEffect(() => {
-        if (status === 'verified') {
-            const timer = setTimeout(() => navigate('/dashboard'), 3000);
-            return () => clearTimeout(timer);
-        }
-    }, [status, navigate]);
-
-    const validateForm = () => {
-        const phoneRegex = /^(?:\+254|0|254)[17]\d{8}$/;
-        if (!phoneRegex.test(form.phone.trim())) {
-            setToast({ type: 'error', message: 'Invalid phone format! Use 07..., 01..., or 2547...' });
-            return false;
-        }
-
-        if (!form.pin || form.pin.length < 4) {
-            setToast({ type: 'error', message: 'Please set a secure 4-digit Trading PIN.' });
-            return false;
-        }
-
-        if (!form.fileName || !form.selfieName) {
-            setToast({ type: 'error', message: 'You must upload both an ID document and a Selfie!' });
-            return false;
-        }
-
-        return true;
-    };
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setToast(null);
-
-        if (!validateForm()) {
-            setTimeout(() => setToast(null), 5000);
-            return;
-        }
-
-        setLoading(true);
-
+    const fetchKycQueue = async () => {
         try {
-            await submitKyc({
-                fullName: form.fullName,
-                idNumber: form.idNumber,
-                email: form.email,
-                phone: form.phone,
-                documentName: form.fileName
-            });
-
-            setStatus('verified');
-            updateUser({ kycStatus: 'verified' });
-            setToast({ type: 'success', message: 'KYC Verified! Redirecting to your dashboard...' });
-
-        } catch (err: any) {
-            setToast({ type: 'error', message: err.response?.data?.detail || 'KYC submission failed.' });
-            setTimeout(() => setToast(null), 5000);
+            const res = await getAdminKycQueue();
+            setData(res.data);
+        } catch (err) {
+            console.error("Failed to load KYC queue", err);
         } finally {
-            setLoading(false);
+            setIsLoading(false);
         }
     };
 
-    // 🟢 IF VERIFIED: SHOW SUCCESS SCREEN ONLY
-    if (status === 'verified') {
-        return (
-            <div className="max-w-2xl mx-auto p-4 md:p-6 mt-10 animate-in fade-in zoom-in duration-500">
-                <div className="bg-[#0B0E14] border border-emerald-500/30 rounded-2xl p-10 shadow-2xl shadow-emerald-900/10 text-center flex flex-col items-center">
-                    <div className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center mb-6">
-                        <CheckCircle2 className="w-10 h-10 text-emerald-400" />
-                    </div>
-                    <h1 className="text-3xl font-bold text-white tracking-tight mb-3">Identity Verified</h1>
-                    <p className="text-gray-400 mb-8 max-w-sm mx-auto">
-                        Your identity has been successfully linked to your account. You now have full access to deposits, withdrawals, and trading.
-                    </p>
-                    <button onClick={() => navigate('/dashboard')} className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold px-8 py-3.5 rounded-xl transition-all shadow-lg shadow-emerald-500/20 active:scale-95">
-                        Enter Dashboard <ArrowRight className="w-5 h-5" />
-                    </button>
+    useEffect(() => { fetchKycQueue(); }, []);
+
+    const handleKycAction = async (id: string, action: 'approve' | 'reject') => {
+        setActionLoading(id);
+        try {
+            if (action === 'approve') await approveAdminKyc(id);
+            else await rejectAdminKyc(id);
+            fetchKycQueue();
+        } catch (err) { alert(`Failed to ${action} KYC`); }
+        finally { setActionLoading(null); }
+    };
+
+    const handleAcknowledgeAlert = (id: string) => {
+        setRiskAlerts(prev => prev.map(a => a.id === id ? { ...a, status: 'acknowledged' } : a));
+    };
+
+    const DocBadge = ({ label, hasDoc }: { label: string, hasDoc: boolean }) => (
+        <div className="flex flex-col items-center gap-1.5 text-[10px] font-semibold">
+            <div className={`w-7 h-7 rounded-lg border flex items-center justify-center transition-colors ${hasDoc ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-[#0a0e17] border-[#1e2d3d] text-gray-600'}`}>
+                {hasDoc ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+            </div>
+            <span className={hasDoc ? 'text-gray-300' : 'text-gray-600'}>{label}</span>
+        </div>
+    );
+
+    const RiskBadge = ({ level }: { level: string }) => {
+        const styles: Record<string, string> = { low: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', medium: 'bg-amber-500/10 text-amber-400 border-amber-500/20', high: 'bg-red-500/10 text-red-400 border-red-500/20' };
+        return <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider border ${styles[level] || styles.low}`}>{level} risk</span>;
+    };
+
+    return (
+        <div className="max-w-[1600px] mx-auto p-4 md:p-6 text-gray-200 animate-in fade-in">
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-8">
+                <h1 className="text-2xl font-bold text-white tracking-tight">KYC / AML / Risk</h1>
+                <span className="bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">ADMIN</span>
+            </div>
+
+            {/* KPIs Row - Exact Match to Screenshot */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+                <div className="bg-[#111827] border border-[#1e2d3d] rounded-xl p-5">
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">PENDING KYC</p>
+                    <h3 className="text-3xl font-bold text-amber-500 font-mono">{data.kpis?.pendingKyc || 0}</h3>
+                </div>
+                <div className="bg-[#111827] border border-[#1e2d3d] rounded-xl p-5">
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">AML FLAGS</p>
+                    <h3 className="text-3xl font-bold text-red-500 font-mono">{amlFlags.length} <span className="text-xs text-red-400/70">High</span></h3>
+                </div>
+                <div className="bg-[#111827] border border-[#1e2d3d] rounded-xl p-5">
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">PEP MATCHES</p>
+                    <h3 className="text-3xl font-bold text-white font-mono">{data.kpis?.pepMatches || 1}</h3>
+                </div>
+                <div className="bg-[#111827] border border-[#1e2d3d] rounded-xl p-5">
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">SANCTIONS</p>
+                    <h3 className="text-3xl font-bold text-white font-mono">{data.kpis?.sanctions || 1}</h3>
+                </div>
+                <div className="bg-[#111827] border border-[#1e2d3d] rounded-xl p-5">
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">RISK ALERTS</p>
+                    <h3 className="text-3xl font-bold text-red-500 font-mono">{riskAlerts.filter(a => a.severity === 'high').length} <span className="text-xs text-red-400/70">High</span></h3>
                 </div>
             </div>
-        );
-    }
 
-    // 🔴 IF UNVERIFIED: SHOW THE MANDATORY GATEWAY FORM
-    return (
-        <div className="max-w-5xl mx-auto p-4 md:p-6 animate-in fade-in duration-500 relative">
+            {/* Tab Navigation */}
+            <div className="flex gap-1 bg-[#0a0e17] border border-[#1e2d3d] rounded-xl p-1.5 mb-6 w-fit">
+                {[
+                    { id: 'kyc', label: 'KYC Queue' },
+                    { id: 'aml', label: 'AML Flags' },
+                    { id: 'alerts', label: 'Risk Alerts' }
+                ].map(tab => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id as any)}
+                        className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${activeTab === tab.id ? 'bg-[#1e2d3d] text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+                    >
+                        {tab.label}
+                        {tab.id === 'aml' && <span className="ml-2 bg-red-500/20 text-red-400 text-[10px] px-1.5 py-0.5 rounded-md">{amlFlags.length}</span>}
+                        {tab.id === 'alerts' && <span className="ml-2 bg-amber-500/20 text-amber-400 text-[10px] px-1.5 py-0.5 rounded-md">{riskAlerts.length}</span>}
+                    </button>
+                ))}
+            </div>
 
-            {toast && (
-                <div className={`fixed top-6 right-6 z-50 flex items-center gap-3 px-5 py-4 rounded-xl shadow-2xl animate-in slide-in-from-top-4 font-bold border ${toast.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-red-500/10 text-red-400 border-red-500/30'}`}>
-                    {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
-                    <span>{toast.message}</span>
-                    <button onClick={() => setToast(null)} className="ml-2 hover:opacity-70"><X className="w-4 h-4" /></button>
-                </div>
-            )}
+            {/* Tab Content Container */}
+            <div className="bg-[#111827] border border-[#1e2d3d] rounded-2xl overflow-hidden shadow-xl min-h-[500px]">
 
-            <div className="bg-[#0B0E14] border border-[#1E2533] rounded-2xl p-6 md:p-8 shadow-xl relative overflow-hidden">
-                {/* Gateway Banner */}
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-emerald-500" />
+                {/* TAB 1: KYC QUEUE (Screenshot 2 Layout) */}
+                {activeTab === 'kyc' && (
+                    <div className="p-6 space-y-4">
+                        {isLoading ? (
+                            <div className="flex justify-center py-20"><RefreshCw className="w-8 h-8 animate-spin text-emerald-500" /></div>
+                        ) : data.queue && data.queue.length > 0 ? (
+                            data.queue.map((user: any) => (
+                                <div key={user.id} className="flex flex-col lg:flex-row lg:items-center gap-6 p-5 bg-[#0a0e17] rounded-xl border border-[#1e2d3d] hover:border-gray-600/30 transition-all">
 
-                <div className="flex items-center gap-3 mb-8">
-                    <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
-                        <Lock className="w-6 h-6 text-blue-400" />
+                                    <div className="lg:w-48 shrink-0">
+                                        <div className="flex items-center gap-2 text-gray-500 text-xs font-medium mb-1"><Clock className="w-3.5 h-3.5" /> Submitted</div>
+                                        <p className="text-sm text-gray-300 font-medium">{user.timeAgo}</p>
+                                    </div>
+
+                                    <div className="flex-1 min-w-0">
+                                        <h3 className="text-white font-bold text-base truncate">{user.name}</h3>
+                                        <p className="text-sm text-gray-500 truncate">{user.email}</p>
+                                    </div>
+
+                                    <div className="flex items-center gap-5 bg-[#111827] rounded-xl px-6 py-3 border border-[#1e2d3d]">
+                                        <DocBadge label="ID Doc" hasDoc={user.docs?.id} />
+                                        <DocBadge label="Selfie" hasDoc={user.docs?.selfie} />
+                                        <DocBadge label="Address" hasDoc={user.docs?.address} />
+                                        <DocBadge label="Source" hasDoc={user.docs?.source} />
+                                    </div>
+
+                                    <div className="flex flex-row lg:flex-col items-center lg:items-end gap-2 lg:w-28 shrink-0">
+                                        <RiskBadge level={user.riskLevel || 'low'} />
+                                        <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider">{user.kycLevel || 'Tier 1'}</span>
+                                    </div>
+
+                                    <div className="flex items-center gap-2 lg:w-72 shrink-0">
+                                        {actionLoading === user.id ? (
+                                            <RefreshCw className="w-5 h-5 animate-spin text-emerald-500 mx-auto" />
+                                        ) : (
+                                            <>
+                                                <button onClick={() => handleKycAction(user.id, 'approve')} className="flex-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500 hover:text-black px-4 py-2.5 rounded-lg text-xs font-bold transition-colors">Approve KYC</button>
+                                                <button className="px-3 py-2.5 rounded-lg text-xs font-bold bg-[#1e2d3d] text-gray-300 hover:bg-[#2a3a4f] border border-transparent hover:border-gray-500 transition-colors">Request Info</button>
+                                                <button onClick={() => handleKycAction(user.id, 'reject')} className="px-3 py-2.5 rounded-lg text-xs font-bold bg-red-500/10 text-red-500 border border-red-500/30 hover:bg-red-500 hover:text-white transition-colors">Reject</button>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="flex flex-col items-center justify-center py-20 text-center">
+                                <ShieldCheck className="w-12 h-12 text-emerald-500/30 mb-4" />
+                                <h3 className="text-white font-bold text-lg mb-1">All Clear!</h3>
+                                <p className="text-gray-500 text-sm">No pending KYC applications.</p>
+                            </div>
+                        )}
                     </div>
-                    <div>
-                        <h1 className="text-2xl font-bold text-white tracking-tight">Jasiri Capital Gateway</h1>
-                        <p className="text-sm text-gray-400">Please complete identity verification to unlock your dashboard and wallets.</p>
+                )}
+
+                {/* TAB 2: AML FLAGS (Screenshot 3 Layout) */}
+                {activeTab === 'aml' && (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead>
+                                <tr className="bg-[#0a0e17] border-b border-[#1e2d3d] text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                                    <th className="py-4 px-6">Entity</th>
+                                    <th className="py-4 px-6">Type</th>
+                                    <th className="py-4 px-6">Details</th>
+                                    <th className="py-4 px-6 text-center">Severity</th>
+                                    <th className="py-4 px-6">Date</th>
+                                    <th className="py-4 px-6 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[#1e2d3d]/50">
+                                {amlFlags.map(flag => (
+                                    <tr key={flag.id} className="hover:bg-[#1a2a40]/30 transition-colors">
+                                        <td className="py-4 px-6 text-sm font-bold text-white">{flag.entity}</td>
+                                        <td className="py-4 px-6 text-sm text-blue-400 font-medium">{flag.type}</td>
+                                        <td className="py-4 px-6 text-sm text-gray-400 max-w-xs truncate">{flag.details}</td>
+                                        <td className="py-4 px-6 text-center"><RiskBadge level={flag.severity} /></td>
+                                        <td className="py-4 px-6 text-sm text-gray-500">{flag.date}</td>
+                                        <td className="py-4 px-6 text-right">
+                                            <button className="text-blue-400 hover:text-blue-300 font-bold text-xs flex items-center gap-1 ml-auto">
+                                                Review Case <ArrowUpRight className="w-3 h-3" />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
-                </div>
+                )}
 
-                <form onSubmit={handleSubmit} className="grid gap-6 md:grid-cols-2">
+                {/* TAB 3: RISK ALERTS (Screenshot 4 Layout) */}
+                {activeTab === 'alerts' && (
+                    <div className="p-6 space-y-4">
+                        {riskAlerts.map(alert => (
+                            <div key={alert.id} className={`flex flex-col sm:flex-row sm:items-center gap-4 p-5 rounded-xl border-l-4 bg-[#0a0e17] transition-all ${alert.severity === 'high' ? 'border-red-500' : alert.severity === 'medium' ? 'border-amber-500' : 'border-gray-500'}`}>
 
-                    {/* Section 1: Details */}
-                    <div className="md:col-span-2 grid gap-5 md:grid-cols-2 bg-[#111827] p-5 rounded-xl border border-[#1E2533]">
-                        <div>
-                            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Full name (As it appears on ID)</label>
-                            <input
-                                value={form.fullName}
-                                onChange={(e) => setForm({ ...form, fullName: e.target.value })}
-                                className="w-full rounded-xl border border-[#1E2533] bg-[#0F1520] px-4 py-3 text-sm text-white focus:border-blue-500 outline-none transition-colors"
-                                required
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">ID / Passport number</label>
-                            <input
-                                value={form.idNumber}
-                                onChange={(e) => setForm({ ...form, idNumber: e.target.value })}
-                                className="w-full rounded-xl border border-[#1E2533] bg-[#0F1520] px-4 py-3 text-sm text-white focus:border-blue-500 outline-none transition-colors"
-                                required
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Phone number</label>
-                            <input
-                                value={form.phone}
-                                onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                                placeholder="e.g. 0712345678"
-                                className="w-full rounded-xl border border-[#1E2533] bg-[#0F1520] px-4 py-3 text-sm text-white focus:border-blue-500 outline-none transition-colors font-mono"
-                                required
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2 flex items-center gap-1.5"><KeyRound className="w-3.5 h-3.5" /> 4-Digit Trading PIN</label>
-                            <input
-                                type="password"
-                                maxLength={4}
-                                value={form.pin}
-                                onChange={(e) => setForm({ ...form, pin: e.target.value })}
-                                placeholder="••••"
-                                className="w-full rounded-xl border border-[#1E2533] bg-[#0F1520] px-4 py-3 text-center text-lg tracking-[0.5em] text-white focus:border-blue-500 outline-none transition-colors font-mono"
-                                required
-                            />
-                        </div>
+                                <div className="flex-1">
+                                    <p className="text-sm font-bold text-white leading-relaxed">{alert.message}</p>
+                                    <div className="flex items-center gap-3 mt-2">
+                                        <span className="text-[10px] text-gray-500 flex items-center gap-1"><Clock className="w-3 h-3" />{alert.timeAgo}</span>
+                                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${alert.status === 'active' ? 'bg-red-500/10 text-red-400' : alert.status === 'investigating' ? 'bg-amber-500/10 text-amber-400' : 'bg-gray-500/10 text-gray-400'}`}>
+                                            {alert.status}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {alert.status !== 'acknowledged' && (
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <button onClick={() => handleAcknowledgeAlert(alert.id)} className="px-4 py-2 rounded-lg text-xs font-bold bg-[#1e2d3d] text-gray-300 hover:bg-[#2a3a4f] border border-transparent hover:border-gray-500 transition-colors">
+                                            Acknowledge
+                                        </button>
+                                        <button className="px-4 py-2 rounded-lg text-xs font-bold bg-red-500/10 text-red-500 border border-red-500/30 hover:bg-red-500 hover:text-white transition-colors">
+                                            Escalate
+                                        </button>
+                                    </div>
+                                )}
+                                
+
+                            </div>
+                        ))}
                     </div>
-
-                    {/* Section 2: Documents (Smile ID Concept) */}
-                    <div className="md:col-span-2 grid gap-5 md:grid-cols-2">
-                        <div>
-                            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">1. Upload ID Document</label>
-                            <label className="flex cursor-pointer items-center justify-between rounded-xl border border-dashed border-[#2A3A4F] bg-[#0F1520] px-4 py-4 text-sm text-gray-400 transition-colors hover:border-blue-500/50">
-                                <span className="truncate mr-3">{form.fileName || 'National ID or Passport (PDF/JPG)'}</span>
-                                <span className="inline-flex items-center gap-2 rounded-lg px-3 py-2 font-bold bg-[#122033] text-blue-400 shrink-0">
-                                    <Upload className="w-4 h-4" /> Upload
-                                </span>
-                                <input
-                                    type="file"
-                                    accept=".pdf,.png,.jpg,.jpeg"
-                                    className="hidden"
-                                    onChange={(e) => setForm({ ...form, fileName: e.target.files?.[0]?.name || '' })}
-                                />
-                            </label>
-                        </div>
-
-                        <div>
-                            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2 flex items-center gap-1.5"><Camera className="w-3.5 h-3.5 text-emerald-400" /> 2. Smile ID (Selfie)</label>
-                            <label className="flex cursor-pointer items-center justify-between rounded-xl border border-dashed border-[#2A3A4F] bg-[#0F1520] px-4 py-4 text-sm text-gray-400 transition-colors hover:border-emerald-500/50">
-                                <span className="truncate mr-3">{form.selfieName || 'Take a clear selfie to match ID'}</span>
-                                <span className="inline-flex items-center gap-2 rounded-lg px-3 py-2 font-bold bg-[#122033] text-emerald-400 shrink-0">
-                                    <Camera className="w-4 h-4" /> Capture
-                                </span>
-                                <input
-                                    type="file"
-                                    accept="image/*"
-                                    capture="user"
-                                    className="hidden"
-                                    onChange={(e) => setForm({ ...form, selfieName: e.target.files?.[0]?.name || '' })}
-                                />
-                            </label>
-                        </div>
-                    </div>
-
-                    <div className="md:col-span-2 pt-4">
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-4 font-bold text-white transition hover:bg-blue-500 disabled:bg-[#1E2533] disabled:text-gray-500 disabled:cursor-not-allowed shadow-lg shadow-blue-900/20 text-lg"
-                        >
-                            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
-                            {loading ? 'Verifying Identity...' : 'Submit & Unlock Dashboard'}
-                        </button>
-                        <p className="text-center text-xs text-gray-500 mt-4">By submitting, you agree to the Jasiri Capital Terms of Service and Privacy Policy.</p>
-                    </div>
-                </form>
+                )}
+                
+            </div>
+            <div>
+                <p className="text-md text-white mt-4"> @ 2026 All Rights Reserved</p>
             </div>
         </div>
     );

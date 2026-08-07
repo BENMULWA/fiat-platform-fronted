@@ -45,15 +45,32 @@ export default function KYCpage() {
     }
   }, [status, navigate]);
 
+  const normalizePhone = (value: string) => {
+    const digits = value.replace(/\D/g, '');
+    if (digits.startsWith('254') && digits.length === 12) return `0${digits.slice(3)}`;
+    if (digits.length === 10 && digits.startsWith('0')) return digits;
+    if (digits.length === 9 && /^[17]/.test(digits)) return `0${digits}`;
+    return value;
+  };
+
   const validateForm = () => {
+    // 1. Strict Phone Validation (Kenyan Formats)
     const phoneRegex = /^(?:\+254|0|254)[17]\d{8}$/;
     if (!phoneRegex.test(form.phone.trim())) {
-      setToast({ type: 'error', message: 'Invalid phone format! Use 07..., 01..., or 2547...' });
+      setToast({ type: 'error', message: 'Invalid phone format! Must be a valid Kenyan number (e.g. 07... or 2547...).' });
       return false;
     }
 
+    // 2. Strict ID / Passport Validation (Alphanumeric, 6-12 chars)
+    const idRegex = /^[a-zA-Z0-9]{6,12}$/;
+    if (!idRegex.test(form.idNumber.trim())) {
+      setToast({ type: 'error', message: 'Invalid ID/Passport! Must be between 6 and 12 alphanumeric characters with no spaces.' });
+      return false;
+    }
+
+    // 3. Document Upload Validation
     if (!form.fileName) {
-      setToast({ type: 'error', message: 'You must upload an ID document!' });
+      setToast({ type: 'error', message: 'You must upload an ID document to proceed!' });
       return false;
     }
 
@@ -79,11 +96,12 @@ export default function KYCpage() {
     setLoading(true);
 
     try {
+      const normalizedPhone = normalizePhone(form.phone.trim());
       await submitKyc({
         fullName: form.fullName,
         idNumber: form.idNumber,
         email: form.email,
-        phone: form.phone,
+        phone: normalizedPhone,
         documentName: form.fileName
       });
 
