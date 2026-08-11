@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, ShieldCheck, Upload, Loader2, AlertCircle, Lock, X, ArrowRight } from 'lucide-react';
+import { CheckCircle2, ShieldCheck, Upload, Loader2, AlertCircle, Lock, X, ArrowRight, Clock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getKycStatus, submitKyc } from '../../api/client';
 import { useNavigate } from 'react-router-dom';
@@ -14,10 +14,14 @@ export default function KYCpage() {
     idNumber: '',
     email: user?.email || '',
     phone: '',
-    fileName: ''
+    fileName: '',
+    fileDataUrl: '',
+    fileType: '',
+    fileSize: 0,
   });
 
   const [status, setStatus] = useState<'pending' | 'verified' | 'unverified'>(user?.kycStatus as any || 'unverified');
+  const [submittedAt, setSubmittedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
@@ -28,6 +32,9 @@ export default function KYCpage() {
         if (res.data?.kycStatus) {
           setStatus(res.data.kycStatus);
           updateUser({ kycStatus: res.data.kycStatus });
+        }
+        if (res.data?.kycSubmittedAt) {
+          setSubmittedAt(res.data.kycSubmittedAt);
         }
       } catch (err) {
         console.warn('KYC status unavailable', err);
@@ -69,7 +76,7 @@ export default function KYCpage() {
     }
 
     // 3. Document Upload Validation
-    if (!form.fileName) {
+    if (!form.fileName || !form.fileDataUrl) {
       setToast({ type: 'error', message: 'You must upload an ID document to proceed!' });
       return false;
     }
@@ -82,6 +89,25 @@ export default function KYCpage() {
       return false;
     }
     return true;
+  };
+
+  const handleFileChange = async (file?: File) => {
+    if (!file) {
+      setForm({ ...form, fileName: '', fileDataUrl: '', fileType: '', fileSize: 0 });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setForm(prev => ({
+        ...prev,
+        fileName: file.name,
+        fileDataUrl: String(reader.result || ''),
+        fileType: file.type || '',
+        fileSize: file.size || 0,
+      }));
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -102,12 +128,16 @@ export default function KYCpage() {
         idNumber: form.idNumber,
         email: form.email,
         phone: normalizedPhone,
-        documentName: form.fileName
+        documentName: form.fileName,
+        documentDataUrl: form.fileDataUrl,
+        documentMimeType: form.fileType,
+        documentSize: form.fileSize,
       });
 
-      setStatus('verified');
-      updateUser({ kycStatus: 'verified' });
-      setToast({ type: 'success', message: 'KYC Verified! Redirecting to your dashboard...' });
+      setStatus('pending');
+      updateUser({ kycStatus: 'pending' });
+      setSubmittedAt(new Date().toISOString());
+      setToast({ type: 'success', message: 'KYC submitted successfully. Awaiting admin approval.' });
 
     } catch (err: any) {
       setToast({ type: 'error', message: err.response?.data?.detail || 'KYC submission failed.' });
@@ -131,6 +161,28 @@ export default function KYCpage() {
           </p>
           <button onClick={() => navigate('/dashboard')} className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold px-8 py-3.5 rounded-xl transition-all shadow-lg shadow-emerald-500/20 active:scale-95">
             Enter Dashboard <ArrowRight className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === 'pending') {
+    return (
+      <div className="max-w-2xl mx-auto p-4 md:p-6 mt-10 animate-in fade-in zoom-in duration-500">
+        <div className="bg-[#0B0E14] border border-amber-500/30 rounded-2xl p-10 shadow-2xl shadow-amber-900/10 text-center flex flex-col items-center">
+          <div className="w-20 h-20 bg-amber-500/10 rounded-full flex items-center justify-center mb-6">
+            <Clock className="w-10 h-10 text-amber-400" />
+          </div>
+          <h1 className="text-3xl font-bold text-white tracking-tight mb-3">KYC Under Review</h1>
+          <p className="text-gray-400 mb-3 max-w-sm mx-auto">
+            Your identity documents were submitted successfully and are now waiting for admin approval.
+          </p>
+          <p className="text-xs text-gray-500 mb-8">
+            Submitted: {submittedAt ? new Date(submittedAt).toLocaleString() : 'Just now'}
+          </p>
+          <button onClick={() => navigate('/dashboard')} className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-black font-bold px-8 py-3.5 rounded-xl transition-all shadow-lg shadow-amber-500/20 active:scale-95">
+            Back to Dashboard <ArrowRight className="w-5 h-5" />
           </button>
         </div>
       </div>
@@ -214,7 +266,7 @@ export default function KYCpage() {
                 type="file"
                 accept=".pdf,.png,.jpg,.jpeg"
                 className="hidden"
-                onChange={(e) => setForm({ ...form, fileName: e.target.files?.[0]?.name || '' })}
+                onChange={(e) => handleFileChange(e.target.files?.[0])}
               />
             </label>
           </div>

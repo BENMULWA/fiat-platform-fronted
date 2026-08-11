@@ -6,6 +6,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Menu, Bell, User, LogOut, Settings, ChevronDown, FileText, ShieldCheck, Scale, CircleAlert, CheckCircle2 } from 'lucide-react'
 import Sidebar from './Sidebar'
 import { useAuth } from '../../contexts/AuthContext'
+import { getAdminNotifications, markAllAdminNotificationsRead, getRetailNotifications, markAllRetailNotificationsRead } from '../../api/client'
 
 export default function AppLayout() {
   const { user, logout, viewAsAdmin, toggleViewAsAdmin } = useAuth()
@@ -16,7 +17,22 @@ export default function AppLayout() {
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showSettingsMenu, setShowSettingsMenu] = useState(false)
   const [showNotifMenu, setShowNotifMenu] = useState(false)
+  const [notifications, setNotifications] = useState<any[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
   const location = useLocation()
+
+  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
+  const notificationType = isAdmin ? 'admin' : 'retail'
+
+  const fetchNotifications = async () => {
+    try {
+      const res = isAdmin ? await getAdminNotifications() : await getRetailNotifications()
+      setNotifications(res.data?.notifications || [])
+      setUnreadCount(Number(res.data?.unreadCount || 0))
+    } catch {
+      // keep UI quiet if notifications are unavailable
+    }
+  }
 
   // Close sidebars/menus on route change or resize
   useEffect(() => {
@@ -34,10 +50,29 @@ export default function AppLayout() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
+  useEffect(() => {
+    fetchNotifications()
+    const timer = window.setInterval(fetchNotifications, 30000)
+    return () => window.clearInterval(timer)
+  }, [isAdmin])
+
   const closeAllMenus = () => {
     setShowUserMenu(false)
     setShowSettingsMenu(false)
     setShowNotifMenu(false)
+  }
+
+  const handleMarkAllNotificationsRead = async () => {
+    try {
+      if (notificationType === 'admin') {
+        await markAllAdminNotificationsRead()
+      } else {
+        await markAllRetailNotificationsRead()
+      }
+      await fetchNotifications()
+    } finally {
+      setShowNotifMenu(false)
+    }
   }
 
   // Derive current page title from route
@@ -95,7 +130,7 @@ export default function AppLayout() {
             <div className="flex items-center gap-3">
               <button onClick={() => setShowNotifMenu(!showNotifMenu)} className="relative p-2">
                 <Bell className="w-5 h-5 text-gray-400" />
-                <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full border border-[#06090F]" />
+                {unreadCount > 0 && <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full border border-[#06090F]" />}
               </button>
             </div>
           </div>
@@ -115,7 +150,7 @@ export default function AppLayout() {
                   className="relative p-2 text-gray-400 hover:text-white transition-colors"
                 >
                   <Bell className="w-5 h-5" />
-                  <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full border border-[#06090F]" />
+                  {unreadCount > 0 && <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full border border-[#06090F]" />}
                 </button>
 
                 {/* NOTIFICATION DROPDOWN */}
@@ -125,23 +160,27 @@ export default function AppLayout() {
                     <div className="absolute right-0 top-full mt-3 w-80 bg-[#0B0E14] border border-[#1E2533] rounded-2xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2">
                       <div className="p-4 border-b border-[#1E2533] flex justify-between items-center bg-[#111827]">
                         <h3 className="text-sm font-bold text-white">Notifications</h3>
-                        <span className="text-[10px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full font-bold">2 New</span>
+                        <span className="text-[10px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full font-bold">{unreadCount} New</span>
                       </div>
                       <div className="max-h-[300px] overflow-y-auto">
-                        <div className="p-4 border-b border-[#1E2533]/50 hover:bg-[#111827] transition-colors cursor-pointer flex gap-3">
-                          <div className="w-8 h-8 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0 mt-0.5">
-                            <ShieldCheck className="w-4 h-4 text-blue-400" />
+                        {notifications.length > 0 ? notifications.map((notification) => (
+                          <div key={notification.id} className={`p-4 border-b border-[#1E2533]/50 hover:bg-[#111827] transition-colors cursor-pointer flex gap-3 ${notification.isRead ? 'opacity-70' : ''}`}>
+                            <div className={`w-8 h-8 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${notification.category === 'liquidity' ? 'bg-amber-500/10 border-amber-500/20' : 'bg-emerald-500/10 border-emerald-500/20'}`}>
+                              {notification.category === 'liquidity' ? <CircleAlert className="w-4 h-4 text-amber-400" /> : <ShieldCheck className="w-4 h-4 text-emerald-400" />}
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold text-white mb-0.5">{notification.title}</p>
+                              <p className="text-xs text-gray-400 leading-relaxed">{notification.message}</p>
+                              <p className="text-[10px] text-gray-500 mt-2 font-mono">{notification.createdAtLabel || 'Just now'}</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-sm font-bold text-white mb-0.5">Welcome to Jasiri Capital</p>
-                            <p className="text-xs text-gray-400 leading-relaxed">Your account has been created successfully. Complete KYC to begin trading.</p>
-                            <p className="text-[10px] text-gray-500 mt-2 font-mono">Just now</p>
-                          </div>
-                        </div>
+                        )) : (
+                          <div className="p-4 text-sm text-gray-500">No notifications yet.</div>
+                        )}
                       </div>
-                      <div className="p-3 border-t border-[#1E2533] text-center bg-[#111827] hover:bg-[#1A2533] cursor-pointer transition-colors">
+                      <button onClick={handleMarkAllNotificationsRead} className="w-full p-3 border-t border-[#1E2533] text-center bg-[#111827] hover:bg-[#1A2533] cursor-pointer transition-colors">
                         <span className="text-xs text-[#00d282] font-bold">Mark all as read</span>
-                      </div>
+                      </button>
                     </div>
                   </>
                 )}

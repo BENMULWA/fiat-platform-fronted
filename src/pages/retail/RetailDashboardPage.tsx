@@ -31,7 +31,7 @@ export default function RetailDashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const [anchorCurrency, setAnchorCurrency] = useState<'KES' | 'USD'>('KES');
+  const [anchorCurrency, setAnchorCurrency] = useState<'KES' | 'USDT'>('KES');
   const [balances, setBalances] = useState<Balances>({
     KES: 0, USDA: 0, USDT: 0, USDC: 0, cUSD: 0, USD: 0,
     UGX: 0, TZS: 0, RWF: 0, BIF: 0, XAF: 0, XOF: 0,
@@ -90,7 +90,9 @@ export default function RetailDashboardPage() {
       const rateToUsd = usdBaseRates[key] || 1;
       totalUsd += (balance / rateToUsd);
     });
-    return anchorCurrency === 'KES' ? totalUsd * usdBaseRates.KES : totalUsd;
+    if (anchorCurrency === 'KES') return totalUsd * usdBaseRates.KES;
+    // USDT is treated as a 1:1 USD equivalent in this portfolio estimator.
+    return totalUsd / (usdBaseRates.USDT || 1);
   }, [balances, anchorCurrency]);
 
   const sortedWalletCards = useMemo(() => {
@@ -140,18 +142,23 @@ export default function RetailDashboardPage() {
           <p className="text-gray-400 text-sm mt-1">Here's your portfolio overview</p>
         </div>
 
-        {/* ANCHOR CURRENCY TOGGLE IN PORTFOLIO CARD */}
+        {/* Anchor currency selector in portfolio card */}
         <div className="bg-[#0B0E14] border border-[#1E2533] rounded-2xl p-6 shadow-xl min-w-[300px]">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Total Portfolio Value</p>
-            <div className="flex bg-[#111827] border border-[#1E2533] p-1 rounded-lg">
-              <button onClick={() => setAnchorCurrency('KES')} className={`text-[10px] font-bold px-3 py-1 rounded transition-colors ${anchorCurrency === 'KES' ? 'bg-[#1E2533] text-white' : 'text-gray-500 hover:text-gray-300'}`}>KES</button>
-              <button onClick={() => setAnchorCurrency('USD')} className={`text-[10px] font-bold px-3 py-1 rounded transition-colors ${anchorCurrency === 'USD' ? 'bg-[#1E2533] text-white' : 'text-gray-500 hover:text-gray-300'}`}>USD</button>
-            </div>
+            <select
+              value={anchorCurrency}
+              onChange={(e) => setAnchorCurrency(e.target.value as 'KES' | 'USDT')}
+              className="bg-[#111827] border border-[#1E2533] text-white text-xs font-bold rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+              aria-label="Select portfolio display currency"
+            >
+              <option value="KES">KES Equivalent</option>
+              <option value="USDT">USDT Equivalent</option>
+            </select>
           </div>
           <div className="flex items-end gap-3">
-            <h2 className="text-4xl font-extrabold text-amber-500 font-mono tracking-tight flex items-baseline gap-2">
-              <span className="text-xl text-amber-500/80 mb-1">{anchorCurrency}</span>
+            <h2 className="text-4xl font-extrabold text-green-600 font-mono tracking-tight flex items-baseline gap-2">
+              <span className="text-xl text-green-600  mb-1">{anchorCurrency}</span>
               {totalPortfolioValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </h2>
           </div>

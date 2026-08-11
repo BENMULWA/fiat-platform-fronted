@@ -9,6 +9,7 @@ import Login from './pages/Login'
 import Signup from './pages/Signup'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
+import FAQPage from './pages/FAQPage'
 import AppLayout from './components/Layout/AppLayout'
 
 // --- ADMIN PAGES ---
@@ -73,9 +74,7 @@ function KycProtectedRoute({ children }: { children: React.ReactNode }) {
   if (viewAsAdmin) return <>{children}</>
 
   // If retail user is unverified/pending, force them to KYC page
-  if (user.kycStatus !== 'verified' && location.pathname !== '/kyc') {
-    return <Navigate to="/kyc" replace />
-  }
+  
 
   return <>{children}</>
 }
@@ -102,6 +101,7 @@ function AppRoutes() {
       <Route path="/signup" element={user ? <Navigate to={viewAsAdmin ? "/admin/dashboard" : "/dashboard"} replace /> : <Signup />} />
       <Route path="/forgot-password" element={user ? <Navigate to={viewAsAdmin ? "/admin/dashboard" : "/dashboard"} replace /> : <ForgotPasswordPage />} />
       <Route path="/reset-password/:token" element={user ? <Navigate to={viewAsAdmin ? "/admin/dashboard" : "/dashboard"} replace /> : <ResetPasswordPage />} />
+      <Route path="/faq" element={<FAQPage />} />
 
       {/* PROTECTED LAYOUT */}
       <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>

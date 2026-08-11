@@ -154,6 +154,10 @@ export const getMasterWalletBalance = () => api.get('/api/cardano/master-wallet/
 export const getTreasuryDashboard = () => api.get('/api/treasury/dashboard');
 export const simulateTreasurySwap = (data: any) => api.post('/api/treasury/simulate-swap', data);
 export const resetTreasurySandbox = () => api.post('/api/treasury/reset-sandbox');
+export const getTreasuryRateBook = () => api.get('/api/treasury/rate-book');
+export const updateTreasuryRateBook = (data: any) => api.post('/api/treasury/rate-book', data);
+export const getTreasurySwapQuote = (params: { from_asset: string; to_asset: string; amount?: number }) =>
+  api.get('/api/treasury/swap-quote', { params });
 export const getMarketMakerOpportunities = () => api.get('/api/market-maker/opportunities');
 export const getSpreadConfig = () => api.get('/api/market-maker/spread');
 export const updateSpreadConfig = (data: any) => api.post('/api/market-maker/spread', data);
@@ -213,6 +217,13 @@ export const getAdminTreasury = () => api.get('/api/admin/finance/treasury');
 export const getAdminLiquidity = () => api.get('/api/admin/finance/liquidity');
 
 export const getAdminKycQueue = () => api.get('/api/admin/compliance/kyc');
+export const getAdminKycDetail = (id: string) => api.get(`/api/admin/compliance/kyc/${id}`);
+export const getAdminComplianceMonitoring = () => api.get('/api/admin/compliance/monitoring');
+export const getAdminNotifications = () => api.get('/api/admin/compliance/notifications');
+export const markAllAdminNotificationsRead = () => api.post('/api/admin/compliance/notifications/mark-all-read');
+export const updateAdminRiskAlertStatus = (alertId: string, status: string) => api.post(`/api/admin/compliance/risk-alerts/${alertId}/status`, { status });
+export const getRetailNotifications = () => api.get('/api/retail/notifications');
+export const markAllRetailNotificationsRead = () => api.post('/api/retail/notifications/mark-all-read');
 export const approveAdminKyc = (id: string) =>
   api.post(`/api/admin/compliance/kyc/${id}/approve`);
 export const rejectAdminKyc = (id: string) =>

@@ -4,7 +4,7 @@ import {
     ArrowUpDown, CheckCircle2, XCircle, AlertCircle, Wallet, Zap,
     Clock, ArrowRightLeft, ChevronsUpDown, Shield, Info, TrendingUp, X
 } from 'lucide-react'
-import { executeRamp, getRampHistory } from '../../api/client'
+import { executeRamp, getRampHistory, getTreasurySwapQuote } from '../../api/client'
 
 const ASSETS = [
     { id: 'USDT', name: 'Tether', type: 'crypto' },
@@ -34,30 +34,23 @@ export default function TradePage() {
     const [submitting, setSubmitting] = useState(false)
     const [toastError, setToastError] = useState('')
     const [showSuccessModal, setShowSuccessModal] = useState(false)
-
-    // 🟢 LIVE MARKET SIMULATION (Replace with real API later)
-    const [marketRates, setMarketRates] = useState({ KES: 130.50, USDT: 1, USDC: 1, USDA: 1, cUSD: 1, USD: 1 });
-    const PLATFORM_FEE_PERCENT = 0.5; // 0.5% revenue capture
-
-    const rate = useMemo(() => {
-        if (from === to) return 1;
-        const fromRate = marketRates[from as keyof typeof marketRates] || 1;
-        const toRate = marketRates[to as keyof typeof marketRates] || 1;
-
-        // Calculate pure market rate
-        const pureRate = toRate / fromRate;
-
-        // Apply platform spread (You buy at market + fee, you sell at market - fee)
-        // For simplicity in UI: we show the final executed rate after spread
-        return pureRate * (1 - (PLATFORM_FEE_PERCENT / 100));
-    }, [from, to, marketRates]);
+    const [quote, setQuote] = useState<any>({
+        active: true,
+        referenceSource: 'CBK',
+        executionRate: 1,
+        marketRate: 1,
+        receiveAmount: 0,
+        marketReceiveAmount: 0,
+        feeAmount: 0,
+        spreadBps: 0,
+        updatedAt: null,
+    })
 
     const parsedAmount = parseFloat(amount) || 0;
-    const receiveAmount = parsedAmount * rate;
-
-    // Calculate fee captured for UI transparency
-    const pureMarketRate = from === to ? 1 : (marketRates[to as keyof typeof marketRates] || 1) / (marketRates[from as keyof typeof marketRates] || 1);
-    const feeCaptured = parsedAmount > 0 ? (parsedAmount * pureMarketRate) - receiveAmount : 0;
+    const rate = quote.executionRate || 1;
+    const receiveAmount = parsedAmount > 0 ? Number(quote.receiveAmount || 0) : 0;
+    const pureMarketRate = quote.marketRate || 1;
+    const feeCaptured = Number(quote.feeAmount || 0);
 
     const loadHistory = async () => {
         try {
@@ -74,6 +67,30 @@ export default function TradePage() {
         const interval = setInterval(loadHistory, 10000) // Poll every 10s
         return () => clearInterval(interval)
     }, [])
+
+    useEffect(() => {
+        let cancelled = false
+
+        const fetchQuote = async () => {
+            try {
+                const res = await getTreasurySwapQuote({ from_asset: from, to_asset: to, amount: parsedAmount > 0 ? parsedAmount : 1 })
+                if (!cancelled) {
+                    setQuote(res.data || {})
+                }
+            } catch (error) {
+                if (!cancelled) {
+                    console.error('Failed to fetch treasury quote', error)
+                }
+            }
+        }
+
+        fetchQuote()
+        const timer = setInterval(fetchQuote, 15000)
+        return () => {
+            cancelled = true
+            clearInterval(timer)
+        }
+    }, [from, to, parsedAmount])
 
     const handleSwap = async () => {
         if (!amount || parsedAmount <= 0) return
@@ -130,8 +147,8 @@ export default function TradePage() {
                     </div>
                 </div>
                 <div className="flex items-center gap-3 bg-[#111827] border border-[#1E2533] rounded-full px-5 py-2.5">
-                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                    <span className="text-xs text-gray-500">Markets Open</span>
+                    <div className={`w-2 h-2 rounded-full ${quote.active ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+                    <span className="text-xs text-gray-500">{quote.active ? `Treasury Live · ${quote.referenceSource || 'Desk'}` : 'Markets Paused'}</span>
                 </div>
             </div>
 
@@ -222,12 +239,16 @@ export default function TradePage() {
                                 <span>1 {from} = {pureMarketRate < 1 ? pureMarketRate.toFixed(4) : pureMarketRate.toFixed(2)} {to}</span>
                             </div>
                             <div className="flex justify-between items-center text-purple-400">
-                                <span className="flex items-center gap-1.5"><TrendingUp className="w-3 h-3" /> Spread ({PLATFORM_FEE_PERCENT}%)</span>
+                                <span className="flex items-center gap-1.5"><TrendingUp className="w-3 h-3" /> Spread ({((quote.spreadBps || 0) / 100).toFixed(2)}%)</span>
                                 <span>- {feeCaptured.toFixed(4)} {to}</span>
                             </div>
                             <div className="border-t border-[#1E2533] my-3 pt-3 flex justify-between items-center text-white font-bold">
                                 <span>Your Execution Rate</span>
                                 <span className="text-emerald-400">1 {from} = {rate < 1 ? rate.toFixed(4) : rate.toFixed(2)} {to}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-gray-500 text-xs">
+                                <span>Rate Source</span>
+                                <span>{quote.referenceSource || 'Treasury Desk'} · Refresh {quote.refreshIntervalHours || 3}h</span>
                             </div>
                         </div>
                     </div>

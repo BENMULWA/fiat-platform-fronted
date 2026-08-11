@@ -20,6 +20,12 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (displayName: string, email: string, password: string) => Promise<void>;
+  requestLoginOtp: (email: string, password: string) => Promise<{ otpSessionId: string; expiresInMinutes: number }>;
+  verifyLoginOtp: (otpSessionId: string, otpCode: string) => Promise<void>;
+  resendLoginOtp: (otpSessionId: string) => Promise<{ otpSessionId: string; expiresInMinutes: number; cooldownSeconds: number }>;
+  requestSignupOtp: (displayName: string, email: string, password: string) => Promise<{ otpSessionId: string; expiresInMinutes: number }>;
+  verifySignupOtp: (otpSessionId: string, otpCode: string) => Promise<void>;
+  resendSignupOtp: (otpSessionId: string) => Promise<{ otpSessionId: string; expiresInMinutes: number; cooldownSeconds: number }>;
   logout: () => void;
   updateUser: (data: Partial<User>) => void;
   viewAsAdmin: boolean;
@@ -36,6 +42,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     checkAuth();
   }, []);
+
+  const applyAuthenticatedSession = (accessToken: string, userData: any) => {
+    // Keep token key aligned with API client interceptor.
+    localStorage.setItem('meshex_token', accessToken);
+    localStorage.removeItem('Jasiri_token');
+
+    const mappedUser: User = {
+      id: userData._id,
+      email: userData.email,
+      name: userData.displayName,
+      role: userData.role || 'retail',
+      kycStatus: userData.kycStatus,
+      workspaceId: userData.workspaceId,
+      walletAddress: userData.walletAddress,
+    };
+
+    setUser(mappedUser);
+    localStorage.setItem('meshex_user', JSON.stringify(mappedUser));
+
+    if (mappedUser.role !== 'retail' && mappedUser.role !== 'trader') {
+      setViewAsAdmin(true);
+    } else {
+      setViewAsAdmin(false);
+    }
+  };
 
   const checkAuth = async () => {
     try {
@@ -101,21 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await api.post('/api/auth/signup', { displayName, email, password });
 
       const { access_token, user: userData } = res.data;
-      localStorage.setItem('meshex_token', access_token);
-
-      const mappedUser: User = {
-        id: userData._id,
-        email: userData.email,
-        name: userData.displayName,
-        role: userData.role || 'retail',
-        kycStatus: userData.kycStatus,
-        workspaceId: userData.workspaceId,
-        walletAddress: userData.walletAddress,
-      };
-
-      setUser(mappedUser);
-      localStorage.setItem('meshex_user', JSON.stringify(mappedUser));
-      setViewAsAdmin(false); // New signups are retail by default
+      applyAuthenticatedSession(access_token, userData);
     } catch (err: any) {
       throw err;
     }
@@ -127,27 +144,87 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await api.post('/api/auth/login', { email, password });
 
       const { access_token, user: userData } = res.data;
-      localStorage.setItem('meshex_token', access_token);
+      applyAuthenticatedSession(access_token, userData);
+    } catch (err: any) {
+      throw err;
+    }
+  };
 
-      const mappedUser: User = {
-        id: userData._id,
-        email: userData.email,
-        name: userData.displayName,
-        role: userData.role || 'retail',
-        kycStatus: userData.kycStatus,
-        workspaceId: userData.workspaceId,
-        walletAddress: userData.walletAddress,
+  const requestSignupOtp = async (displayName: string, email: string, password: string) => {
+    try {
+      const res = await api.post('/api/auth/signup/request-otp', { displayName, email, password });
+      return {
+        otpSessionId: res.data.otp_session_id,
+        expiresInMinutes: res.data.expires_in_minutes,
       };
+    } catch (err: any) {
+      throw err;
+    }
+  };
 
-      setUser(mappedUser);
-      localStorage.setItem('meshex_user', JSON.stringify(mappedUser));
+  const verifySignupOtp = async (otpSessionId: string, otpCode: string) => {
+    try {
+      const res = await api.post('/api/auth/signup/verify-otp', {
+        otp_session_id: otpSessionId,
+        otp_code: otpCode,
+      });
+      const { access_token, user: userData } = res.data;
+      applyAuthenticatedSession(access_token, userData);
+    } catch (err: any) {
+      throw err;
+    }
+  };
 
-      // Auto-switch sidebar if they are an internal staff member
-      if (mappedUser.role !== 'retail' && mappedUser.role !== 'trader') {
-        setViewAsAdmin(true);
-      } else {
-        setViewAsAdmin(false);
-      }
+  const resendSignupOtp = async (otpSessionId: string) => {
+    try {
+      const res = await api.post('/api/auth/signup/resend-otp', {
+        otp_session_id: otpSessionId,
+      });
+      return {
+        otpSessionId: res.data.otp_session_id,
+        expiresInMinutes: res.data.expires_in_minutes,
+        cooldownSeconds: res.data.cooldown_seconds ?? 30,
+      };
+    } catch (err: any) {
+      throw err;
+    }
+  };
+
+  const requestLoginOtp = async (email: string, password: string) => {
+    try {
+      const res = await api.post('/api/auth/login/request-otp', { email, password });
+      return {
+        otpSessionId: res.data.otp_session_id,
+        expiresInMinutes: res.data.expires_in_minutes,
+      };
+    } catch (err: any) {
+      throw err;
+    }
+  };
+
+  const verifyLoginOtp = async (otpSessionId: string, otpCode: string) => {
+    try {
+      const res = await api.post('/api/auth/login/verify-otp', {
+        otp_session_id: otpSessionId,
+        otp_code: otpCode,
+      });
+      const { access_token, user: userData } = res.data;
+      applyAuthenticatedSession(access_token, userData);
+    } catch (err: any) {
+      throw err;
+    }
+  };
+
+  const resendLoginOtp = async (otpSessionId: string) => {
+    try {
+      const res = await api.post('/api/auth/login/resend-otp', {
+        otp_session_id: otpSessionId,
+      });
+      return {
+        otpSessionId: res.data.otp_session_id,
+        expiresInMinutes: res.data.expires_in_minutes,
+        cooldownSeconds: res.data.cooldown_seconds ?? 30,
+      };
     } catch (err: any) {
       throw err;
     }
@@ -155,6 +232,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     localStorage.removeItem('meshex_token');
+    localStorage.removeItem('Jasiri_token');
     localStorage.removeItem('meshex_user');
     setUser(null);
     setViewAsAdmin(false);
@@ -180,7 +258,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, signup, logout, updateUser, viewAsAdmin, toggleViewAsAdmin }}>
+    <AuthContext.Provider value={{
+      user,
+      isLoading,
+      login,
+      signup,
+      requestLoginOtp,
+      verifyLoginOtp,
+      resendLoginOtp,
+      requestSignupOtp,
+      verifySignupOtp,
+      resendSignupOtp,
+      logout,
+      updateUser,
+      viewAsAdmin,
+      toggleViewAsAdmin,
+    }}>
       {children}
     </AuthContext.Provider>
   );

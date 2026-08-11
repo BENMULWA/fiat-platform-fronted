@@ -31,7 +31,7 @@ const EXPLORER_URLS: Record<string, { address: string, tx: string, name: string 
 };
 
 const CHANNELS = [
-  { id: 'Mobile Money', name: 'Mobile Money', subtitle: 'M-Pesa', description: 'Direct fiat deposit from your phone', icon: Smartphone, active: true, color: 'text-emerald-400' },
+  { id: 'Mobile Money', name: 'Mobile Money', subtitle: 'Airtel Money', description: 'Direct fiat deposit from your phone', icon: Smartphone, active: true, color: 'text-emerald-400' },
   { id: 'Crypto Wallet', name: 'Crypto Wallet', subtitle: 'Web3', description: 'Deposit stablecoins via blockchain', icon: Hexagon, active: true, color: 'text-emerald-400' },
   { id: 'Till/Paybill', name: 'Till / Paybill', subtitle: 'Business', description: 'Business collection channels', icon: Store, active: false, color: 'text-gray-500' },
   { id: 'Bulk Payments', name: 'Bulk Payments', subtitle: 'Enterprise', description: 'Mass deposit integrations', icon: Users, active: false, color: 'text-gray-500' },
@@ -264,12 +264,31 @@ export default function DepositPage() {
     e.preventDefault();
     setToastError(''); setSuccessMsg(''); setLoading(true);
     try {
-      if (!counterparty) throw new Error("M-Pesa Phone Number required.");
-      await executeRamp({ direction: 'on', channel, from_asset: 'KES', to_asset: 'KES', amount: parseFloat(amount), rate: 1, fee: 0, counterparty });
-      setSuccessMsg("STK Push initiated! Check your phone to enter your PIN.");
+      if (!counterparty) throw new Error("Mobile Money phone number is required.");
+      if (!amount || Number(amount) <= 0) throw new Error("Please enter a valid deposit amount.");
+
+      const normalized = counterparty.replace(/\s|-/g, '').replace(/^\+/, '');
+      let local = normalized;
+      if (local.startsWith('254')) local = local.slice(3);
+      if (local.startsWith('0')) local = local.slice(1);
+
+      const isAirtelPrefix = local.startsWith('73') || local.startsWith('75') || local.startsWith('78') || local.startsWith('10');
+      if (local.length !== 9 || !isAirtelPrefix) {
+        throw new Error("Use an Airtel Money number only. Format: 07XXXXXXXX or 2547XXXXXXXX.");
+      }
+
+      const res = await executeRamp({ direction: 'on', channel, from_asset: 'KES', to_asset: 'KES', amount: parseFloat(amount), rate: 1, fee: 0, counterparty });
+      const payload = res?.data || {};
+      const recipient = payload?.recipient ? ` to ${payload.recipient}` : '';
+      const providerRef = payload?.providerReference ? ` Ref: ${payload.providerReference}.` : '';
+      const ackId = payload?.gatewayAckId ? ` Ack: ${payload.gatewayAckId}.` : '';
+      const nextStep = payload?.nextStep ? ` ${payload.nextStep}` : '';
+      setSuccessMsg(`STK request sent${recipient}.${providerRef}${ackId}${nextStep}`.replace(/\.\./g, '.'));
       setAmount(''); setCounterparty('');
     } catch (err: any) {
-      setToastError(err.message || err.response?.data?.detail || "Transaction failed.");
+      const detail = err?.response?.data?.detail;
+      const backendText = typeof detail === 'string' ? detail : detail ? JSON.stringify(detail) : '';
+      setToastError(backendText || err.message || "Transaction failed.");
     } finally {
       setLoading(false);
     }
@@ -422,15 +441,16 @@ export default function DepositPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">M-Pesa Phone Number</label>
-                <input type="text" value={counterparty} onChange={e => setCounterparty(e.target.value)} placeholder="2547XXXXXXXX" className="w-full bg-[#111827] border border-[#1E2533] focus:border-emerald-500/50 outline-none rounded-xl py-3.5 px-5 text-sm text-white transition-all font-mono placeholder-gray-600" required />
+                <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">Airtel Money Phone Number</label>
+                <input type="text" value={counterparty} onChange={e => setCounterparty(e.target.value)} placeholder="07XXXXXXXX" className="w-full bg-[#111827] border border-[#1E2533] focus:border-emerald-500/50 outline-none rounded-xl py-3.5 px-5 text-sm text-white transition-all font-mono placeholder-gray-600" required />
               </div>
               <button type="submit" disabled={loading || !amount || !counterparty} className="w-full py-4 px-4 rounded-xl font-extrabold text-[15px] tracking-wide transition-all duration-300 flex items-center justify-center gap-2.5 bg-[#00d282] hover:bg-[#00e68e] text-black shadow-[0_0_20px_rgba(0,210,130,0.2)] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed">
                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
                 Request STK Push
               </button>
             </form>
-          ) : (
+          ) 
+          : (
             <form onSubmit={handleStartListening} className="space-y-6">
               <div className="space-y-6 pb-6 border-b border-[#1E2533]/50">
                 <div>
@@ -572,11 +592,11 @@ export default function DepositPage() {
           {channel === 'Mobile Money' && (
             <div className="bg-[#111827] border border-[#1E2533] rounded-2xl overflow-hidden">
               <div className="px-5 py-3 border-b border-[#1E2533] bg-[#0B0E14]/50">
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2"><Shield className="w-3.5 h-3.5 text-emerald-500" /> M-Pesa Procedure</h3>
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2"><Shield className="w-3.5 h-3.5 text-emerald-500" /> Airtel Money Procedure</h3>
               </div>
               <div className="p-5">
                 <ul className="space-y-3">
-                  <li className="flex items-start gap-2.5 text-xs text-gray-400"><CheckCircle2 className="w-4 h-4 text-emerald-500/50 shrink-0 mt-0.5" /><span>Ensure your Safaricom line is active and nearby.</span></li>
+                  <li className="flex items-start gap-2.5 text-xs text-gray-400"><CheckCircle2 className="w-4 h-4 text-emerald-500/50 shrink-0 mt-0.5" /><span>Use an active Airtel Money line on this phone.</span></li>
                   <li className="flex items-start gap-2.5 text-xs text-gray-400"><CheckCircle2 className="w-4 h-4 text-emerald-500/50 shrink-0 mt-0.5" /><span>Deposits reflect within <strong className="text-white">seconds</strong> of entering your PIN.</span></li>
                   <li className="flex items-start gap-2.5 text-xs text-gray-400"><AlertCircle className="w-4 h-4 text-amber-500/50 shrink-0 mt-0.5" /><span>If STK Push fails, ensure you aren't blocking promotional messages.</span></li>
                 </ul>
