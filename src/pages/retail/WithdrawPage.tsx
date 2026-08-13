@@ -158,8 +158,13 @@ export default function WithdrawPage() {
                     setSuccessMsg(`${cryptoAsset} withdrawal to ${selectedNetworkDetails?.name} processing!`);
                 }
             } else {
-                await executeRamp({ direction: 'off', channel, from_asset: 'KES', to_asset: 'KES', amount: parsedAmount, rate: 1, fee: currentFee, counterparty });
-                setSuccessMsg('Payout successfully dispatched to your M-Pesa account.');
+                await executeRamp({ 
+                    direction: 'off', 
+                    channel, 
+                    from_asset: activeAsset,
+                    to_asset: 'KES', 
+                    amount: parsedAmount, rate: 1, fee: currentFee, counterparty });
+                setSuccessMsg('Payout successfully dispatched to your Airtel Money account.');
             }
             setAmount(''); setCounterparty(''); setMemo('');
         } catch (err: any) {

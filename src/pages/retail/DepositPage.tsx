@@ -1,11 +1,11 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import {
-  ArrowDown, CheckCircle2, AlertCircle, Copy,
+  ArrowDown, CheckCircle2, AlertCircle, Copy, QrCode,
   Smartphone, Hexagon, Building2, CreditCard,
   Lock, Loader2, AlertTriangle, Store, Users,
   ArrowLeft, Info, ExternalLink, ShieldCheck,
-  Clock, ChevronRight, BadgeCheck, Shield, Fingerprint,
+  Clock, ChevronRight, BadgeCheck, Shield, Wallet,
   Radio, Search as SearchIcon, Eye, ChevronDown
 } from 'lucide-react';
 import {
@@ -19,6 +19,7 @@ import {
   checkDepositStatus
 } from '../../api/client';
 import ExplorerModal from '../../components/ExplorerModal';
+import QRCode from 'react-qr-code';
 
 const EXPLORER_URLS: Record<string, { address: string, tx: string, name: string }> = {
   stellar: { address: 'https://stellar.expert/explorer/public/account/', tx: 'https://stellar.expert/explorer/public/tx/', name: 'Stellar.expert' },
@@ -38,6 +39,15 @@ const CHANNELS = [
   { id: 'Bank Transfer', name: 'Bank Transfer', subtitle: 'EFT/RTGS', description: 'Wire transfer from local banks', icon: Building2, active: false, color: 'text-gray-500' },
   { id: 'Card', name: 'Debit / Credit Card', subtitle: 'Visa/MC', description: 'Fund via Visa/Mastercard', icon: CreditCard, active: false, color: 'text-gray-500' }
 ];
+
+const ASSET_CONTRACTS: Record<string, Record<string, string>> = {
+  USDC: {
+    celo: '0xcebA9300f2b9487105111920b83211e8cB9a246c'
+  },
+  cUSD: {
+    celo: '0x765DE816845861e75A25fCA122bb6898B8B1282a'
+  }
+};
 
 const ASSET_NETWORKS: Record<string, any[]> = {
   USDT: [
@@ -95,6 +105,7 @@ export default function DepositPage() {
     ? ASSET_NETWORKS[cryptoAsset]?.find(n => n.id === cryptoNetwork)
     : null;
   const currentExplorer = EXPLORER_URLS[cryptoNetwork];
+  const [paymentUri, setPaymentUri] = useState('');
 
   useEffect(() => {
     if (successMsg) {
@@ -204,27 +215,47 @@ export default function DepositPage() {
     setStep('form');
   };
 
-  const handleStartListening = async (e: React.FormEvent) => {
+  const handleInitiateCryptoDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!amount || parseFloat(amount) <= 0) return;
+    const numAmount = parseFloat(amount);
+    if (!numAmount || numAmount <= 0) return;
+
     setLoading(true); setToastError('');
 
     try {
+      let depositResponse;
       if (cryptoNetwork === 'celo') {
-        const res = await initiateValoraDeposit({ asset: cryptoAsset, amount: parseFloat(amount) });
-        setDepositId(res.data.deposit_id);
-        setDepositPhase('listening');
+        depositResponse = await initiateValoraDeposit({ asset: cryptoAsset, amount: numAmount });
       } else if (cryptoNetwork === 'stellar') {
-        const res = await initiateCryptoDeposit({ asset: cryptoAsset, amount: parseFloat(amount) });
-        setDepositId(res.data.deposit_id);
-        if (res.data.memo) setDynamicMemo(res.data.memo); // Update UI with official Memo
-        setDepositPhase('listening');
+        depositResponse = await initiateCryptoDeposit({ asset: cryptoAsset, amount: numAmount });
       } else {
         // Mock initiation for non-Celo/Stellar networks
         await new Promise(res => setTimeout(res, 500));
-        setDepositId(`dep_${Date.now()}`);
-        setDepositPhase('listening');
+        depositResponse = { data: { deposit_id: `dep_${Date.now()}` } };
       }
+
+      const newDepositId = depositResponse.data.deposit_id;
+      setDepositId(newDepositId);
+      if (depositResponse.data.memo) setDynamicMemo(depositResponse.data.memo);
+
+      // --- DEEP LINK / QR CODE GENERATION ---
+      let uri = '';
+      const address = dynamicAddress;
+      const memo = depositResponse.data.memo || dynamicMemo;
+
+      if (cryptoNetwork === 'celo') {
+        const tokenAddress = ASSET_CONTRACTS[cryptoAsset]?.[cryptoNetwork];
+        uri = `celo://wallet/pay?address=${address}&amount=${numAmount}&tokenAddress=${tokenAddress}&displayName=Jasiri+Capital&comment=Deposit+${newDepositId}`;
+      } else if (cryptoNetwork === 'stellar') {
+        uri = `web+stellar:pay?destination=${address}&amount=${numAmount}&memo=${memo}&memo_type=text`;
+      } else if (cryptoNetwork === 'cardano') {
+        uri = `web+cardano:${address}?amount=${numAmount * 1000000}`; // Assuming 6 decimal places for USDA
+      } else {
+        uri = `${cryptoNetwork}:${address}?amount=${numAmount}`; // Generic fallback
+      }
+      setPaymentUri(uri);
+      setDepositPhase('listening');
+
     } catch (err: any) {
       setToastError(err.response?.data?.detail || err.message || "Failed to start deposit listener.");
     } finally {
@@ -429,7 +460,7 @@ export default function DepositPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
 
         {/* LEFT COLUMN */}
-        <div className="lg:col-span-7 bg-[#0b0f17] border border-[#1E2533] rounded-3xl p-6 md:p-8 shadow-xl relative overflow-hidden">
+        <div className="lg:col-span-7 bg-[#0b0f17] border border-[#1E2533] rounded-3xl p-6 md:p-8 shadow-xl relative overflow-hidden h-fit">
 
           {channel === 'Mobile Money' ? (
             <form onSubmit={handleMpesaDeposit} className="space-y-6">
@@ -451,7 +482,7 @@ export default function DepositPage() {
             </form>
           ) 
           : (
-            <form onSubmit={handleStartListening} className="space-y-6">
+            <form onSubmit={handleInitiateCryptoDeposit} className="space-y-6">
               <div className="space-y-6 pb-6 border-b border-[#1E2533]/50">
                 <div>
                   <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-3">
@@ -492,13 +523,13 @@ export default function DepositPage() {
                 </div>
               </div>
 
-              <button type="submit" disabled={loading || !amount || depositPhase === 'listening' || depositPhase === 'detected' || depositPhase === 'confirming'} className="w-full py-4 px-4 rounded-xl font-extrabold text-[15px] tracking-wide transition-all duration-300 flex items-center justify-center gap-2.5 bg-[#0b6e4f] hover:bg-[#0e8a64] text-white shadow-[0_0_20px_rgba(11,110,79,0.2)] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed">
-                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : depositPhase === 'credited' ? <CheckCircle2 className="w-5 h-5" /> : <Radio className="w-5 h-5" />}
-                {depositPhase === 'credited' ? 'Deposit Complete' : 'Start Auto-Detection'}
+              <button type="submit" disabled={loading || !amount || depositPhase !== 'idle'} className="w-full py-4 px-4 rounded-xl font-extrabold text-[15px] tracking-wide transition-all duration-300 flex items-center justify-center gap-2.5 bg-[#0b6e4f] hover:bg-[#0e8a64] text-white shadow-[0_0_20px_rgba(11,110,79,0.2)] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed">
+                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Radio className="w-5 h-5" />}
+                {depositPhase !== 'idle' ? 'Listening for Deposit...' : 'Get Deposit Instructions'}
               </button>
 
               {!['listening', 'detected', 'confirming', 'credited'].includes(depositPhase) && (
-                <div className="border-t border-[#1E2533] pt-4">
+                <div className="border-t border-[#1E2533]/50 pt-4">
                   <button type="button" onClick={() => setShowManualFallback(!showManualFallback)} className="w-full flex items-center justify-between text-xs text-gray-500 hover:text-gray-300 transition-colors py-2">
                     <span>Having issues? Verify with Tx Hash manually</span>
                     <ChevronDown className={`w-4 h-4 transition-transform ${showManualFallback ? 'rotate-180' : ''}`} />
@@ -532,6 +563,40 @@ export default function DepositPage() {
               </div>
 
               <div className="p-5 space-y-5">
+                {depositPhase === 'listening' && paymentUri && (
+                  <div className="p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-xl animate-in fade-in duration-300 space-y-4">
+                    <p className="text-sm text-emerald-400 font-bold flex items-center gap-2"><Wallet className="w-4 h-4" /> Pay From Your Wallet</p>
+                    <p className="text-xs text-gray-400 leading-relaxed">Use the button to open your wallet app, or scan the QR code. The system is now listening for your deposit.</p>
+                    <div className="flex gap-3">
+                      <a
+                        href={paymentUri}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 py-3 px-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-black shadow-lg shadow-emerald-500/10"
+                      >
+                        <Wallet className="w-4 h-4" /> Open Wallet
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => setShowExplorer(true)}
+                        className="p-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 border border-emerald-500/20 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20"
+                      >
+                        <QrCode className="w-4 h-4" />
+                      </button>
+                    </div>
+                    {/* The QR code will now be inside the ExplorerModal for a cleaner UI */}
+                    <ExplorerModal
+                      isOpen={showExplorer}
+                      onClose={() => setShowExplorer(false)}
+                      txHash={detectedTxHash}
+                      network={cryptoNetwork}
+                      paymentUri={paymentUri}
+                      depositAddress={dynamicAddress}
+                      depositMemo={dynamicMemo}
+                    />
+                  </div>
+                )}
+
                 {cryptoNetwork === 'celo' && (
                   <div className="p-4 bg-blue-500/5 border border-blue-500/20 rounded-xl">
                     <p className="text-sm text-blue-400 font-bold mb-1 flex items-center gap-2"><Smartphone className="w-4 h-4" /> Best Experience: Use Valora</p>
@@ -540,7 +605,7 @@ export default function DepositPage() {
                   </div>
                 )}
 
-                {cryptoNetwork === 'stellar' && (
+                {cryptoNetwork === 'stellar' && depositPhase !== 'listening' && (
                   <div className="p-4 bg-[#1a1508] border border-amber-500/20 rounded-xl">
                     <p className="text-sm text-amber-500 font-bold mb-1 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Memo ID Required</p>
                     <p className="text-xs text-gray-400 leading-relaxed mb-3">You MUST include this Memo in your wallet's send screen.</p>
@@ -559,7 +624,7 @@ export default function DepositPage() {
                   </div>
                 )}
 
-                <div className="space-y-3">
+                {depositPhase !== 'listening' && <div className="space-y-3">
                   <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">Send {activeAsset} to this address:</p>
                   <div className="flex gap-2">
                     {isFetchingAddress ? (
@@ -573,7 +638,7 @@ export default function DepositPage() {
                       </>
                     )}
                   </div>
-                </div>
+                </div>}
 
                 <div className="p-3 bg-red-500/5 border border-red-500/10 rounded-lg">
                   <p className="text-xs text-red-400/80 flex items-start gap-2">
@@ -608,12 +673,14 @@ export default function DepositPage() {
       </div>
 
       {/* RENDER THE BLOCKCHAIN EXPLORER MODAL */}
-      <ExplorerModal
+      {/* This is now conditionally rendered inside the crypto wallet panel when a payment URI is generated */}
+      {/* Keeping a fallback here in case it's needed elsewhere */}
+      {/* <ExplorerModal
         isOpen={showExplorer}
         onClose={() => setShowExplorer(false)}
         txHash={detectedTxHash}
         network={cryptoNetwork}
-      />
+      /> */}
 
     </div>
   );

@@ -65,6 +65,13 @@ export const executeRamp = (data: any) => api.post('/api/ramp/execute', data);
 export const executeInternalSwap = (data: any) => api.post('/api/ramp/swap', data);
 export const getRampHistory = () => api.get('/api/ramp/history');
 
+// Convenience wrapper for withdrawals (off-ramps)
+export const executeWithdrawal = (data: any) => api.post('/api/ramp/execute', data);
+
+// Fetch the latest STK dispatch matching phone or reference
+export const getLatestStkDispatch = (params: { phone?: string; reference?: string } = {}) =>
+  api.get('/api/ramp/stk/latest', { params });
+
 // 🟢 ALREADY EXISTS: Treasury fetcher
 export const getDepositDetails = (asset: string, network: string) =>
   api.get('/api/treasury/deposit-info', { params: { asset, network } });

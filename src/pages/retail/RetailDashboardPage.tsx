@@ -142,14 +142,14 @@ export default function RetailDashboardPage() {
           <p className="text-gray-400 text-sm mt-1">Here's your portfolio overview</p>
         </div>
 
-        {/* Anchor currency selector in portfolio card */}
+        {/* Anchor currency selector in portfolio card showing the usd equivalent */}
         <div className="bg-[#0B0E14] border border-[#1E2533] rounded-2xl p-6 shadow-xl min-w-[300px]">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-4 justify-between mb-2">
             <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Total Portfolio Value</p>
             <select
               value={anchorCurrency}
               onChange={(e) => setAnchorCurrency(e.target.value as 'KES' | 'USDT')}
-              className="bg-[#111827] border border-[#1E2533] text-white text-xs font-bold rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+              className="bg-[#111827] border border-[#1E2533] text-white text-xs font-bold rounded-lg px-2 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
               aria-label="Select portfolio display currency"
             >
               <option value="KES">KES Equivalent</option>
