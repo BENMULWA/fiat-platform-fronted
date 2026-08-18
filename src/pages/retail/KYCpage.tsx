@@ -146,7 +146,7 @@ export default function KYCpage() {
     }
   };
 
-  // 🟢 IF VERIFIED: SHOW SUCCESS SCREEN ONLY (NO FORM)
+  // IF VERIFIED: SHOW SUCCESS SCREEN ONLY (NO FORM)
   // This is now handled by the immediate redirect effect. We can return null
   // to prevent any flashing of content before the redirect happens.
   if (status === 'verified') {
