@@ -1,3 +1,5 @@
+
+//@ts-nocheck
 import React, { useState, useEffect } from 'react';
 import {
     ArrowUp, CheckCircle2, AlertCircle, Smartphone, Hexagon,

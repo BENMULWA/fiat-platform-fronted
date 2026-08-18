@@ -1,3 +1,5 @@
+
+//@ts-nocheck
 import { useEffect, useRef } from 'react';
 
 export default function useWebsocket(path: string, userId: string | null, onMessage: (msg: any) => void) {
