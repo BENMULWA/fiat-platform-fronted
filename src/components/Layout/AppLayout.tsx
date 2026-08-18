@@ -56,6 +56,13 @@ export default function AppLayout() {
     return () => window.clearInterval(timer)
   }, [isAdmin])
 
+  // Enforce KYC enrollment for new users
+  useEffect(() => {
+    if (user && user.kycStatus !== 'verified' && location.pathname !== '/kyc') {
+      navigate('/kyc');
+    }
+  }, [user, location.pathname, navigate]);
+
   const closeAllMenus = () => {
     setShowUserMenu(false)
     setShowSettingsMenu(false)
