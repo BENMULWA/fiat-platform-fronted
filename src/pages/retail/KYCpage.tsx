@@ -43,11 +43,12 @@ export default function KYCpage() {
     fetchStatus();
   }, []);
 
-  // --- IMMEDIATE REDIRECT FOR VERIFIED USERS ---
+  // --- PERMANENT REDIRECT FOR VERIFIED USERS ---
   useEffect(() => {
     if (status === 'verified') {
-      // A verified user should not be on this page. Redirect them immediately.
-      navigate('/dashboard', { replace: true });
+      // If they are verified, auto-redirect them away from this page after 3 seconds!
+      const timer = setTimeout(() => navigate('/dashboard'), 3000);
+      return () => clearTimeout(timer);
     }
   }, [status, navigate]);
 
@@ -146,9 +147,7 @@ export default function KYCpage() {
     }
   };
 
-  // IF VERIFIED: SHOW SUCCESS SCREEN ONLY (NO FORM)
-  // This is now handled by the immediate redirect effect. We can return null
-  // to prevent any flashing of content before the redirect happens.
+  // 🟢 IF VERIFIED: SHOW SUCCESS SCREEN ONLY (NO FORM)
   if (status === 'verified') {
     return (
       <div className="max-w-2xl mx-auto p-4 md:p-6 mt-10 animate-in fade-in zoom-in duration-500">
@@ -166,7 +165,6 @@ export default function KYCpage() {
         </div>
       </div>
     );
-    return null;
   }
 
   if (status === 'pending') {
