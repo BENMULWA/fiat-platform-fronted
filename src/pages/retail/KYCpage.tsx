@@ -43,12 +43,11 @@ export default function KYCpage() {
     fetchStatus();
   }, []);
 
-  // --- PERMANENT REDIRECT FOR VERIFIED USERS ---
+  // --- IMMEDIATE REDIRECT FOR VERIFIED USERS ---
   useEffect(() => {
     if (status === 'verified') {
-      // If they are verified, auto-redirect them away from this page after 3 seconds!
-      const timer = setTimeout(() => navigate('/dashboard'), 3000);
-      return () => clearTimeout(timer);
+      // A verified user should not be on this page. Redirect them immediately.
+      navigate('/dashboard', { replace: true });
     }
   }, [status, navigate]);
 
@@ -147,24 +146,10 @@ export default function KYCpage() {
     }
   };
 
-  // 🟢 IF VERIFIED: SHOW SUCCESS SCREEN ONLY (NO FORM)
+  // This is now handled by the immediate redirect effect. We can return null
+  // to prevent any flashing of content before the redirect happens.
   if (status === 'verified') {
-    return (
-      <div className="max-w-2xl mx-auto p-4 md:p-6 mt-10 animate-in fade-in zoom-in duration-500">
-        <div className="bg-[#0B0E14] border border-emerald-500/30 rounded-2xl p-10 shadow-2xl shadow-emerald-900/10 text-center flex flex-col items-center">
-          <div className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center mb-6">
-            <CheckCircle2 className="w-10 h-10 text-emerald-400" />
-          </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight mb-3">Identity Verified</h1>
-          <p className="text-gray-400 mb-8 max-w-sm mx-auto">
-            Your identity has been successfully linked to your account. You now have full access to deposits, withdrawals, and trading.
-          </p>
-          <button onClick={() => navigate('/dashboard')} className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold px-8 py-3.5 rounded-xl transition-all shadow-lg shadow-emerald-500/20 active:scale-95">
-            Enter Dashboard <ArrowRight className="w-5 h-5" />
-          </button>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   if (status === 'pending') {
