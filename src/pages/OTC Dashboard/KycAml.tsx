@@ -123,7 +123,8 @@ export default function KycRiskPage() {
         const styles: Record<string, string> = { low: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', medium: 'bg-amber-500/10 text-amber-400 border-amber-500/20', high: 'bg-red-500/10 text-red-400 border-red-500/20' };
         return <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider border ${styles[level] || styles.low}`}>{level} risk</span>;
     };
-grid
+
+    
     return (
         <div className="max-w-[1600px] mx-auto p-4 md:p-6 text-gray-200 animate-in fade-in">
             {/* Header */}

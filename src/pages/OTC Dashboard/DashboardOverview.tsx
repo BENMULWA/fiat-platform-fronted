@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { RefreshCw, AlertCircle, TrendingUp, Activity, DollarSign, Users, ArrowRightLeft, Calendar, ChevronDown } from 'lucide-react';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { api } from '../../api/client';
+import CompanyRevenue from './CompanyRevenue';
 
 interface OperationsKPIs {
     volumeToday: number; volumeTrend: number; revenueToday: number; revenueTrend: number;
@@ -16,6 +17,7 @@ export default function DashboardOverview() {
     const [recentActions, setRecentActions] = useState<any[]>([]);
     const [riskAlerts, setRiskAlerts] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [openCompanyRevenue, setOpenCompanyRevenue] = useState(false);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
     // 🟢 Timeframe State for Dynamic Filtering
@@ -67,38 +69,35 @@ export default function DashboardOverview() {
 
     const StatCard = ({ title, value, icon: Icon, trend, color, subtext }: any) => {
         const styles: Record<string, any> = {
-            blue: { icon: 'text-blue-400', bg: 'from-blue-500/20 to-blue-500/5 border-blue-500/20', glow: 'bg-blue-500' },
-            emerald: { icon: 'text-emerald-400', bg: 'from-emerald-500/20 to-emerald-500/5 border-emerald-500/20', glow: 'bg-emerald-500' },
-            amber: { icon: 'text-amber-400', bg: 'from-amber-500/20 to-amber-500/5 border-amber-500/20', glow: 'bg-amber-500' },
-            purple: { icon: 'text-purple-400', bg: 'from-purple-500/20 to-purple-500/5 border-purple-500/20', glow: 'bg-purple-500' }
+            blue: { icon: 'text-blue-300', accent: 'from-blue-600 to-indigo-600', stripe: 'bg-gradient-to-br from-blue-600 to-indigo-600' },
+            emerald: { icon: 'text-emerald-300', accent: 'from-emerald-500 to-teal-400', stripe: 'bg-gradient-to-br from-emerald-500 to-teal-400' },
+            amber: { icon: 'text-amber-300', accent: 'from-amber-500 to-orange-400', stripe: 'bg-gradient-to-br from-amber-500 to-orange-400' },
+            purple: { icon: 'text-purple-300', accent: 'from-purple-600 to-pink-500', stripe: 'bg-gradient-to-br from-purple-600 to-pink-500' }
         };
         const theme = styles[color] || styles.blue;
 
         return (
-            <div className="relative overflow-hidden bg-[#111827] border border-[#1e2533] rounded-2xl p-5 hover:border-gray-500/30 transition-all shadow-lg flex flex-col justify-between group">
-                <div className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl opacity-10 ${theme.glow} group-hover:opacity-20 transition-opacity`} />
+            <div className="relative overflow-hidden rounded-3xl p-5 transition-all bg-gradient-to-b from-[#081025]/60 via-transparent to-[#071019]/40 border border-[rgba(255,255,255,0.03)] shadow-2xl backdrop-blur-sm">
+                <div className={`absolute -left-8 -top-10 w-48 h-48 rounded-full opacity-20 blur-3xl ${theme.stripe}`} />
 
-                <div>
-                    <div className="flex items-start justify-between mb-4 relative z-10">
-                        <div className={`p-3 rounded-xl bg-gradient-to-br ${theme.bg} border shadow-inner`}>
-                            <Icon className={`w-5 h-5 ${theme.icon}`} />
-                        </div>
+                <div className="flex items-start justify-between mb-4 z-10 relative">
+                    <div className={`p-3 rounded-xl border border-[rgba(255,255,255,0.04)] bg-gradient-to-br ${theme.accent} bg-opacity-10 shadow-inner flex items-center justify-center`}> 
+                        <Icon className={`w-5 h-5 ${theme.icon}`} />
                     </div>
-                    <div className="relative z-10">
-                        <h3 className="text-3xl font-extrabold text-white font-mono tracking-tight">{value}</h3>
-                        <p className="text-xs text-gray-500 mt-1 font-medium">{title}</p>
-                    </div>
+                    <div className="text-xs text-slate-400 uppercase font-bold tracking-wide">{title}</div>
                 </div>
 
-                <div className="mt-5 relative z-10">
+                <div className="z-10 relative">
+                    <h3 className="text-3xl font-extrabold text-white font-mono tracking-tight">{value}</h3>
+                </div>
+
+                <div className="mt-4 z-10">
                     {trend !== undefined ? (
-                        <p className={`text-[11px] font-bold flex items-center gap-1 ${trend >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {trend >= 0 ? '↑' : '↓'} {Math.abs(trend)}% <span className="text-gray-500 font-medium">{subtext}</span>
+                        <p className={`text-[12px] font-bold flex items-center gap-2 ${trend >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                            <span className={`inline-block w-2 h-2 rounded-full ${trend >= 0 ? 'bg-emerald-400' : 'bg-rose-400'}`} /> {trend >= 0 ? `+${trend}%` : `${trend}%`} <span className="text-gray-400 font-medium ml-2">{subtext} • {timeframe === 1 ? '24h' : `${timeframe}d`}</span>
                         </p>
                     ) : (
-                        <p className={`text-[11px] font-bold flex items-center gap-1.5 ${color === 'amber' && value > 0 ? 'text-amber-500' : 'text-gray-500 font-medium'}`}>
-                            {color === 'amber' && value > 0 ? <><span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> {subtext}</> : subtext}
-                        </p>
+                        <p className="text-[11px] text-gray-500 font-medium">{subtext}</p>
                     )}
                 </div>
             </div>
@@ -106,6 +105,7 @@ export default function DashboardOverview() {
     };
 
     return (
+        <>
         <div className="max-w-[1600px] mx-auto p-4 md:p-6 animate-in fade-in">
             <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
                 <div>
@@ -135,6 +135,7 @@ export default function DashboardOverview() {
                     <button onClick={fetchDashboardData} className="p-2.5 bg-[#111827] border border-[#1e2533] rounded-xl text-gray-400 hover:text-white hover:border-gray-500 transition-all shadow-sm">
                         <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
                     </button>
+                    <button onClick={() => setOpenCompanyRevenue(true)} className="ml-2 px-3 py-2 bg-emerald-600 text-black rounded-xl font-semibold">Company Revenue</button>
                 </div>
             </div>
 
@@ -161,7 +162,7 @@ export default function DashboardOverview() {
                                 <Activity className="w-4 h-4 text-blue-400" />
                                 {timeframe === 1 ? "24-Hour" : `${timeframe}-Day`} Volume Trend
                             </h3>
-                            <div className="h-[250px] w-full">
+                            <div className="h-[250px] w-full rounded-xl overflow-hidden bg-gradient-to-b from-[#071025] to-transparent p-3">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <AreaChart data={chartData}>
                                         <defs>
@@ -185,7 +186,7 @@ export default function DashboardOverview() {
                                 <TrendingUp className="w-4 h-4 text-emerald-400" />
                                 {timeframe === 1 ? "24-Hour" : `${timeframe}-Day`} Revenue Captured
                             </h3>
-                            <div className="h-[250px] w-full">
+                            <div className="h-[250px] w-full rounded-xl overflow-hidden bg-gradient-to-b from-[#071025] to-transparent p-3">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <BarChart data={chartData}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="#1e2533" />
@@ -201,7 +202,7 @@ export default function DashboardOverview() {
 
                     {/* Bottom Layout */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        <div className="lg:col-span-2 bg-[#111827] border border-[#1e2533] rounded-2xl p-6">
+                        <div className="lg:col-span-2 bg-gradient-to-br from-[#071025] via-[#071428] to-[#071019] border border-[rgba(255,255,255,0.03)] rounded-3xl p-6 shadow-2xl">
                             <h3 className="text-sm font-bold text-white mb-6">Recent Dealer Actions</h3>
                             <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
                                 {recentActions.map((action) => (
@@ -222,9 +223,9 @@ export default function DashboardOverview() {
                             <h3 className="text-sm font-bold text-white mb-6">Risk Alerts</h3>
                             <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
                                 {riskAlerts.map((alert) => (
-                                    <div key={alert.id} className={`p-4 bg-[#0a0e17] rounded-xl border-l-4 ${alert.level === 'high' ? 'border-red-500' : alert.level === 'medium' ? 'border-amber-500' : 'border-emerald-500'}`}>
-                                        <p className="text-xs font-bold text-white leading-relaxed">{alert.message}</p>
-                                        <p className="text-[10px] text-gray-500 mt-2">{alert.timeAgo}</p>
+                                    <div key={alert.id} className={`p-4 rounded-xl border-l-4 ${alert.level === 'high' ? 'border-red-500/80 bg-[#2b0f12]' : alert.level === 'medium' ? 'border-amber-500/80 bg-[#2b2010]' : 'border-emerald-500/80 bg-[#0f2a1e]'}`}>
+                                        <p className="text-sm font-bold text-white leading-relaxed">{alert.message}</p>
+                                        <p className="text-[11px] text-gray-400 mt-2">{alert.timeAgo}</p>
                                     </div>
                                 ))}
                             </div>
@@ -239,5 +240,19 @@ export default function DashboardOverview() {
                 </>
             )}
         </div>
+            {openCompanyRevenue && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center">
+                    <div className="absolute inset-0 bg-black/60" onClick={() => setOpenCompanyRevenue(false)} />
+                    <div className="relative w-full max-w-4xl mx-auto p-6">
+                        <div className="bg-[#071025] border border-[#1e2d3d] rounded-2xl p-4">
+                            <div className="flex justify-end">
+                                <button onClick={() => setOpenCompanyRevenue(false)} className="text-gray-400 hover:text-white">Close</button>
+                            </div>
+                            <CompanyRevenue />
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
     );
 }

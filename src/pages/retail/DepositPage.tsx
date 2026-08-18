@@ -32,7 +32,7 @@ const EXPLORER_URLS: Record<string, { address: string, tx: string, name: string 
 };
 
 const CHANNELS = [
-  { id: 'Mobile Money', name: 'Mobile Money', subtitle: 'Airtel Money', description: 'Direct fiat deposit from your phone', icon: Smartphone, active: true, color: 'text-emerald-400' },
+  { id: 'Mobile Money', name: 'Mobile Money', subtitle: 'M-Pesa & Airtel', description: 'Direct fiat deposit from your phone', icon: Smartphone, active: true, color: 'text-emerald-400' },
   { id: 'Crypto Wallet', name: 'Crypto Wallet', subtitle: 'Web3', description: 'Deposit stablecoins via blockchain', icon: Hexagon, active: true, color: 'text-emerald-400' },
   { id: 'Till/Paybill', name: 'Till / Paybill', subtitle: 'Business', description: 'Business collection channels', icon: Store, active: false, color: 'text-gray-500' },
   { id: 'Bulk Payments', name: 'Bulk Payments', subtitle: 'Enterprise', description: 'Mass deposit integrations', icon: Users, active: false, color: 'text-gray-500' },
@@ -73,6 +73,7 @@ type DepositPhase = 'idle' | 'listening' | 'detected' | 'confirming' | 'credited
 export default function DepositPage() {
   const [step, setStep] = useState<'select' | 'form'>('select');
   const [channel, setChannel] = useState('Mobile Money');
+  const [momoProvider, setMomoProvider] = useState<'MPESA' | 'AIRTEL'>('MPESA');
 
   const [amount, setAmount] = useState('');
   const [counterparty, setCounterparty] = useState('');
@@ -291,22 +292,34 @@ export default function DepositPage() {
     }
   };
 
+  const validateKenyanPhone = (phone: string, provider: 'MPESA' | 'AIRTEL') => {
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.length !== 10 && cleanPhone.length !== 12) {
+        return { valid: false, msg: "Kenyan phone numbers must be 10 or 12 digits (e.g., 07... or 2547...).", formatted: "" };
+    }
+    const normalized = cleanPhone.length === 12 ? '0' + cleanPhone.slice(3) : cleanPhone;
+    const apiFormatted = cleanPhone.length === 10 ? '254' + cleanPhone.slice(1) : cleanPhone;
+
+    const safaricomRegex = /^0(7([01249][0-9]|5[7-9]|6[8-9])|11[0-5])[0-9]{6}$/;
+    const airtelRegex = /^0(7(3[0-9]|5[0-6]|8[0-9])|10[0-2])[0-9]{6}$/;
+
+    if (provider === 'MPESA' && !safaricomRegex.test(normalized)) {
+        return { valid: false, msg: "This is not a valid Safaricom M-Pesa number prefix.", formatted: "" };
+    }
+    if (provider === 'AIRTEL' && !airtelRegex.test(normalized)) {
+        return { valid: false, msg: "This is not a valid Airtel Money number prefix.", formatted: "" };
+    }
+    return { valid: true, msg: "", formatted: apiFormatted };
+  };
+
   const handleMpesaDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
     setToastError(''); setSuccessMsg(''); setLoading(true);
     try {
       if (!counterparty) throw new Error("Mobile Money phone number is required.");
       if (!amount || Number(amount) <= 0) throw new Error("Please enter a valid deposit amount.");
-
-      const normalized = counterparty.replace(/\s|-/g, '').replace(/^\+/, '');
-      let local = normalized;
-      if (local.startsWith('254')) local = local.slice(3);
-      if (local.startsWith('0')) local = local.slice(1);
-
-      const isAirtelPrefix = local.startsWith('73') || local.startsWith('75') || local.startsWith('78') || local.startsWith('10');
-      if (local.length !== 9 || !isAirtelPrefix) {
-        throw new Error("Use an Airtel Money number only. Format: 07XXXXXXXX or 2547XXXXXXXX.");
-      }
+      const validation = validateKenyanPhone(counterparty, momoProvider);
+      if (!validation.valid) throw new Error(validation.msg);
 
       const res = await executeRamp({ direction: 'on', channel, from_asset: 'KES', to_asset: 'KES', amount: parseFloat(amount), rate: 1, fee: 0, counterparty });
       const payload = res?.data || {};
@@ -464,6 +477,35 @@ export default function DepositPage() {
 
           {channel === 'Mobile Money' ? (
             <form onSubmit={handleMpesaDeposit} className="space-y-6">
+              <div className="space-y-3 pb-6 border-b border-[#1E2533]">
+                <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest">
+                  Select Mobile Money Provider
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setMomoProvider('MPESA')}
+                    className={`p-3.5 rounded-xl border font-bold text-sm flex items-center justify-center gap-2 transition-all ${
+                      momoProvider === 'MPESA'
+                        ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.15)]'
+                        : 'bg-[#0B0E14] border-[#1E2533] text-gray-400 hover:border-gray-500'
+                    }`}
+                  >
+                    <Smartphone className="w-4 h-4" /> M-Pesa
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMomoProvider('AIRTEL')}
+                    className={`p-3.5 rounded-xl border font-bold text-sm flex items-center justify-center gap-2 transition-all ${
+                      momoProvider === 'AIRTEL'
+                        ? 'bg-rose-500/10 border-rose-500 text-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.15)]'
+                        : 'bg-[#0B0E14] border-[#1E2533] text-gray-400 hover:border-gray-500'
+                    }`}
+                  >
+                    <Smartphone className="w-4 h-4" /> Airtel Money
+                  </button>
+                </div>
+              </div>
               <div>
                 <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">Amount to Deposit</label>
                 <div className={`relative transition-all duration-200 rounded-xl ${focusedField === 'amount' ? 'ring-2 ring-emerald-500/20' : ''}`}>
@@ -472,7 +514,9 @@ export default function DepositPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">Airtel Money Phone Number</label>
+                <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">
+                  {momoProvider === 'MPESA' ? 'M-Pesa' : 'Airtel Money'} Phone Number
+                </label>
                 <input type="text" value={counterparty} onChange={e => setCounterparty(e.target.value)} placeholder="07XXXXXXXX" className="w-full bg-[#111827] border border-[#1E2533] focus:border-emerald-500/50 outline-none rounded-xl py-3.5 px-5 text-sm text-white transition-all font-mono placeholder-gray-600" required />
               </div>
               <button type="submit" disabled={loading || !amount || !counterparty} className="w-full py-4 px-4 rounded-xl font-extrabold text-[15px] tracking-wide transition-all duration-300 flex items-center justify-center gap-2.5 bg-[#00d282] hover:bg-[#00e68e] text-black shadow-[0_0_20px_rgba(0,210,130,0.2)] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed">

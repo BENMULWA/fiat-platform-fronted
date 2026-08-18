@@ -28,6 +28,7 @@ import LiquidityPage from './pages/OTC Dashboard/Liquidity';
 import KycAmlPage from './pages/OTC Dashboard/KycAml'
 import CustomersPage from './pages/OTC Dashboard/Customers';
 import DealerWorkspace from './pages/OTC Dashboard/DealerWorkspace';
+import CompanyRevenuePage from './pages/OTC Dashboard/CompanyRevenue';
 
 // --- RETAIL PAGES ---
 import RetailDashboardPage from './pages/retail/RetailDashboardPage'
@@ -135,6 +136,7 @@ function AppRoutes() {
         <Route path="admin/liquidity" element={<LiquidityPage />} />
         <Route path="admin/kyc" element={<KycAmlPage />} />
         <Route path="admin/customers" element={<CustomersPage />} />
+        <Route path="admin/company-revenue" element={<CompanyRevenuePage />} />
         <Route path="admin/settings" element={<AdministrationPage />} />
 
       </Route>

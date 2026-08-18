@@ -16,6 +16,12 @@ export default {
           muted: '#6b7280',
           dim: '#374151',
         },
+        gradient: {
+          sunrise: ['#0EA5E9', '#7C3AED'],
+          ocean: ['#06B6D4', '#3B82F6'],
+          teal: ['#14B8A6', '#06B6D4'],
+          aurora: ['#06B6D4', '#7C3AED', '#FB7185']
+        }
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],

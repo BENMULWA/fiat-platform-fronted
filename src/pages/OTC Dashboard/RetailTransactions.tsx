@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { RefreshCw, Search, Download, Filter, ChevronDown, FileText, User, CheckCircle2, AlertCircle } from 'lucide-react';
 import { getOtcRetailTransactions, updateOtcRetailTransactionStatus } from '../../api/client';
+import useWebsocket from '../../hooks/useWebsocket';
+import SimpleToast from '../../components/ui/SimpleToast';
 
 // 🟢 FIX: Exported exactly as 'RetailTransactionsPage' so App.tsx doesn't crash!
 export const RetailTransactionsPage = () => {
@@ -15,11 +17,43 @@ export const RetailTransactionsPage = () => {
 
     const [showExportMenu, setShowExportMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+    const [page, setPage] = useState(1);
+    const [limit, setLimit] = useState(50);
+    const [toasts, setToasts] = useState<any[]>([]);
+
+    const addToast = (title: string | undefined, body: string) => {
+        const id = `t_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+        setToasts(t => [...t, { id, title, body }]);
+    };
+    const removeToast = (id: string) => setToasts(t => t.filter(x => x.id !== id));
+
+    const currentUser = (() => {
+        try { return JSON.parse(localStorage.getItem('meshex_user') || 'null'); } catch { return null; }
+    })();
+    const currentUserId = currentUser ? (currentUser._id || currentUser.id || null) : null;
+
+    useWebsocket('/ws/dashboard', currentUserId, (msg: any) => {
+        if (!msg) return;
+        try {
+            if (msg.type === 'wallet_update' || msg.type === 'stk_success') {
+                addToast('Wallet updated', `Credited ${msg.amount} ${msg.asset} to user ${msg.userId}`);
+                fetchTransactions();
+            } else if (msg.type === 'withdrawal_success') {
+                addToast('Withdrawal completed', `Withdrawal ${msg.entryId} completed for ${msg.userId}`);
+                fetchTransactions();
+            } else if (msg.type === 'withdrawal_failed_refund') {
+                addToast('Withdrawal failed - refunded', `Refunded ${msg.amount} ${msg.asset} to ${msg.userId}. Reason: ${msg.reason || 'unknown'}`);
+                fetchTransactions();
+            }
+        } catch (e) {
+            addToast('Realtime', JSON.stringify(msg));
+        }
+    });
 
     const fetchTransactions = async () => {
         setIsLoading(true);
         try {
-            const res = await getOtcRetailTransactions({});
+            const res = await getOtcRetailTransactions({ page, limit });
             setAllTransactions(res.data.entries || []);
         } catch (err) {
             console.error("Failed to load transactions", err);
@@ -30,7 +64,7 @@ export const RetailTransactionsPage = () => {
 
     useEffect(() => {
         fetchTransactions();
-        const interval = setInterval(fetchTransactions, 360000);    // refreshes after 6 minutes (360,000 ms) to avoid hitting rate limits
+        const interval = setInterval(fetchTransactions, 30000);    // refreshes every 30s (UI shows 30s)
         return () => clearInterval(interval);
     }, []);
 
@@ -194,9 +228,16 @@ export const RetailTransactionsPage = () => {
     const handleAction = async (txId: string, action: 'approve' | 'reject' | 'retry') => {
         try {
             const newStatus = action === 'approve' ? 'completed' : action === 'reject' ? 'failed' : 'processing';
-            await updateOtcRetailTransactionStatus(txId, newStatus);
+            const res = await updateOtcRetailTransactionStatus(txId, newStatus);
+            // Refresh
             fetchTransactions();
-        } catch (err) { alert(`Action failed for ${txId}`); }
+            // Prefer server-provided message when available
+            const serverMsg = res?.data?.message || res?.data?.detail || `${action === 'approve' ? 'Approved' : 'Updated'} successfully.`;
+            addToast(action === 'approve' ? 'Approved' : 'Status updated', serverMsg);
+        } catch (err: any) {
+            const msg = err?.response?.data?.detail || err?.message || 'Action failed';
+            addToast('Action failed', `ID ${txId}: ${msg}`);
+        }
     };
 
     const formatToEAT = (dateInput: any) => {
@@ -249,6 +290,7 @@ export const RetailTransactionsPage = () => {
 
     return (
         <div className="max-w-[1600px] mx-auto p-4 md:p-6 text-gray-200 animate-in fade-in">
+            <SimpleToast toasts={toasts} onRemove={removeToast} />
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                 <div>
                     <h1 className="text-2xl font-bold text-white tracking-tight">Retail Transactions</h1>

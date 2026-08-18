@@ -8,7 +8,7 @@ import {
 import { executeRamp, withdrawUsda, executeValoraWithdraw, getRetailWallet } from '../../api/client';
 
 const CHANNELS = [
-    { id: 'Mobile Money', name: 'Mobile Money', subtitle: 'M-Pesa', description: 'Direct fiat payout to your phone', icon: Smartphone, active: true, color: 'text-emerald-400' },
+    { id: 'Mobile Money', name: 'Mobile Money', subtitle: 'M-Pesa & Airtel', description: 'Direct fiat payout to your phone', icon: Smartphone, active: true, color: 'text-emerald-400' },
     { id: 'Crypto Wallet', name: 'Crypto Wallet', subtitle: 'Web3', description: 'Stablecoin withdrawal via blockchain', icon: Hexagon, active: true, color: 'text-blue-400' },
     { id: 'Till/Paybill', name: 'Till / Paybill', subtitle: 'Business', description: 'Pay merchants or utility bills', icon: Store, active: false, color: 'text-gray-500' },
     { id: 'Bulk Payments', name: 'Bulk Payments', subtitle: 'Enterprise', description: 'Disburse salaries or mass payouts', icon: Users, active: false, color: 'text-gray-500' },
@@ -41,10 +41,10 @@ const ASSET_NETWORKS: Record<string, NetworkOption[]> = {
         { id: 'tron', name: 'Tron (TRC20)', fee: 1.00, time: '~3 Mins', min: 5, speed: 'fast' },
     ],
     USDA: [
-        { id: 'cardano', name: 'Cardano', fee: 0.17, time: '~10 Mins', min: 0.5, speed: 'slow' }
+        { id: 'cardano', name: 'Cardano', fee: 0.17, time: '~10 Mins', min: 0.5, speed: 'slow', recommended: true }
     ],
     cUSD: [
-        { id: 'celo', name: 'Celo', fee: 0.005, time: '~5 Secs', min: 0.5, speed: 'instant' }
+        { id: 'celo', name: 'Celo', fee: 0.005, time: '~5 Secs', min: 0.5, speed: 'instant', recommended: true }
     ],
     BTC: [
         { id: 'bitcoin', name: 'Bitcoin', fee: 2.50, time: '~30 Mins', min: 15, speed: 'slow' }
@@ -74,11 +74,12 @@ const RecommendedBadge = () => (
 export default function WithdrawPage() {
     const [step, setStep] = useState<'select' | 'form'>('select');
     const [channel, setChannel] = useState('Mobile Money');
+    const [momoProvider, setMomoProvider] = useState<'MPESA' | 'AIRTEL'>('MPESA');
     const [amount, setAmount] = useState('');
     const [counterparty, setCounterparty] = useState('');
     const [memo, setMemo] = useState('');
-    const [cryptoAsset, setCryptoAsset] = useState('USDT');
-    const [cryptoNetwork, setCryptoNetwork] = useState('stellar');
+    const [cryptoAsset, setCryptoAsset] = useState('USDA');
+    const [cryptoNetwork, setCryptoNetwork] = useState('cardano');
     const [loading, setLoading] = useState(false);
     const [toastError, setToastError] = useState('');
     const [successMsg, setSuccessMsg] = useState('');
@@ -86,10 +87,15 @@ export default function WithdrawPage() {
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [focusedField, setFocusedField] = useState<string | null>(null);
 
-    useEffect(() => {
+    const loadBalances = () => {
         getRetailWallet().then(res => {
             if (res.data?.balances) setBalances(res.data.balances);
+            else if (res.data) setBalances(res.data);
         }).catch(err => console.error("Failed to load balances", err));
+    };
+
+    useEffect(() => {
+        loadBalances();
     }, []);
 
     useEffect(() => {
@@ -131,7 +137,19 @@ export default function WithdrawPage() {
 
     const handleSubmitForConfirmation = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!counterparty || parsedAmount < minWithdrawal || parsedAmount > availableBalance) return;
+        setToastError('');
+        if (!counterparty) {
+            setToastError(channel === 'Mobile Money' ? "Please enter a phone number." : "Please enter a recipient address.");
+            return;
+        }
+        if (parsedAmount < minWithdrawal) {
+            setToastError(`Minimum withdrawal is ${minWithdrawal} ${activeAsset}.`);
+            return;
+        }
+        if (parsedAmount > availableBalance) {
+            setToastError(`Insufficient balance. You have ${availableBalance} ${activeAsset}.`);
+            return;
+        }
         setShowConfirmModal(true);
     };
 
@@ -140,18 +158,19 @@ export default function WithdrawPage() {
         setToastError(''); setSuccessMsg(''); setLoading(true);
 
         try {
-            if (!counterparty) throw new Error("Destination address/phone required.");
-            if (parsedAmount > availableBalance) throw new Error(`Insufficient ${activeAsset} balance.`);
-            if (parsedAmount < minWithdrawal) throw new Error(`Minimum withdrawal is ${minWithdrawal} ${activeAsset}.`);
-            if (finalPayout <= 0) throw new Error("Amount is too low to cover network fees.");
-
             if (channel === 'Crypto Wallet') {
                 if (cryptoNetwork === 'celo') {
                     await executeValoraWithdraw({ amount: parsedAmount, identifier: counterparty, asset: cryptoAsset });
                     setSuccessMsg(`Withdrawal broadcasted to Celo! Please check your wallet.`);
                 } else if (cryptoNetwork === 'cardano') {
                     const idempotencyKey = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-                    await withdrawUsda({ amount: parsedAmount, to_address: counterparty, asset: cryptoAsset, idempotency_key: idempotencyKey, counterparty: 'Cardano Vault' });
+                    await withdrawUsda({ 
+                        amount: parsedAmount, 
+                        to_address: counterparty, 
+                        asset: cryptoAsset, 
+                        idempotency_key: idempotencyKey, 
+                        counterparty: 'Cardano Vault' 
+                    });
                     setSuccessMsg(`Cardano block submission successful! Funds are routing to your wallet.`);
                 } else {
                     await new Promise(resolve => setTimeout(resolve, 1500));
@@ -160,15 +179,22 @@ export default function WithdrawPage() {
             } else {
                 await executeRamp({ 
                     direction: 'off', 
-                    channel, 
-                    from_asset: activeAsset,
+                    channel: 'Mobile Money', 
+                    from_asset: 'KES',
                     to_asset: 'KES', 
-                    amount: parsedAmount, rate: 1, fee: currentFee, counterparty });
-                setSuccessMsg('Payout successfully dispatched to your Airtel Money account.');
+                    amount: parsedAmount, 
+                    rate: 1, 
+                    fee: currentFee, 
+                    counterparty 
+                });
+                setSuccessMsg(`Payout successfully dispatched to your ${momoProvider === 'MPESA' ? 'M-Pesa' : 'Airtel Money'} number.`);
             }
+
             setAmount(''); setCounterparty(''); setMemo('');
+            loadBalances();
         } catch (err: any) {
-            setToastError(err.message || err.response?.data?.detail || "Transaction failed.");
+            const errorDetail = err.response?.data?.detail || err.message || "Withdrawal failed. Please try again.";
+            setToastError(errorDetail);
         } finally {
             setLoading(false);
         }
@@ -214,7 +240,7 @@ export default function WithdrawPage() {
                     </div>
                     <div className="border-t border-[#1E2533] pt-4">
                         <span className="text-[10px] text-gray-500 uppercase tracking-wider block mb-1">Destination</span>
-                        <span className="text-white font-mono text-sm break-all">{counterparty.length > 30 ? `${counterparty.slice(0, 20)}...${counterparty.slice(-10)}` : counterparty}</span>
+                        <span className="text-white font-mono text-sm break-all">{counterparty.length > 30 ? `${counterparty.slice(0, 16)}...${counterparty.slice(-8)}` : counterparty}</span>
                         {memo && (
                             <div className="mt-2">
                                 <span className="text-[10px] text-gray-500 uppercase tracking-wider block mb-1">Memo</span>
@@ -266,11 +292,11 @@ export default function WithdrawPage() {
                     </div>
                     <div className="flex items-center gap-1.5">
                         <BadgeCheck className="w-3.5 h-3.5 text-blue-500" />
-                        <span>Regulated by CBA</span>
+                        <span>Regulated and compliant</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                         <Clock className="w-3.5 h-3.5 text-purple-500" />
-                        <span>Most withdrawals &lt; 5 mins</span>
+                        <span>Fast automated dispatch</span>
                     </div>
                 </div>
 
@@ -281,19 +307,13 @@ export default function WithdrawPage() {
                             key={c.id}
                             disabled={!c.active}
                             onClick={() => handleChannelSelect(c.id)}
-                            // SAFE HOVER STATES: No dynamic Tailwind classes that break at runtime
                             className={`group relative p-6 rounded-2xl border transition-all duration-300 flex flex-col items-start gap-4 text-left overflow-hidden
                                 ${!c.active
-                                    ? 'bg-[#0B0E14]/30 border-[#1E2533]/30 text-gray-600 cursor-not-allowed opacity-60 hover:opacity-70'
+                                    ? 'bg-[#0B0E14]/30 border-[#1E2533]/30 text-gray-600 cursor-not-allowed opacity-60'
                                     : 'bg-[#111827] border-[#1E2533] hover:border-gray-500/50 hover:shadow-lg hover:-translate-y-0.5'
                                 }`}
                             style={{ animationDelay: `${index * 50}ms` }}
                         >
-                            {/* Safe hover glow effect for active cards */}
-                            {c.active && (
-                                <div className="absolute inset-0 bg-gradient-to-br from-white/[0.03] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none rounded-2xl" />
-                            )}
-
                             <div className="flex items-start justify-between w-full relative z-10">
                                 <div className={`p-3 rounded-xl border transition-colors ${c.active ? 'bg-white/5 border-white/10' : 'bg-[#1e2d3d]'}`}>
                                     <c.icon className={`w-6 h-6 ${c.active ? c.color : 'text-gray-500'}`} />
@@ -309,7 +329,6 @@ export default function WithdrawPage() {
                                 <span className="text-xs text-gray-500 leading-relaxed">{c.description}</span>
                             </div>
 
-                            {/* CYAN "SOON" BADGE - Replaces the broken orange one */}
                             {!c.active && (
                                 <span className="absolute top-4 right-4 text-[9px] bg-cyan-500/10 text-cyan-400 px-2.5 py-1 rounded-lg font-bold tracking-wider flex items-center gap-1.5 border border-cyan-500/20">
                                     <Lock className="w-3 h-3" /> SOON
@@ -347,7 +366,7 @@ export default function WithdrawPage() {
 
                 <div className="flex items-center gap-3 bg-[#111827] border border-[#1E2533] rounded-full px-5 py-2.5">
                     <span className="text-xs text-gray-500">Available</span>
-                    <span className="text-sm font-bold text-white">{availableBalance.toLocaleString(undefined, { minimumFractionDigits: 0.01 })}</span>
+                    <span className="text-sm font-bold text-white">{availableBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
                     <span className="text-xs text-gray-400 font-medium">{activeAsset}</span>
                 </div>
             </div>
@@ -376,6 +395,40 @@ export default function WithdrawPage() {
                     <div className="lg:col-span-7 bg-[#111827] border-r border-[#1E2533] p-6 md:p-8">
                         <form onSubmit={handleSubmitForConfirmation} className="space-y-6">
 
+                            {/* Mobile Money Provider Selector */}
+                            {channel === 'Mobile Money' && (
+                                <div className="space-y-3 pb-6 border-b border-[#1E2533]">
+                                    <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest">
+                                        Select Mobile Money Provider
+                                    </label>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => setMomoProvider('MPESA')}
+                                            className={`p-3.5 rounded-xl border font-bold text-sm flex items-center justify-center gap-2 transition-all ${
+                                                momoProvider === 'MPESA'
+                                                    ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.15)]'
+                                                    : 'bg-[#0B0E14] border-[#1E2533] text-gray-400 hover:border-gray-500'
+                                            }`}
+                                        >
+                                            <Smartphone className="w-4 h-4" /> M-Pesa
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setMomoProvider('AIRTEL')}
+                                            className={`p-3.5 rounded-xl border font-bold text-sm flex items-center justify-center gap-2 transition-all ${
+                                                momoProvider === 'AIRTEL'
+                                                    ? 'bg-rose-500/10 border-rose-500 text-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.15)]'
+                                                    : 'bg-[#0B0E14] border-[#1E2533] text-gray-400 hover:border-gray-500'
+                                            }`}
+                                        >
+                                            <Smartphone className="w-4 h-4" /> Airtel Money
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Crypto Selector */}
                             {channel === 'Crypto Wallet' && (
                                 <div className="space-y-6 pb-6 border-b border-[#1E2533]">
                                     <div>
@@ -439,9 +492,10 @@ export default function WithdrawPage() {
                                 </div>
                             )}
 
+                            {/* Destination Input */}
                             <div>
                                 <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">
-                                    {channel === 'Mobile Money' ? 'M-Pesa Phone Number' : `${selectedNetworkDetails?.name || ''} Wallet Address`}
+                                    {channel === 'Mobile Money' ? `${momoProvider === 'MPESA' ? 'M-Pesa' : 'Airtel'} Phone Number` : `${selectedNetworkDetails?.name || ''} Wallet Address`}
                                 </label>
                                 <div className={`relative transition-all duration-200 rounded-xl ${focusedField === 'address' ? 'ring-2 ring-orange-500/20' : ''}`}>
                                     <input
@@ -454,56 +508,19 @@ export default function WithdrawPage() {
                                         className="w-full bg-[#0B0E14] border border-[#1E2533] focus:border-orange-500/50 outline-none rounded-xl py-3.5 pl-5 pr-12 text-sm text-white transition-all font-mono placeholder-gray-600"
                                         required
                                     />
-                                    {channel === 'Crypto Wallet' && counterparty && (
+                                    {counterparty && (
                                         <button type="button" onClick={() => setCounterparty('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400 transition-colors">
                                             ✕
                                         </button>
                                     )}
                                 </div>
-                                {channel === 'Mobile Money' && counterparty && !/^2547\d{8}$/.test(counterparty) && (
-                                    <p className="text-[11px] text-amber-400 mt-1.5 flex items-center gap-1">
-                                        <AlertCircle className="w-3 h-3" /> Enter valid format: 2547XXXXXXXX
-                                    </p>
-                                )}
                             </div>
 
-                            {channel === 'Crypto Wallet' && cryptoNetwork === 'stellar' && (
-                                <div className="animate-in fade-in slide-in-from-top-2 duration-300">
-                                    <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">
-                                        <span className="flex items-center justify-between w-full">
-                                            <span>Memo / Tag</span>
-                                            <span className="text-[9px] font-normal text-amber-400/70 bg-amber-500/5 px-2 py-0.5 rounded border border-amber-500/10">Required for exchanges</span>
-                                        </span>
-                                    </label>
-                                    <div className={`relative transition-all duration-200 rounded-xl ${focusedField === 'memo' ? 'ring-2 ring-orange-500/20' : ''}`}>
-                                        <input
-                                            type="text"
-                                            value={memo}
-                                            onChange={e => setMemo(e.target.value)}
-                                            onFocus={() => setFocusedField('memo')}
-                                            onBlur={() => setFocusedField(null)}
-                                            placeholder="Enter Memo (e.g., from Binance deposit page)"
-                                            className="w-full bg-[#0B0E14] border border-[#1E2533] focus:border-orange-500/50 outline-none rounded-xl py-3.5 pl-5 pr-12 text-sm text-white transition-all font-mono placeholder-gray-600"
-                                        />
-                                        {memo && (
-                                            <button type="button" onClick={() => setMemo('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400 transition-colors">
-                                                ✕
-                                            </button>
-                                        )}
-                                    </div>
-                                    <div className="mt-2 p-3 bg-amber-500/5 border border-amber-500/10 rounded-lg">
-                                        <p className="text-[11px] text-amber-400/80 flex items-start gap-2">
-                                            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                                            <span>If sending to an exchange like Binance, Coinstore, or Kraken, you <strong>must</strong> include the memo or your funds will be permanently lost.</span>
-                                        </p>
-                                    </div>
-                                </div>
-                            )}
-
+                            {/* Amount Input */}
                             <div>
                                 <div className="flex justify-between items-end mb-2">
                                     <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest">
-                                        {channel === 'Mobile Money' ? 'Amount (KES)' : `Amount (${cryptoAsset})`}
+                                        Amount ({activeAsset})
                                     </label>
                                     <button
                                         type="button"
@@ -517,6 +534,7 @@ export default function WithdrawPage() {
                                 <div className={`relative transition-all duration-200 rounded-xl ${focusedField === 'amount' ? 'ring-2 ring-orange-500/20' : ''}`}>
                                     <input
                                         type="number"
+                                        step="any"
                                         value={amount}
                                         onChange={e => setAmount(e.target.value)}
                                         onFocus={() => setFocusedField('amount')}
@@ -526,50 +544,9 @@ export default function WithdrawPage() {
                                         required
                                     />
                                     <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const presets = channel === 'Mobile Money' ? [100, 500, 1000, 5000] : [10, 50, 100, 500];
-                                                const currentIdx = presets.findIndex(p => p > parsedAmount);
-                                                setAmount((currentIdx >= 0 ? presets[currentIdx] : presets[presets.length - 1]).toString());
-                                            }}
-                                            className="bg-[#1E2533] hover:bg-gray-600 text-blue-400 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-colors"
-                                        >
-                                            QUICK
-                                        </button>
                                         <span className="font-bold text-gray-500 text-sm">{activeAsset}</span>
                                     </div>
                                 </div>
-
-                                {channel === 'Mobile Money' && (
-                                    <div className="flex gap-2 mt-3">
-                                        {[100, 500, 1000, 5000, 10000].map(preset => (
-                                            <button
-                                                key={preset}
-                                                type="button"
-                                                onClick={() => setAmount(preset.toString())}
-                                                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all border
-                                                    ${parsedAmount === preset
-                                                        ? 'bg-orange-500/10 text-orange-400 border-orange-500/30'
-                                                        : 'bg-[#0B0E14] text-gray-500 border-[#1E2533] hover:border-gray-500 hover:text-gray-400'
-                                                    }`}
-                                            >
-                                                {preset >= 1000 ? `${preset / 1000}K` : preset}
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-
-                                {parsedAmount > 0 && parsedAmount < minWithdrawal && (
-                                    <p className="text-[11px] text-red-400 mt-2 flex items-center gap-1">
-                                        <AlertCircle className="w-3 h-3" /> Minimum withdrawal is {minWithdrawal} {activeAsset}
-                                    </p>
-                                )}
-                                {parsedAmount > availableBalance && (
-                                    <p className="text-[11px] text-red-400 mt-2 flex items-center gap-1">
-                                        <AlertCircle className="w-3 h-3" /> Exceeds your available balance
-                                    </p>
-                                )}
                             </div>
 
                             <button
@@ -626,13 +603,6 @@ export default function WithdrawPage() {
                                         </span>
                                     </div>
                                 </div>
-
-                                {selectedNetworkDetails && (
-                                    <div className="pt-2 flex items-center gap-2 text-xs text-gray-500">
-                                        <Clock className="w-3 h-3" />
-                                        <span>Estimated arrival: <strong className="text-gray-400">{selectedNetworkDetails.time}</strong></span>
-                                    </div>
-                                )}
                             </div>
                         </div>
 
@@ -648,50 +618,11 @@ export default function WithdrawPage() {
                                         <CheckCircle2 className="w-4 h-4 text-emerald-500/50 shrink-0 mt-0.5" />
                                         <span>Minimum: <strong className="text-white">{minWithdrawal} {activeAsset}</strong></span>
                                     </li>
-                                    {channel === 'Mobile Money' ? (
-                                        <>
-                                            <li className="flex items-start gap-2.5 text-xs text-gray-400">
-                                                <CheckCircle2 className="w-4 h-4 text-emerald-500/50 shrink-0 mt-0.5" />
-                                                <span>Funds arrive via B2C in <strong className="text-white">1-3 minutes</strong></span>
-                                            </li>
-                                            <li className="flex items-start gap-2.5 text-xs text-gray-400">
-                                                <AlertCircle className="w-4 h-4 text-amber-500/50 shrink-0 mt-0.5" />
-                                                <span>Withdrawals &gt;50,000 KES may require manual review</span>
-                                            </li>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <li className="flex items-start gap-2.5 text-xs text-gray-400">
-                                                <AlertCircle className="w-4 h-4 text-red-500/50 shrink-0 mt-0.5" />
-                                                <span>Address must match <strong className="text-red-400">{selectedNetworkDetails?.name}</strong> network</span>
-                                            </li>
-                                            {cryptoNetwork === 'stellar' && (
-                                                <li className="flex items-start gap-2.5 text-xs text-amber-400">
-                                                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                                                    <span>Exchange deposits <strong>require</strong> a Memo/Tag</span>
-                                                </li>
-                                            )}
-                                            <li className="flex items-start gap-2.5 text-xs text-gray-400">
-                                                <CheckCircle2 className="w-4 h-4 text-emerald-500/50 shrink-0 mt-0.5" />
-                                                <span>Blockchain transactions are <strong className="text-white">irreversible</strong></span>
-                                            </li>
-                                        </>
-                                    )}
+                                    <li className="flex items-start gap-2.5 text-xs text-gray-400">
+                                        <CheckCircle2 className="w-4 h-4 text-emerald-500/50 shrink-0 mt-0.5" />
+                                        <span>Blockchain transactions are <strong className="text-white">irreversible</strong></span>
+                                    </li>
                                 </ul>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center justify-center gap-4 pt-2">
-                            <div className="flex items-center gap-1.5 text-[10px] text-gray-600">
-                                <Shield className="w-3 h-3" /> 256-bit SSL
-                            </div>
-                            <div className="w-1 h-1 rounded-full bg-gray-700" />
-                            <div className="flex items-center gap-1.5 text-[10px] text-gray-600">
-                                <Fingerprint className="w-3 h-3" /> 2FA Protected
-                            </div>
-                            <div className="w-1 h-1 rounded-full bg-gray-700" />
-                            <div className="flex items-center gap-1.5 text-[10px] text-gray-600">
-                                <BadgeCheck className="w-3 h-3" /> Audited
                             </div>
                         </div>
                     </div>

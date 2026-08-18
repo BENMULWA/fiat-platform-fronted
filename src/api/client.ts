@@ -223,6 +223,14 @@ export const matchAdminPayment = (id: string) =>
 export const getAdminTreasury = () => api.get('/api/admin/finance/treasury');
 export const getAdminLiquidity = () => api.get('/api/admin/finance/liquidity');
 
+// Company revenue endpoints
+export const getCompanyRevenue = () => api.get('/api/admin/company-revenue');
+export const postCompanyWithdraw = (data: { asset: string; amount: number; method: string; destination?: any }) =>
+  api.post('/api/admin/company-withdraw', data);
+
+export const getCompanyWithdrawals = (params: { page?: number; limit?: number; status?: string } = {}) =>
+  api.get('/api/admin/company-withdrawals', { params });
+
 export const getAdminKycQueue = () => api.get('/api/admin/compliance/kyc');
 export const getAdminKycDetail = (id: string) => api.get(`/api/admin/compliance/kyc/${id}`);
 export const getAdminComplianceMonitoring = () => api.get('/api/admin/compliance/monitoring');

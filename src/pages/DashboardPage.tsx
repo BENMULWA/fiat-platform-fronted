@@ -10,6 +10,8 @@ import {
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { getMasterWalletBalance, api } from '../api/client';
+import useWebsocket from '../hooks/useWebsocket';
+import SimpleToast from '../components/ui/SimpleToast';
 
 const MOCK_TAPE = [
   { id: 'tx-1', time: '10:45:22 AM', action: 'User Swapped 100 USDA → 12,800 KES', profit: '+ 250 KES' },
@@ -65,6 +67,12 @@ export default function MarketMakerPage() {
   const [isWithdrawingRev, setIsWithdrawingRev] = useState(false);
 
   const [isDashboardLoading, setIsDashboardLoading] = useState(true);
+  const [toasts, setToasts] = useState<any[]>([]);
+  const addToast = (title: string | undefined, body: string) => {
+    const id = `t_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+    setToasts(t => [...t, { id, title, body }]);
+  };
+  const removeToast = (id: string) => setToasts(t => t.filter(x => x.id !== id));
   const [isAuditing, setIsAuditing] = useState(false);
 
   const toggleKillSwitch = () => setGlobalKillSwitch(!globalKillSwitch);
@@ -119,6 +127,26 @@ export default function MarketMakerPage() {
     return () => clearInterval(intervalId);
   }, [revWithdrawAsset]); // added dependency
 
+  // Realtime websocket to get wallet updates and show toast + refresh
+  const currentUser = (() => {
+    try { return JSON.parse(localStorage.getItem('meshex_user') || 'null'); } catch { return null; }
+  })();
+  const currentUserId = currentUser ? (currentUser._id || currentUser.id || null) : null;
+
+  useWebsocket('/ws/dashboard', currentUserId, (msg: any) => {
+    if (!msg) return;
+    if (msg.type === 'wallet_update' || msg.type === 'stk_success') {
+      addToast('Wallet updated', `Credited ${msg.amount} ${msg.asset} to user ${msg.userId}`);
+      // refresh dashboard balances
+      (async () => {
+        try {
+          const res = await getMasterWalletBalance();
+          setMasterUSDA(res?.data?.balance || res?.balance || masterUSDA);
+        } catch (e) {}
+      })();
+    }
+  });
+
   // 🟢 NEW REVENUE WITHDRAWAL LOGIC
   const handleRevenueWithdraw = async () => {
     if (!revWithdrawAsset) return;
@@ -165,6 +193,7 @@ export default function MarketMakerPage() {
 
     return (
       <div className={`space-y-6 transition-opacity duration-500 ${isDashboardLoading ? 'opacity-60' : 'opacity-100'} animate-in fade-in`}>
+        <SimpleToast toasts={toasts} onRemove={removeToast} /> 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-[#111827] border border-[#1e2d3d] rounded-2xl p-5 shadow-lg">
             <div className="flex items-center gap-2 text-slate-400 mb-2">
