@@ -1,6 +1,16 @@
-node_modules/
+# System Shell Context files
+.bashrc
+.bash_profile
+.profile
+.gitconfig
+.zshrc
+
+# Local Configurations & Secrets
 .env
-dist/
-backend/.env
-backend/.venv/
-backend/__pycache__/
+.env.production
+.env.local
+
+# IDE environments
+.idea/
+.vscode/
+*.code-workspace
