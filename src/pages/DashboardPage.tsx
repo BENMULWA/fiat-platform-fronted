@@ -69,14 +69,19 @@ export default function MarketMakerPage() {
   const [isDashboardLoading, setIsDashboardLoading] = useState(true);
   const [toasts, setToasts] = useState<any[]>([]);
   const addToast = (title: string | undefined, body: string) => {
-    const id = `t_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+    const id = `t_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     setToasts(t => [...t, { id, title, body }]);
   };
   const removeToast = (id: string) => setToasts(t => t.filter(x => x.id !== id));
   const [isAuditing, setIsAuditing] = useState(false);
 
   const toggleKillSwitch = () => setGlobalKillSwitch(!globalKillSwitch);
-  const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmt = (n: number | undefined) => {
+    if (n === undefined || n === null) {
+      return '0.00';
+    }
+    return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
 
   useEffect(() => {
     const fetchDashboardData = async () => {

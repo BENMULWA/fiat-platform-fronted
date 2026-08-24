@@ -1,200 +1,68 @@
+//@ts-nocheck
 
-//@ts-nocheck 
+import { useEffect, useState } from 'react';
+import { Activity, RefreshCw, WalletCards } from 'lucide-react';
+import { getTreasuryPositions } from '../../api/client';
 
-import React, { useState, useEffect } from 'react';
-import { RefreshCw, Save, Activity } from 'lucide-react';
-import { getTreasuryDashboard, getTreasuryRateBook, updateTreasuryRateBook } from '../../api/client';
-
-
-// function for the  to check balances  for the available asset Vaults
-export const TreasuryPage = () =>{
-    const [balances, setBalances] = useState<any[]>([]);
-    const [rateBook, setRateBook] = useState<any>(null);
-    const [saving, setSaving] = useState(false);
+export const TreasuryPage = () => {
+    const [positions, setPositions] = useState<any>({ fiat: [], stablecoins: [], kpis: {} });
     const [isLoading, setIsLoading] = useState(true);
+    const [lastUpdated, setLastUpdated] = useState('');
+    const [error, setError] = useState('');
 
-    const RATE_ASSETS = ['USD', 'USDA', 'USDT', 'USDC', 'cUSD', 'KES', 'UGX', 'TZS', 'RWF', 'BIF', 'XAF', 'XOF', 'AIRT', 'IMP'];
-
-    useEffect(() => {
-        const fetchTreasury = async () => {
-            try {
-                const [dashboardRes, rateBookRes] = await Promise.all([
-                    getTreasuryDashboard(),
-                    getTreasuryRateBook(),
-                ]);
-
-                const vaults = dashboardRes.data?.vaults || {};
-                const rows = Object.entries(vaults).map(([asset, value]) => ({
-                    asset,
-                    available: Number(value || 0),
-                    reserved: 0,
-                    pending: 0,
-                    total: Number(value || 0),
-                }));
-                setBalances(rows);
-                setRateBook(rateBookRes.data?.rateBook || null);
-            } catch (err) {
-                console.error("Failed to load treasury balances", err);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        fetchTreasury();
-    }, []);
-
-    const formatNumber = (num: number, asset: string) => {
-        const decimals = ['BTC', 'ETH'].includes(asset) ? 3 : 0;
-        return num.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-    };
-
-    const updateRateField = (asset: string, value: string) => {
-        setRateBook((prev: any) => ({
-            ...prev,
-            usdBaseRates: {
-                ...(prev?.usdBaseRates || {}),
-                [asset]: value === '' ? '' : Number(value),
-            },
-        }));
-    };
-
-    const handleSaveRateBook = async () => {
-        if (!rateBook) return;
-        setSaving(true);
+    const fetchPositions = async () => {
         try {
-            const payload = {
-                active: !!rateBook.active,
-                reference_source: rateBook.referenceSource || 'CBK',
-                refresh_interval_hours: Number(rateBook.refreshIntervalHours || 3),
-                spread_bps: Number(rateBook.spreadBps || 0),
-                notes: rateBook.notes || '',
-                usd_base_rates: rateBook.usdBaseRates || {},
-            };
-            const res = await updateTreasuryRateBook(payload);
-            setRateBook(res.data?.rateBook || rateBook);
-        } catch (err) {
-            console.error('Failed to save rate book', err);
+            const response = await getTreasuryPositions();
+            setPositions(response.data || { fiat: [], stablecoins: [], kpis: {} });
+            setLastUpdated(new Date().toLocaleTimeString());
+            setError('');
+        } catch {
+            setError('Live treasury positions are temporarily unavailable.');
         } finally {
-            setSaving(false);
+            setIsLoading(false);
         }
     };
 
+    useEffect(() => {
+        fetchPositions();
+        const timer = window.setInterval(fetchPositions, 10000);
+        return () => window.clearInterval(timer);
+    }, []);
+
+    const formatMoney = (value: number) => `$${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+    const formatPercent = (value: number | null) => value === null || value === undefined ? '—' : `${Number(value).toFixed(0)}%`;
+    const formatAsset = (value: number, asset: string) => Number(value || 0).toLocaleString(undefined, {
+        minimumFractionDigits: ['BTC', 'ETH'].includes(asset) ? 3 : 0,
+        maximumFractionDigits: ['BTC', 'ETH'].includes(asset) ? 6 : 2,
+    });
+
+    const Section = ({ title, subtitle, rows, fallback }: any) => (
+        <section className="bg-[#0F1520] border border-[#182536] rounded-md overflow-hidden shadow-lg">
+            <div className="px-5 py-4 border-b border-[#182536] bg-[#111827]/60 flex items-center justify-between">
+                <div><h2 className="text-sm font-bold text-white">{title}</h2><p className="text-[11px] text-gray-500 mt-1">{subtitle}</p></div>
+                <span className="text-[10px] uppercase tracking-widest text-gray-500">{rows.length} assets</span>
+            </div>
+            <div className="overflow-x-auto">
+                <table className="min-w-[1220px] w-full text-left">
+                    <thead className="bg-[#0A0D14] border-b border-[#182536] text-[10px] uppercase tracking-widest text-gray-500"><tr><th className="px-5 py-3">Asset / wallet</th><th className="px-5 py-3 text-right">Available</th><th className="px-5 py-3 text-right">Reserved</th><th className="px-5 py-3 text-right">Pending in</th><th className="px-5 py-3 text-right">Pending out</th><th className="px-5 py-3 text-right">Net position</th><th className="px-5 py-3 text-right">Limit</th><th className="px-5 py-3 text-right">Utilization</th><th className="px-5 py-3 text-right">USD equiv.</th></tr></thead>
+                    <tbody>
+                        {isLoading ? <tr><td colSpan={9} className="py-16 text-center"><RefreshCw className="w-5 h-5 animate-spin mx-auto text-emerald-400" /></td></tr> : rows.length ? rows.map((row: any) => (
+                            <tr key={row.asset} className="border-b border-[#182536]/70 last:border-b-0 hover:bg-[#111827] transition-colors"><td className="px-5 py-3.5"><div className="flex items-center gap-3"><span className="w-8 h-8 rounded bg-[#182233] border border-[#26364B] flex items-center justify-center text-[10px] font-bold text-white">{row.asset.slice(0, 2)}</span><div><p className="text-sm font-bold text-white">{row.asset}</p><p className="text-[10px] text-gray-500">{row.source}{row.live ? ' · live' : ' · ledger'}</p></div></div></td><td className="px-5 py-3.5 text-right font-mono text-xs font-bold text-white">{formatAsset(row.available, row.asset)}</td><td className="px-5 py-3.5 text-right font-mono text-xs text-gray-300">{formatAsset(row.reserved, row.asset)}</td><td className="px-5 py-3.5 text-right font-mono text-xs text-emerald-400">+{formatAsset(row.pendingIn, row.asset)}</td><td className="px-5 py-3.5 text-right font-mono text-xs text-red-400">-{formatAsset(row.pendingOut, row.asset)}</td><td className="px-5 py-3.5 text-right font-mono text-xs font-bold text-white">{formatAsset(row.netPosition, row.asset)}</td><td className="px-5 py-3.5 text-right font-mono text-xs text-gray-300">{row.limit ? formatAsset(row.limit, row.asset) : '—'}</td><td className="px-5 py-3.5 text-right text-xs text-gray-300"><span className="inline-block w-12 h-1 bg-[#182536] rounded mr-2 align-middle"><span className="block h-1 bg-sky-400 rounded" style={{ width: `${Math.min(row.utilization || 0, 100)}%` }} /></span>{formatPercent(row.utilization)}</td><td className="px-5 py-3.5 text-right font-mono text-xs font-bold text-white">{formatMoney(row.usdEquivalent)}</td></tr>
+                        )) : <tr><td colSpan={9} className="py-16 text-center text-xs text-gray-500">No {fallback} balances reported by the treasury sources.</td></tr>}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    );
+
+    const cards = [['Total liquidity', positions.kpis.totalLiquidityUsd, 'All held fiat and stablecoin assets', 'text-white'], ['Fiat liquidity', positions.kpis.fiatLiquidityUsd, 'Wallet-backed supporting fiat', 'text-sky-300'], ['Stablecoin liquidity', positions.kpis.stablecoinLiquidityUsd, 'Wallet-backed supporting stablecoins', 'text-emerald-300']];
     return (
-        <div className="max-w-[1600px] mx-auto animate-in fade-in duration-300">
-            <div className="flex items-center gap-3 mb-8">
-                <h1 className="text-2xl font-bold text-white tracking-tight">Treasury</h1>
-                <span className="bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">ADMIN</span>
-            </div>
-
-            {rateBook && (
-                <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
-                    <div className="xl:col-span-2 bg-[#111827] border border-[#1e2d3d] rounded-2xl p-6 shadow-xl">
-                        <div className="flex items-center justify-between mb-5">
-                            <div>
-                                <h2 className="text-lg font-bold text-white tracking-wide">Swap Rate Book</h2>
-                                <p className="text-sm text-gray-500 mt-1">Finance sets the base rates here. Retail users only receive the final execution quote.</p>
-                            </div>
-                            <button onClick={handleSaveRateBook} disabled={saving} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500 hover:text-black transition-colors disabled:opacity-50">
-                                <Save className="w-4 h-4" /> {saving ? 'Saving...' : 'Save Rates'}
-                            </button>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                            <label className="text-sm text-gray-400">Reference Source
-                                <input value={rateBook.referenceSource || ''} onChange={(e) => setRateBook((prev: any) => ({ ...prev, referenceSource: e.target.value }))} className="mt-1 w-full bg-[#0a0e17] border border-[#1e2d3d] rounded-xl px-3 py-2.5 text-white" placeholder="CBK / Reuters / Treasury Desk" />
-                            </label>
-                            <label className="text-sm text-gray-400">Refresh Interval (Hours)
-                                <input type="number" min="1" value={rateBook.refreshIntervalHours || 3} onChange={(e) => setRateBook((prev: any) => ({ ...prev, refreshIntervalHours: Number(e.target.value) }))} className="mt-1 w-full bg-[#0a0e17] border border-[#1e2d3d] rounded-xl px-3 py-2.5 text-white" />
-                            </label>
-                            <label className="text-sm text-gray-400">Spread (Bps)
-                                <input type="number" min="0" step="1" value={rateBook.spreadBps || 0} onChange={(e) => setRateBook((prev: any) => ({ ...prev, spreadBps: Number(e.target.value) }))} className="mt-1 w-full bg-[#0a0e17] border border-[#1e2d3d] rounded-xl px-3 py-2.5 text-white" />
-                            </label>
-                            <label className="text-sm text-gray-400 flex items-end gap-3">
-                                <input type="checkbox" checked={!!rateBook.active} onChange={(e) => setRateBook((prev: any) => ({ ...prev, active: e.target.checked }))} className="w-4 h-4 mb-3" />
-                                <span className="mb-2 text-white font-medium">Trading Active</span>
-                            </label>
-                        </div>
-
-                        <label className="text-sm text-gray-400 block mb-4">Notes
-                            <textarea value={rateBook.notes || ''} onChange={(e) => setRateBook((prev: any) => ({ ...prev, notes: e.target.value }))} className="mt-1 w-full bg-[#0a0e17] border border-[#1e2d3d] rounded-xl px-3 py-2.5 text-white min-h-[90px]" placeholder="Example: Rates reviewed against CBK every 3 hours and adjusted manually by Treasury." />
-                        </label>
-
-                        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
-                            {RATE_ASSETS.map((asset) => (
-                                <label key={asset} className="text-xs text-gray-500 uppercase tracking-wider">
-                                    {asset} per USD
-                                    <input
-                                        type="number"
-                                        step="0.0001"
-                                        min="0"
-                                        value={rateBook.usdBaseRates?.[asset] ?? ''}
-                                        onChange={(e) => updateRateField(asset, e.target.value)}
-                                        className="mt-1 w-full bg-[#0a0e17] border border-[#1e2d3d] rounded-xl px-3 py-2.5 text-white text-sm normal-case tracking-normal"
-                                    />
-                                </label>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="bg-[#111827] border border-[#1e2d3d] rounded-2xl p-6 shadow-xl">
-                        <h2 className="text-lg font-bold text-white tracking-wide mb-5">Rate Governance</h2>
-                        <div className="space-y-4 text-sm text-gray-400">
-                            <div className="p-4 rounded-xl bg-[#0a0e17] border border-[#1e2d3d]">
-                                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-1">Current Source</p>
-                                <p className="text-white font-semibold">{rateBook.referenceSource || 'CBK'}</p>
-                            </div>
-                            <div className="p-4 rounded-xl bg-[#0a0e17] border border-[#1e2d3d]">
-                                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-1">Refresh Policy</p>
-                                <p className="text-white font-semibold">Every {rateBook.refreshIntervalHours || 3} hours</p>
-                            </div>
-                            <div className="p-4 rounded-xl bg-[#0a0e17] border border-[#1e2d3d]">
-                                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-1">Applied Spread</p>
-                                <p className="text-white font-semibold">{((rateBook.spreadBps || 0) / 100).toFixed(2)}%</p>
-                            </div>
-                            <div className="p-4 rounded-xl bg-[#0a0e17] border border-[#1e2d3d]">
-                                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-1">Last Update</p>
-                                <p className="text-white font-semibold">{rateBook.updatedAt ? new Date(rateBook.updatedAt).toLocaleString() : 'Not yet updated'}</p>
-                                <p className="text-xs text-gray-500 mt-2">Next review: {rateBook.nextRefreshAt ? new Date(rateBook.nextRefreshAt).toLocaleString() : 'N/A'}</p>
-                            </div>
-                            <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300">
-                                <div className="flex items-center gap-2 mb-2"><Activity className="w-4 h-4" /> Treasury controls the executable rate</div>
-                                <p className="text-xs leading-relaxed">Retail swap quotes and backend settlement now consume this rate book directly, so finance can adjust rates in one place without exposing the internal rate table to end users.</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            <div className="bg-[#111827] border border-[#1e2d3d] rounded-2xl overflow-hidden shadow-xl min-h-[400px]">
-                <div className="p-6 border-b border-[#1e2d3d]">
-                    <h2 className="text-lg font-bold text-white tracking-wide">Treasury Balances</h2>
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                        <thead>
-                            <tr className="bg-[#0a0e17] border-b border-[#1e2d3d] text-[10px] font-bold text-gray-500 uppercase tracking-widest">
-                                <th className="py-4 px-6">ASSET</th>
-                                <th className="py-4 px-6">AVAILABLE</th>
-                                <th className="py-4 px-6">RESERVED</th>
-                                <th className="py-4 px-6">PENDING</th>
-                                <th className="py-4 px-6">TOTAL</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[#1e2d3d]/50">
-                            {isLoading ? (
-                                <tr><td colSpan={5} className="py-20 text-center"><RefreshCw className="w-6 h-6 animate-spin mx-auto text-emerald-500 mb-3" /></td></tr>
-                            ) : balances.map((row, i) => (
-                                <tr key={i} className="hover:bg-[#1a2a40]/30 transition-colors text-sm">
-                                    <td className="py-4 px-6 font-bold text-white">{row.asset}</td>
-                                    <td className="py-4 px-6 font-mono text-gray-300">{formatNumber(row.available, row.asset)}</td>
-                                    <td className="py-4 px-6 font-mono text-gray-300">{formatNumber(row.reserved, row.asset)}</td>
-                                    <td className="py-4 px-6 font-mono text-gray-300">{formatNumber(row.pending, row.asset)}</td>
-                                    <td className="py-4 px-6 font-mono font-bold text-white">{formatNumber(row.total, row.asset)}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+        <div className="max-w-[1600px] mx-auto p-3 sm:p-5 lg:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-5"><div><div className="flex items-center gap-3"><h1 className="text-xl font-semibold text-white">Treasury Positions</h1><span className="px-2 py-1 rounded text-[9px] uppercase tracking-widest font-bold text-emerald-400 bg-emerald-400/10 border border-emerald-400/20">Live liquidity</span></div><p className="text-xs text-gray-500 mt-1">Wallet-held liquidity available to finance quotes and settlement obligations.</p></div><div className="flex items-center gap-3"><span className="text-[10px] text-gray-500 font-mono">Updated {lastUpdated || '...'}</span><button onClick={fetchPositions} className="p-2 rounded border border-[#1E2D3D] text-gray-400 hover:text-white" title="Refresh positions"><RefreshCw className="w-4 h-4" /></button></div></div>
+            {error && <div className="mb-4 border border-amber-500/30 bg-amber-500/10 text-amber-300 text-xs px-4 py-3 rounded-md">{error}</div>}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">{cards.map(([label, value, detail, color]) => <div key={label} className="bg-[#0F1520] border border-[#1E2D3D] rounded-md p-4"><p className="text-[10px] uppercase tracking-widest text-gray-500">{label}</p><p className={`text-2xl font-semibold font-mono mt-2 ${color}`}>{isLoading ? '...' : formatMoney(value)}</p><p className="text-[11px] text-gray-500 mt-2">{detail}</p></div>)}</div>
+            <div className="flex items-center gap-2 mb-4 text-[10px] text-gray-500"><Activity className="w-3.5 h-3.5 text-emerald-400" /> Refreshes every 10 seconds · <WalletCards className="w-3.5 h-3.5" /> Wallet sources are marked live; ledger balances are marked separately.</div>
+            <div className="space-y-5"><Section title="Supporting Fiat Wallet Assets" subtitle="Fiat liquidity available for customer collections and settlement funding." rows={positions.fiat} fallback="fiat" /><Section title="Supporting Stablecoins" subtitle="Digital asset liquidity available for quotes and wallet settlement." rows={positions.stablecoins} fallback="stablecoin" /></div>
         </div>
     );
-}
+};

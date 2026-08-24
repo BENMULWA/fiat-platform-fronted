@@ -1,18 +1,18 @@
 // @ts-nocheck
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { RefreshCw, Search, Download, Filter, ChevronDown, FileText, User, CheckCircle2, AlertCircle } from 'lucide-react';
+import { RefreshCw, Search, Download, Filter, ChevronDown, FileText, User, CheckCircle2, AlertCircle, Copy, Check, X, Eye } from 'lucide-react';
 import { getOtcRetailTransactions, updateOtcRetailTransactionStatus } from '../../api/client';
 import useWebsocket from '../../hooks/useWebsocket';
 import SimpleToast from '../../components/ui/SimpleToast';
 
-// 🟢 FIX: Exported exactly as 'RetailTransactionsPage' so App.tsx doesn't crash!
+//FIX: Exported exactly as 'RetailTransactionsPage' so App.tsx doesn't crash!
 export const RetailTransactionsPage = () => {
     const [allTransactions, setAllTransactions] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     const [activeTab, setActiveTab] = useState('All');
     const [searchTerm, setSearchTerm] = useState('');
-    const [refSearch, setRefSearch] = useState('');
+    const [refSearch, setRefSearch] = useState(() => new URLSearchParams(window.location.search).get('search') || '');
     const [selectedMerchant, setSelectedMerchant] = useState('All');
 
     const [showExportMenu, setShowExportMenu] = useState(false);
@@ -20,12 +20,39 @@ export const RetailTransactionsPage = () => {
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(50);
     const [toasts, setToasts] = useState<any[]>([]);
+    const [copiedId, setCopiedId] = useState<string | null>(null);
+    const [reviewTransaction, setReviewTransaction] = useState<any | null>(null);
+    const [evidenceReference, setEvidenceReference] = useState('');
+    const [evidenceNetwork, setEvidenceNetwork] = useState('');
+    const [evidenceVerified, setEvidenceVerified] = useState(false);
+    const [failedTransaction, setFailedTransaction] = useState<any | null>(null);
 
     const addToast = (title: string | undefined, body: string) => {
         const id = `t_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
         setToasts(t => [...t, { id, title, body }]);
     };
     const removeToast = (id: string) => setToasts(t => t.filter(x => x.id !== id));
+
+    const copyIdentifier = async (value: string, label: string) => {
+        try {
+            await navigator.clipboard.writeText(value);
+            setCopiedId(value);
+            addToast('Copied', `${label} copied to clipboard.`);
+            window.setTimeout(() => setCopiedId(null), 1500);
+        } catch {
+            addToast('Copy failed', `Could not copy the ${label.toLowerCase()}.`);
+        }
+    };
+
+    const maskIdentifier = (value: string | undefined | null) => {
+        if (!value) return 'N/A';
+        if (value.length <= 12) return value;
+        return `${value.slice(0, 8)}...${value.slice(-4)}`;
+    };
+
+    const getSecureId = (tx: any) => String(tx.secureId || tx.id || '');
+    const getExternalId = (tx: any) => tx.externalId ? String(tx.externalId) : '';
+    const getFailureReason = (tx: any) => tx.failureReason || tx.error || tx.gatewayStatusMessage || tx.gatewayResponseText || tx.providerReport?.message || 'No failure reason was recorded.';
 
     const currentUser = (() => {
         try { return JSON.parse(localStorage.getItem('meshex_user') || 'null'); } catch { return null; }
@@ -53,7 +80,7 @@ export const RetailTransactionsPage = () => {
     const fetchTransactions = async () => {
         setIsLoading(true);
         try {
-            const res = await getOtcRetailTransactions({ page, limit });
+            const res = await getOtcRetailTransactions({ page, limit, search: refSearch || undefined });
             setAllTransactions(res.data.entries || []);
         } catch (err) {
             console.error("Failed to load transactions", err);
@@ -94,7 +121,9 @@ export const RetailTransactionsPage = () => {
             // Standardized 6-character search that understands the "TXN-" prefix
             if (refSearch) {
                 const formattedRef = `TXN-${(tx.id || '').slice(-6).toUpperCase()}`;
-                if (!formattedRef.includes(refSearch.toUpperCase().trim())) return false;
+                const searchValue = refSearch.toUpperCase().trim();
+                const identifiers = [formattedRef, getSecureId(tx), getExternalId(tx)].map(value => value.toUpperCase());
+                if (!identifiers.some(value => value.includes(searchValue))) return false;
             }
 
             return true;
@@ -103,9 +132,11 @@ export const RetailTransactionsPage = () => {
 
     const handleExportCSV = () => {
         setShowExportMenu(false);
-        const headers = ["Reference", "Time", "Customer", "Type", "Amount", "Asset", "Status"];
+        const headers = ["Reference", "Secure ID", "External ID", "Time", "Customer", "Type", "Amount", "Asset", "Status"];
         const csvRows = filteredTxs.map(tx => [
             `TXN-${(tx.id || '').slice(-6).toUpperCase()}`,
+            getSecureId(tx),
+            getExternalId(tx) || 'N/A',
             tx.createdAt,
             tx.customerName,
             tx.direction,
@@ -225,10 +256,10 @@ export const RetailTransactionsPage = () => {
         }
     };
 
-    const handleAction = async (txId: string, action: 'approve' | 'reject' | 'retry') => {
+    const handleAction = async (txId: string, action: 'approve' | 'reject' | 'retry', providerReport?: Record<string, unknown>) => {
         try {
             const newStatus = action === 'approve' ? 'completed' : action === 'reject' ? 'failed' : 'processing';
-            const res = await updateOtcRetailTransactionStatus(txId, newStatus);
+            const res = await updateOtcRetailTransactionStatus(txId, newStatus, providerReport);
             // Refresh
             fetchTransactions();
             // Prefer server-provided message when available
@@ -238,6 +269,36 @@ export const RetailTransactionsPage = () => {
             const msg = err?.response?.data?.detail || err?.message || 'Action failed';
             addToast('Action failed', `ID ${txId}: ${msg}`);
         }
+    };
+
+    const openReview = (tx: any) => {
+        setReviewTransaction(tx);
+        setEvidenceReference(getExternalId(tx));
+        setEvidenceNetwork(tx.network || '');
+        setEvidenceVerified(false);
+    };
+
+    const submitReview = async (status: 'completed' | 'failed') => {
+        if (status === 'completed' && !evidenceReference.trim()) {
+            addToast('Evidence required', 'Enter the provider reference or blockchain transaction hash first.');
+            return;
+        }
+        if (status === 'completed' && !evidenceVerified) {
+            addToast('Confirmation required', 'Confirm that you verified the payment evidence before completing.');
+            return;
+        }
+        const providerReport = evidenceReference.trim() ? {
+            source: 'admin_reconciliation',
+            status: 'MANUALLY_VERIFIED_SUCCESS',
+            reference: evidenceReference.trim(),
+            tx_hash: evidenceReference.trim(),
+            network: evidenceNetwork.trim() || undefined,
+            operator_note: 'Admin verified the reference/hash, network, destination, amount, confirmations, and duplicate use.',
+        } : { source: 'admin_reconciliation' };
+        await handleAction(reviewTransaction.id, status === 'completed' ? 'approve' : 'reject', providerReport);
+        setReviewTransaction(null);
+        setEvidenceReference('');
+        setEvidenceNetwork('');
     };
 
     const formatToEAT = (dateInput: any) => {
@@ -358,7 +419,7 @@ export const RetailTransactionsPage = () => {
                         <div className="relative w-full md:w-56">
                             <span className="text-gray-500 text-xs absolute left-4 top-1/2 -translate-y-1/2 font-mono font-bold uppercase">Ref:</span>
                             <input
-                                type="text" placeholder="TXN-XXXXXX" value={refSearch} onChange={e => setRefSearch(e.target.value)}
+                                type="text" placeholder="Reference or ID" value={refSearch} onChange={e => setRefSearch(e.target.value)}
                                 className="w-full bg-[#0a0e17] border border-[#1e2d3d] rounded-xl py-3 pl-14 pr-4 text-sm text-white font-mono focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 outline-none uppercase transition-all shadow-inner placeholder-gray-700"
                             />
                         </div>
@@ -390,13 +451,15 @@ export const RetailTransactionsPage = () => {
                                 <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em] text-right">AMOUNT</th>
                                 <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">ASSET</th>
                                 <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">REFERENCE</th>
+                                <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">SECURE ID</th>
+                                <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">EXTERNAL ID</th>
                                 <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em] text-center">STATUS</th>
                                 <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em] text-right">ACTIONS</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-[#1e2d3d]/50">
                             {isLoading ? (
-                                <tr><td colSpan={8} className="py-24 text-center"><RefreshCw className="w-8 h-8 animate-spin mx-auto text-emerald-500 mb-4" /><p className="text-gray-500 text-sm font-medium">Syncing Ledger...</p></td></tr>
+                                <tr><td colSpan={10} className="py-24 text-center"><RefreshCw className="w-8 h-8 animate-spin mx-auto text-emerald-500 mb-4" /><p className="text-gray-500 text-sm font-medium">Syncing Ledger...</p></td></tr>
                             ) : filteredTxs.length > 0 ? (
                                 filteredTxs.map((tx) => (
                                     <tr key={tx.id} className="hover:bg-[#151e2e] transition-colors group">
@@ -425,16 +488,47 @@ export const RetailTransactionsPage = () => {
                                             </span>
                                         </td>
 
-                                        <td className="py-4 px-6">{getStatusBadge(tx.status)}</td>
+                                        <td className="py-4 px-6">
+                                            <div className="flex items-center gap-2 min-w-[145px]">
+                                                <span className="text-xs text-gray-400 font-mono" title={getSecureId(tx)}>{maskIdentifier(getSecureId(tx))}</span>
+                                                {getSecureId(tx) && <button onClick={() => copyIdentifier(getSecureId(tx), 'Secure ID')} className="text-gray-500 hover:text-white transition-colors" title="Copy Secure ID" aria-label="Copy Secure ID">
+                                                    {copiedId === getSecureId(tx) ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                                                </button>}
+                                            </div>
+                                        </td>
+
+                                        <td className="py-4 px-6">
+                                            <div className="flex items-center gap-2 min-w-[145px]">
+                                                <span className="text-xs text-gray-400 font-mono" title={getExternalId(tx) || 'No external ID'}>{maskIdentifier(getExternalId(tx))}</span>
+                                                {getExternalId(tx) && <button onClick={() => copyIdentifier(getExternalId(tx), 'External ID')} className="text-gray-500 hover:text-white transition-colors" title="Copy External ID" aria-label="Copy External ID">
+                                                    {copiedId === getExternalId(tx) ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                                                </button>}
+                                            </div>
+                                        </td>
+
+                                        <td className="py-4 px-6">
+                                            <div className="flex items-center gap-2">
+                                                {getStatusBadge(tx.status)}
+                                                {['failed', 'error', 'rejected', 'cancelled'].includes(String(tx.status).toLowerCase()) && (
+                                                    <button
+                                                        onClick={() => setFailedTransaction(tx)}
+                                                        className="p-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all opacity-0 group-hover:opacity-100"
+                                                        title="View failure reason"
+                                                        aria-label="View failure reason"
+                                                    >
+                                                        <Eye className="w-3.5 h-3.5" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
 
                                         <td className="py-4 px-6 text-right">
                                             {tx.status.toLowerCase() === 'pending' || tx.status.toLowerCase() === 'processing' ? (
                                                 <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button onClick={() => handleAction(tx.id, 'approve')} className="bg-emerald-500 hover:bg-emerald-400 text-black px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-lg shadow-emerald-500/20 active:scale-95 flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5" /> Approve</button>
-                                                    <button onClick={() => handleAction(tx.id, 'reject')} className="bg-[#1e2d3d] hover:bg-red-500 hover:text-white text-gray-300 px-3 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95">Reject</button>
+                                                    <button onClick={() => openReview(tx)} className="bg-emerald-500 hover:bg-emerald-400 text-black px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-lg shadow-emerald-500/20 active:scale-95 flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5" /> Review</button>
                                                 </div>
                                             ) : tx.status.toLowerCase() === 'failed' ? (
-                                                <button onClick={() => handleAction(tx.id, 'retry')} className="bg-[#1e2d3d] hover:bg-[#2a3a50] text-gray-300 px-4 py-1.5 rounded-lg text-xs font-bold transition-colors">Retry</button>
+                                                <button onClick={() => openReview(tx)} className="bg-[#1e2d3d] hover:bg-[#2a3a50] text-gray-300 px-4 py-1.5 rounded-lg text-xs font-bold transition-colors">Review</button>
                                             ) : (
                                                 <span className="text-xs text-gray-600 font-medium">—</span>
                                             )}
@@ -443,7 +537,7 @@ export const RetailTransactionsPage = () => {
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={8} className="py-20 text-center">
+                                    <td colSpan={10} className="py-20 text-center">
                                         <div className="w-16 h-16 bg-[#111827] rounded-full flex items-center justify-center mx-auto mb-4 border border-[#1e2d3d]">
                                             <Search className="w-6 h-6 text-gray-600" />
                                         </div>
@@ -461,6 +555,52 @@ export const RetailTransactionsPage = () => {
                     {selectedMerchant !== 'All' && <span className="text-blue-400 font-bold bg-blue-500/10 px-2 py-1 rounded-md border border-blue-500/20">Filtered by: {selectedMerchant}</span>}
                 </div>
             </div>
+
+            {reviewTransaction && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setReviewTransaction(null)}>
+                    <div className="w-full max-w-lg bg-[#0b0f19] border border-[#1e2d3d] rounded-2xl shadow-2xl p-6" onClick={event => event.stopPropagation()}>
+                        <div className="flex items-start justify-between gap-4 mb-5">
+                            <div>
+                                <h2 className="text-lg font-bold text-white">Review transaction</h2>
+                                <p className="text-xs text-gray-500 mt-1">TXN-{(reviewTransaction.id || '').slice(-6).toUpperCase()} · {reviewTransaction.customerName}</p>
+                            </div>
+                            <button onClick={() => setReviewTransaction(null)} className="text-gray-500 hover:text-white" aria-label="Close review"><X className="w-5 h-5" /></button>
+                        </div>
+                        <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Provider reference or transaction hash</label>
+                        <input value={evidenceReference} onChange={event => setEvidenceReference(event.target.value)} placeholder="Paste provider reference or tx hash" className="w-full bg-[#06090f] border border-[#1e2d3d] rounded-xl px-4 py-3 text-sm text-white font-mono outline-none focus:border-blue-500" />
+                        <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mt-4 mb-2">Network (for crypto only)</label>
+                        <input value={evidenceNetwork} onChange={event => setEvidenceNetwork(event.target.value)} placeholder="e.g. Celo, Stellar, Cardano" className="w-full bg-[#06090f] border border-[#1e2d3d] rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-blue-500" />
+                        <p className="text-xs text-amber-400/80 mt-4">Verify the network, destination, amount, confirmations, and duplicate use before completing.</p>
+                        <label className="flex items-start gap-3 mt-4 text-sm text-gray-300 cursor-pointer">
+                            <input type="checkbox" checked={evidenceVerified} onChange={event => setEvidenceVerified(event.target.checked)} className="mt-0.5 accent-emerald-500" />
+                            <span>I verified the evidence and confirm this transaction is eligible for credit.</span>
+                        </label>
+                        <div className="flex justify-end gap-3 mt-6">
+                            <button onClick={() => submitReview('failed')} className="px-4 py-2 rounded-lg text-sm font-bold text-red-300 bg-red-500/10 hover:bg-red-500/20">Mark failed</button>
+                            <button onClick={() => submitReview('completed')} className="px-4 py-2 rounded-lg text-sm font-bold text-black bg-emerald-500 hover:bg-emerald-400">Complete and credit</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {failedTransaction && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => setFailedTransaction(null)}>
+                    <div className="w-full max-w-md bg-[#111827] border border-[#1e2d3d] rounded-2xl shadow-2xl p-6" onClick={event => event.stopPropagation()}>
+                        <div className="flex items-center justify-between mb-5">
+                            <h2 className="text-lg font-bold text-white flex items-center gap-2"><AlertCircle className="w-5 h-5 text-red-400" /> Transaction failed</h2>
+                            <button onClick={() => setFailedTransaction(null)} className="text-gray-500 hover:text-white" aria-label="Close failure details"><X className="w-5 h-5" /></button>
+                        </div>
+                        <div className="bg-[#0b0f19] border border-[#1e2d3d] rounded-xl p-4 space-y-3 mb-5">
+                            <div className="flex justify-between gap-4 text-sm"><span className="text-gray-500">Reference</span><span className="text-white font-mono text-xs">TXN-{(failedTransaction.id || '').slice(-6).toUpperCase()}</span></div>
+                            <div className="flex justify-between gap-4 text-sm"><span className="text-gray-500">Amount</span><span className="text-white font-bold">{Number(failedTransaction.fromAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} {failedTransaction.fromAsset}</span></div>
+                            <div className="flex justify-between gap-4 text-sm"><span className="text-gray-500">Customer</span><span className="text-white">{failedTransaction.customerName}</span></div>
+                        </div>
+                        <p className="text-[11px] text-gray-500 uppercase tracking-widest font-bold mb-2">Failure reason</p>
+                        <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-4"><p className="text-sm text-red-300 leading-relaxed">{getFailureReason(failedTransaction)}</p></div>
+                        <button onClick={() => setFailedTransaction(null)} className="w-full mt-6 py-3 rounded-xl bg-[#1e2d3d] hover:bg-[#2a3a50] text-white font-bold text-sm">Close</button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

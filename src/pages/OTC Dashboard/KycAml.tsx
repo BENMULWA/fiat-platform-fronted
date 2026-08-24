@@ -140,26 +140,26 @@ export default function KycRiskPage() {
 
             {/* KPIs Row - Exact Match to Screenshot */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-                <div className="bg-[#111827] border border-[#1e2d3d] rounded-xl p-5">
+                <button type="button" onClick={() => setActiveTab('kyc')} className="text-left bg-[#111827] border border-[#1e2d3d] rounded-xl p-5 hover:border-amber-500/40 transition-colors cursor-pointer">
                     <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">PENDING KYC</p>
                     <h3 className="text-3xl font-bold text-amber-500 font-mono">{data.kpis?.pendingKyc || 0}</h3>
-                </div>
-                <div className="bg-[#111827] border border-[#1e2d3d] rounded-xl p-5">
+                </button>
+                <button type="button" onClick={() => setActiveTab('aml')} className="text-left bg-[#111827] border border-[#1e2d3d] rounded-xl p-5 hover:border-red-500/40 transition-colors cursor-pointer">
                     <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">AML FLAGS</p>
                     <h3 className="text-3xl font-bold text-red-500 font-mono">{amlFlags.length} <span className="text-xs text-red-400/70">High</span></h3>
-                </div>
-                <div className="bg-[#111827] border border-[#1e2d3d] rounded-xl p-5">
+                </button>
+                <button type="button" onClick={() => setActiveTab('aml')} className="text-left bg-[#111827] border border-[#1e2d3d] rounded-xl p-5 hover:border-blue-500/40 transition-colors cursor-pointer">
                     <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">PEP MATCHES</p>
                     <h3 className="text-3xl font-bold text-white font-mono">{monitoring.kpis?.pepMatches || 0}</h3>
-                </div>
-                <div className="bg-[#111827] border border-[#1e2d3d] rounded-xl p-5">
+                </button>
+                <button type="button" onClick={() => setActiveTab('aml')} className="text-left bg-[#111827] border border-[#1e2d3d] rounded-xl p-5 hover:border-blue-500/40 transition-colors cursor-pointer">
                     <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">SANCTIONS</p>
                     <h3 className="text-3xl font-bold text-white font-mono">{monitoring.kpis?.sanctions || 0}</h3>
-                </div>
-                <div className="bg-[#111827] border border-[#1e2d3d] rounded-xl p-5">
+                </button>
+                <button type="button" onClick={() => setActiveTab('alerts')} className="text-left bg-[#111827] border border-[#1e2d3d] rounded-xl p-5 hover:border-red-500/40 transition-colors cursor-pointer">
                     <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">RISK ALERTS</p>
                     <h3 className="text-3xl font-bold text-red-500 font-mono">{monitoring.kpis?.highRiskAlerts || 0} <span className="text-xs text-red-400/70">High</span></h3>
-                </div>
+                </button>
             </div>
 
             {/* Tab Navigation */}

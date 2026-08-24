@@ -1,3 +1,6 @@
+
+//@ts-nocheck
+
 import React, { useState } from 'react';
 import { Coins, Flame, Cpu, ArrowUpRight, ArrowDownLeft, Loader2 } from 'lucide-react';
 import { mintAirt } from '../../api/client';
@@ -21,6 +24,11 @@ export const ImpalaCoinPage: React.FC = () => {
         }
     };
 
+    // The Impala Coin page is temporarily disabled pending integration.
+    // To re-enable, remove the `return null;` line and uncomment the block below.
+    return null;
+
+    /*
     return (
         <div className="max-w-4xl mx-auto space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -71,4 +79,5 @@ export const ImpalaCoinPage: React.FC = () => {
             </div>
         </div>
     );
+    */
 };

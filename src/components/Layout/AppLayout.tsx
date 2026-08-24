@@ -91,7 +91,7 @@ export default function AppLayout() {
     if (path.startsWith('/deposit')) return "Deposit Funds"
     if (path.startsWith('/withdraw')) return "Withdraw Funds"
     if (path.startsWith('/redeem-airtime')) return "Redeem Airtime"
-    if (path.startsWith('/impala-coin')) return "Impala Coin"
+    // if (path.startsWith('/impala-coin')) return "Impala Coin"
     if (path.startsWith('/transactions')) return "Transactions"
     if (path.startsWith('/profile')) return "Profile"
     if (path.startsWith('/kyc')) return "Identity Verification"

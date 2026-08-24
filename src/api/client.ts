@@ -159,10 +159,12 @@ export const getMasterWalletBalance = () => api.get('/api/cardano/master-wallet/
 // ==========================================
 
 export const getTreasuryDashboard = () => api.get('/api/treasury/dashboard');
+export const getTreasuryPositions = () => api.get('/api/treasury/positions');
 export const simulateTreasurySwap = (data: any) => api.post('/api/treasury/simulate-swap', data);
 export const resetTreasurySandbox = () => api.post('/api/treasury/reset-sandbox');
 export const getTreasuryRateBook = () => api.get('/api/treasury/rate-book');
 export const updateTreasuryRateBook = (data: any) => api.post('/api/treasury/rate-book', data);
+export const getTreasuryRateBookHistory = () => api.get('/api/treasury/rate-book/history');
 export const getTreasurySwapQuote = (params: { from_asset: string; to_asset: string; amount?: number }) =>
   api.get('/api/treasury/swap-quote', { params });
 export const getMarketMakerOpportunities = () => api.get('/api/market-maker/opportunities');
@@ -195,6 +197,16 @@ export const registerValoraPhone = (data: { phone: string; celo_address: string 
 // ==========================================
 
 export const getOtcDashboard = () => api.get('/api/admin/operations-overview');
+export const getDealerClients = () => api.get('/api/admin/dealer/clients');
+export const getDealerRfqs = () => api.get('/api/admin/dealer/rfqs');
+export const analyzeDealerRfq = (id: string) => api.get(`/api/admin/dealer/rfqs/${id}/analysis`);
+ export const createDealerRfq = (data: { customer_id: string; from_asset: string; to_asset: string; side: string; amount: number; channel?: string; settlement_channel?: string; collection_phone?: string; destination_wallet?: string; network?: string }) =>
+  api.post('/api/admin/dealer/rfqs', data);
+export const quoteDealerRfq = (id: string, spread_bps: number) =>
+  api.post(`/api/admin/dealer/rfqs/${id}/quote`, { spread_bps });
+export const executeDealerRfq = (id: string) => api.post(`/api/admin/dealer/rfqs/${id}/execute`);
+export const getDealerSettlements = () => api.get('/api/admin/dealer/settlements');
+export const getDealerSettlement = (id: string) => api.get(`/api/admin/dealer/settlements/${id}`);
 
 export const getChartAnalytics = (days: number = 7) => api.get('/api/admin/analytics/chart-data', { params: { days } });
 
@@ -208,8 +220,8 @@ export const getOtcRetailTransactions = (params: {
 export const getOtcRetailTransactionDetails = (transactionId: string) =>
   api.get(`/api/admin/retail-transactions/${transactionId}`);
 
-export const updateOtcRetailTransactionStatus = (transactionId: string, status: string) =>
-  api.patch(`/api/admin/retail-transactions/${transactionId}/status`, { status });
+export const updateOtcRetailTransactionStatus = (transactionId: string, status: string, providerReport?: Record<string, unknown>) =>
+  api.patch(`/api/admin/retail-transactions/${transactionId}/status`, { status, provider_report: providerReport });
 
 
 // ==========================================
@@ -290,8 +302,16 @@ export const updateAdminSettings = (data: any) =>
 // AUTH ENDPOINTS
 // ==========================================
 
-export const loginUser = (data: { email: string; password: string }) => api.post('/api/auth/login', data);
-export const signupUser = (data: any) => api.post('/api/auth/signup', data);
+export const requestLoginOtp = (data: { email: string; password: string }) => api.post('/api/auth/login/request-otp', data);
+export const verifyLoginOtp = (data: { otpSessionId: string; otpCode: string }) => api.post('/api/auth/login/verify-otp', data);
+export const resendLoginOtp = (data: { otpSessionId: string }) => api.post('/api/auth/login/resend-otp', data);
+
+export const requestSignupOtp = (data: { name: string; email: string; password: string }) => api.post('/api/auth/signup/request-otp', data);
+export const verifySignupOtp = (data: { otpSessionId: string; otpCode: string }) => api.post('/api/auth/signup/verify-otp', data);
+export const resendSignupOtp = (data: { otpSessionId: string }) => api.post('/api/auth/signup/resend-otp', data);
+
+export const forgotPassword = (data: { email: string }) => api.post('/api/auth/forgot-password', data);
+export const resetPassword = (data: { token: string; new_password: string }) => api.post('/api/auth/reset-password', data);
 export const getMe = () => api.get('/api/auth/me');
 export const logoutUser = () => api.post('/api/auth/logout');
 

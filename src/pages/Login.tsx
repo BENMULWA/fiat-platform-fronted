@@ -1,4 +1,5 @@
-// @ts-nocheck
+
+//@ts-nocheck
 import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -142,7 +143,9 @@ export default function Login() {
                             <div>
                                 <div className="flex items-center justify-between mb-2">
                                     <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-widest">Password</label>
-                                    <a href="#" className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 transition-colors">Forgot Password?</a>
+                                    <Link to="/forgot-password" className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 transition-colors">
+                                        Forgot Password?
+                                    </Link>
                                 </div>
                                 <div className="relative">
                                     <input

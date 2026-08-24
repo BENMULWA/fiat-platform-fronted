@@ -70,6 +70,7 @@ export const TransactionsPage = () => {
             || tx.metadata?.error
             || tx.callbackMessage
             || tx.responseMessage
+            || tx.providerReport?.message
             || "Unknown error occurred. If funds were deducted from your side, please contact support with the reference ID.";
     };
 

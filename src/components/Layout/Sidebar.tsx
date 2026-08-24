@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Scale, ArrowLeftRight, Link2, BookOpen, Globe, LogOut, X, ChevronDown,
   Settings, DollarSign, TerminalSquare, Wallet, Radio, Repeat, ArrowDownRight, ArrowUpRight,
   ArrowRightLeft, Coins, FileText, User, ShieldCheck, Briefcase, Receipt, CreditCard,
-  Landmark, Droplet, ShieldAlert, Users, Building2, Tag, Smartphone, RefreshCw, PieChart, Activity
+  Landmark, Droplet, ShieldAlert, Users, Building2, Tag, Smartphone, RefreshCw, PieChart, Activity, ListOrdered, Bitcoin, Quote, ArrowLeftRight as TradeIcon
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -20,7 +20,7 @@ const retailNavActions = [
   { to: '/withdraw', label: 'Withdrawals', icon: ArrowUpRight },
   { to: '/swap', label: 'Quick Swap', icon: ArrowRightLeft },
   { to: '/redeem-airtime', label: 'Redeem Airtime', icon: Radio },
-  { to: '/impala-coin', label: 'Impala Coin', icon: Coins },
+  // { to: '/impala-coin', label: 'Impala Coin', icon: Coins },
 ]
 
 const retailNavAccount = [
@@ -44,7 +44,7 @@ const marketMakerSubItems = [
   { id: 'terminal', label: 'Execution Terminal', icon: TerminalSquare },
 ]
 
-// 🟢 MASSIVE OTC DASHBOARD HIERARCHY
+// Dealer workspace navigation
 const otcSections = [
   {
     title: 'OVERVIEW',
@@ -53,39 +53,66 @@ const otcSections = [
     ]
   },
   {
-    title: 'TRADING',
+    title: 'DEALER WORKSPACE',
     items: [
-      { id: 'dealer-workspace', path: '/admin/dealer-workspace', label: 'Dealer Workspace', icon: Briefcase },
-      { id: 'retail-transactions', path: '/admin/retail-transactions', label: 'Retail Transactions', icon: Receipt }
+      { id: 'retail-orders', path: '/admin/retail-orders', label: 'Retail Orders', icon: ListOrdered },
+      { id: 'institutional-rfqs', path: '/admin/institutional-rfqs', label: 'Institutional RFQs', icon: Building2 },
+      { id: 'otc-crypto', path: '/admin/otc-crypto', label: 'OTC Crypto', icon: Bitcoin },
+      { id: 'quotes', path: '/admin/quotes', label: 'Quotes', icon: Quote },
+      { id: 'trades', path: '/admin/trades', label: 'Trades', icon: TradeIcon },
+      { id: 'dealer-workspace', path: '/admin/dealer-workspace', label: 'Dealer Workspace', icon: Briefcase }
     ]
   },
   {
-    title: 'FINANCE',
+    title: 'TREASURY / FINANCE',
+    items: [
+      { id: 'positions', path: '/admin/positions', label: 'Positions', icon: Landmark },
+      { id: 'liquidity', path: '/admin/liquidity', label: 'Liquidity', icon: Droplet },
+      { id: 'exposure', path: '/admin/exposure', label: 'Exposure', icon: Activity },
+      { id: 'pnl', path: '/admin/pnl', label: 'P&L', icon: DollarSign }
+    ]
+  },
+  {
+    title: 'SETTLEMENT',
     items: [
       { id: 'payments', path: '/admin/payments', label: 'Payments', icon: CreditCard },
-      { id: 'treasury', path: '/admin/treasury', label: 'Treasury', icon: Landmark },
-      { id: 'liquidity', path: '/admin/liquidity', label: 'Liquidity', icon: Droplet }
+      { id: 'bank-transfers', path: '/admin/bank-transfers', label: 'Bank Transfers', icon: Landmark },
+      { id: 'wallet-transfers', path: '/admin/wallet-transfers', label: 'Wallet Transfers', icon: Wallet },
+      { id: 'blockchain', path: '/admin/blockchain', label: 'Blockchain', icon: Link2 },
+      { id: 'settlement-exceptions', path: '/admin/settlement-exceptions', label: 'Exceptions', icon: ShieldAlert }
+    ]
+  },
+  {
+    title: 'MARKETS',
+    items: [
+      { id: 'markets-fx', path: '/admin/markets/fx', label: 'FX', icon: Globe },
+      { id: 'markets-crypto', path: '/admin/markets/crypto', label: 'Crypto', icon: Bitcoin },
+      { id: 'markets-stablecoins', path: '/admin/markets/stablecoins', label: 'Stablecoins', icon: Coins },
+      { id: 'markets-liquidity', path: '/admin/markets/liquidity', label: 'Liquidity', icon: Droplet }
+    ]
+  },
+  {
+    title: 'CUSTOMERS',
+    items: [
+      { id: 'individual-customers', path: '/admin/customers/individuals', label: 'Individuals', icon: User },
+      { id: 'corporate-customers', path: '/admin/customers/corporates', label: 'Corporates', icon: Building2 },
+      { id: 'institutional-customers', path: '/admin/customers/institutional', label: 'Institutional', icon: Users }
     ]
   },
   {
     title: 'COMPLIANCE',
     items: [
-      { id: 'kyc-aml', path: '/admin/kyc', label: 'KYC / AML / Risk', icon: ShieldAlert }
+      { id: 'kyc-aml-risk', path: '/admin/compliance', label: 'KYC / AML / Risk', icon: ShieldCheck }
     ]
   },
   {
-    title: 'CLIENTS',
+    title: 'REPORTS',
     items: [
-      { id: 'customers', path: '/admin/customers', label: 'Customers', icon: Users },
-      { id: 'institutional', path: '/admin/institutional', label: 'Institutional Clients', icon: Building2 }
-    ]
-  },
-  {
-    title: 'OPERATIONS',
-    items: [
-      { id: 'pricing', path: '/admin/pricing', label: 'Pricing', icon: Tag },
-      { id: 'airtime-queue', path: '/admin/airtime-queue', label: 'Airtime Queue', icon: Smartphone },
-      { id: 'settlement-queue', path: '/admin/settlement-queue', label: 'Settlement Queue', icon: RefreshCw }
+      { id: 'treasury-reports', path: '/admin/reports/treasury', label: 'Treasury', icon: Landmark },
+      { id: 'trading-reports', path: '/admin/reports/trading', label: 'Trading', icon: ArrowLeftRight },
+      { id: 'operations-reports', path: '/admin/reports/operations', label: 'Operations', icon: RefreshCw },
+      { id: 'compliance-reports', path: '/admin/reports/compliance', label: 'Compliance', icon: ShieldCheck },
+      { id: 'management-reports', path: '/admin/reports/management', label: 'Management', icon: Briefcase }
     ]
   }
 ]
@@ -336,7 +363,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
                 >
                   <div className="flex items-center gap-3">
                     <PieChart className={`w-5 h-5 ${isOTCActive ? 'text-emerald-400' : 'text-slate-500 group-hover:text-slate-400'}`} />
-                    <span>OTC Dashboard</span>
+                    <span>Dealer Workspace</span>
                   </div>
                   <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${isOTCOpen ? 'rotate-180 text-emerald-400' : 'text-slate-500'}`} />
                 </button>
@@ -344,7 +371,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
                 <div
                   className="overflow-hidden transition-all duration-300 ease-in-out"
                   style={{
-                    maxHeight: isOTCOpen ? '1200px' : '0px',
+                    maxHeight: isOTCOpen ? '3000px' : '0px',
                     opacity: isOTCOpen ? 1 : 0,
                     marginTop: isOTCOpen ? '8px' : '0px'
                   }}

@@ -27,7 +27,9 @@ import { TreasuryPage } from './pages/OTC Dashboard/Treasury';
 import LiquidityPage from './pages/OTC Dashboard/Liquidity';
 import KycAmlPage from './pages/OTC Dashboard/KycAml'
 import CustomersPage from './pages/OTC Dashboard/Customers';
-import DealerWorkspace from './pages/OTC Dashboard/DealerWorkspace';
+import DealerWorkspaceWizard from './pages/OTC Dashboard/DealerWorkspaceWizard';
+import DealerWorkspaceLive from './pages/OTC Dashboard/DealerWorkspaceLive';
+import DealerQuotesPage from './pages/OTC Dashboard/DealerQuotesPage';
 import CompanyRevenuePage from './pages/OTC Dashboard/CompanyRevenue';
 
 // --- RETAIL PAGES ---
@@ -101,7 +103,7 @@ function AppRoutes() {
       <Route path="/login" element={user ? <Navigate to={viewAsAdmin ? "/admin/dashboard" : "/dashboard"} replace /> : <Login />} />
       <Route path="/signup" element={user ? <Navigate to={viewAsAdmin ? "/admin/dashboard" : "/dashboard"} replace /> : <Signup />} />
       <Route path="/forgot-password" element={user ? <Navigate to={viewAsAdmin ? "/admin/dashboard" : "/dashboard"} replace /> : <ForgotPasswordPage />} />
-      <Route path="/reset-password/:token" element={user ? <Navigate to={viewAsAdmin ? "/admin/dashboard" : "/dashboard"} replace /> : <ResetPasswordPage />} />
+      <Route path="/reset-password" element={user ? <Navigate to={viewAsAdmin ? "/admin/dashboard" : "/dashboard"} replace /> : <ResetPasswordPage />} />
       <Route path="/faq" element={<FAQPage />} />
 
       {/* PROTECTED LAYOUT */}
@@ -130,12 +132,41 @@ function AppRoutes() {
         {/* NEW OTC DASHBOARD ROUTES */}
         <Route path="admin/dashboard" element={<DashboardOverview />} />
         <Route path="admin/retail-transactions" element={<RetailTransactionsPage />} />
+        <Route path="admin/retail-orders" element={<RetailTransactionsPage />} />
         <Route path="admin/payments" element={<PaymentsPage />} />
         <Route path="admin/treasury" element={<TreasuryPage />} />
-        <Route path="admin/dealer-workspace" element={<DealerWorkspace />} />
+        <Route path="admin/positions" element={<TreasuryPage />} />
+        <Route path="admin/exposure" element={<TreasuryPage />} />
+        <Route path="admin/pnl" element={<CompanyRevenuePage />} />
+        <Route path="admin/dealer-workspace" element={<DealerWorkspaceWizard />} />
+        <Route path="admin/institutional-settlements" element={<DealerWorkspaceWizard mode="settlements" />} />
+        <Route path="admin/institutional-rfqs" element={<DealerWorkspaceLive />} />
+        <Route path="admin/institutional-rfqs/new" element={<DealerWorkspaceWizard initialOpen />} />
+        <Route path="admin/otc-crypto" element={<DealerWorkspaceWizard mode="otc-crypto" />} />
+        <Route path="admin/quotes" element={<DealerQuotesPage />} />
+        <Route path="admin/trades" element={<DealerWorkspaceWizard mode="trades" />} />
+        <Route path="admin/bank-transfers" element={<PaymentsPage />} />
+        <Route path="admin/wallet-transfers" element={<DealerWorkspaceWizard mode="settlements" />} />
+        <Route path="admin/blockchain" element={<DealerWorkspaceWizard mode="settlements" />} />
+        <Route path="admin/settlement-exceptions" element={<PaymentsPage />} />
+        <Route path="admin/markets/fx" element={<RatesInventoryPage />} />
+        <Route path="admin/markets/crypto" element={<RatesInventoryPage />} />
+        <Route path="admin/markets/stablecoins" element={<RatesInventoryPage />} />
+        <Route path="admin/markets/liquidity" element={<LiquidityPage />} />
         <Route path="admin/liquidity" element={<LiquidityPage />} />
         <Route path="admin/kyc" element={<KycAmlPage />} />
+        <Route path="admin/compliance" element={<KycAmlPage />} />
         <Route path="admin/customers" element={<CustomersPage />} />
+        <Route path="admin/customers/individuals" element={<CustomersPage />} />
+        <Route path="admin/customers/corporates" element={<CustomersPage />} />
+        <Route path="admin/customers/institutional" element={<CustomersPage />} />
+        <Route path="admin/compliance/screening" element={<KycAmlPage />} />
+        <Route path="admin/compliance/risks" element={<KycAmlPage />} />
+        <Route path="admin/reports/treasury" element={<CompanyRevenuePage />} />
+        <Route path="admin/reports/trading" element={<DealerWorkspaceWizard mode="quotes" />} />
+        <Route path="admin/reports/operations" element={<PaymentsPage />} />
+        <Route path="admin/reports/compliance" element={<KycAmlPage />} />
+        <Route path="admin/reports/management" element={<DashboardOverview />} />
         <Route path="admin/company-revenue" element={<CompanyRevenuePage />} />
         <Route path="admin/settings" element={<AdministrationPage />} />
 

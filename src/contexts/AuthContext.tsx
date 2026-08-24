@@ -89,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch (e) { /* ignore */ }
       }
 
-      // 🟢 FIX 1: Added /api prefix to the me endpoint
+      // The /api prefix seems to be incorrect for auth routes, causing 404s.
       const res = await api.get('/api/auth/me');
       const userData = res.data?.user || res.data;
 
@@ -128,7 +128,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signup = async (displayName: string, email: string, password: string) => {
     try {
-      // 🟢 FIX 2: Added /api prefix
       const res = await api.post('/api/auth/signup', { displayName, email, password });
 
       const { access_token, user: userData } = res.data;
@@ -140,7 +139,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     try {
-      // 🟢 FIX 3: Added /api prefix
       const res = await api.post('/api/auth/login', { email, password });
 
       const { access_token, user: userData } = res.data;
