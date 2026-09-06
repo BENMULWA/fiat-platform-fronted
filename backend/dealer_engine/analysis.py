@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from routes.treasury import DEFAULT_USD_BASE_RATES
@@ -34,43 +34,6 @@ class AnalysisEngine:
         rate_book = await self.db["treasury_rate_book"].find_one({"_id": "swap_rate_book"})
         return rate_book or {"active": True, "usd_base_rates": dict(DEFAULT_USD_BASE_RATES)}
 
-    async def _customer_daily_volume(self, customer_id: Any, fallback: float) -> float:
-        """Calculate today's completed volume for this merchant's transactions."""
-        if not customer_id:
-            return fallback
-
-        candidates = {str(customer_id)}
-        try:
-            from bson import ObjectId
-            if isinstance(customer_id, str) and len(customer_id) == 24:
-                candidates.add(str(ObjectId(customer_id)))
-        except Exception:
-            pass
-
-        today_start = datetime.combine(date.today(), datetime.min.time())
-        transactions = await self.db["ramp_entries"].find({}).to_list(length=None)
-        completed_statuses = {"completed", "success", "successful"}
-        volume = 0.0
-        found_transaction = False
-        for transaction in transactions:
-            if str(transaction.get("userId") or "") not in candidates:
-                continue
-            status = str(transaction.get("status") or transaction.get("transactionStatus") or "").lower()
-            if status not in completed_statuses:
-                continue
-            created_at = transaction.get("createdAt")
-            if isinstance(created_at, str):
-                try:
-                    created_at = datetime.fromisoformat(created_at.replace("Z", "+00:00")).replace(tzinfo=None)
-                except ValueError:
-                    continue
-            if not isinstance(created_at, datetime) or created_at < today_start:
-                continue
-            found_transaction = True
-            volume += float(transaction.get("fromAmount", transaction.get("amount", 0)) or 0)
-
-        return volume if found_transaction else fallback
-
     async def analyze(self, rfq: dict) -> dict:
         amount = float(rfq.get("amount", 0) or 0)
         from_asset = str(rfq.get("fromAsset", "")).upper()
@@ -86,10 +49,7 @@ class AnalysisEngine:
         customer_status = str((customer or {}).get("status", "active")).lower()
         kyc_status = str((customer or {}).get("kycStatus", "unverified")).lower()
         customer_limit = float((customer or {}).get("dailyLimit", 10000000) or 10000000)
-        customer_volume = await self._customer_daily_volume(
-            customer_id,
-            float((customer or {}).get("todayVolume", 0) or 0),
-        )
+        customer_volume = float((customer or {}).get("todayVolume", 0) or 0)
         remaining_limit = max(customer_limit - customer_volume, 0)
         treasury_position = await TreasuryPositionEngine(self.db).available(treasury_asset)
         treasury_available = float(treasury_position["available"])
@@ -106,7 +66,6 @@ class AnalysisEngine:
         customer_checks = [
             {"key": "customer_status", "label": "Status", "value": customer_status.upper() if customer else "NOT FOUND", "passed": bool(customer and customer_status in {"active", "approved", "verified"})},
             {"key": "customer_kyc", "label": "KYC/KYB", "value": kyc_status.upper(), "passed": kyc_status in {"verified", "approved", "complete", "completed"}},
-            {"key": "customer_volume", "label": "Total volume", "value": f"{customer_volume:,.2f}", "passed": True},
             {"key": "customer_limit", "label": "Remaining daily limit", "value": f"{remaining_limit:,.2f}", "passed": amount <= remaining_limit},
             {"key": "customer_requested", "label": "Requested", "value": f"{amount:,.2f} {from_asset}", "passed": amount > 0},
         ]
@@ -120,9 +79,7 @@ class AnalysisEngine:
             {"key": "treasury_rate", "label": "Rate book", "value": "ACTIVE" if rate_book.get("active", True) else "INACTIVE", "passed": bool(rate_book.get("active", True) and market_rate > 0)},
         ]
         compliance_checks = [
-            {"key": "compliance_kyc", "label": "KYC", "value": "CLEAR" if kyc_status in {"verified", "approved", "complete", "completed"} else kyc_status.upper(), "passed": kyc_status in {"verified", "approved", "complete", "completed"}},
             {"key": "sanctions", "label": "Sanctions", "value": "CLEAR", "passed": bool(customer and not customer.get("sanctionsMatch", False))},
-            {"key": "risk_rating", "label": "Risk rating", "value": "LOW" if amount <= customer_limit else "HIGH", "passed": amount <= customer_limit},
             {"key": "wallet_screening", "label": "Wallet screening", "value": "CLEAR" if wallet_screened else "WALLET REQUIRED", "passed": wallet_screened},
             {"key": "transaction_purpose", "label": "Transaction purpose", "value": "VERIFIED" if rfq.get("purpose") else "NOT PROVIDED", "passed": bool(rfq.get("purpose") or rfq.get("settlementChannel"))},
         ]

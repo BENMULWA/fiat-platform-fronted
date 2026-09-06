@@ -37,18 +37,22 @@ export default function InstitutionalRFQsPage() {
     // Fetch live workspace data from backend
     const fetchWorkspace = async () => {
         try {
-            const [rfqRes, rateBookRes, revenueRes, positionsRes] = await Promise.all([
+            const [rfqResult, rateBookResult, revenueResult, positionsResult] = await Promise.allSettled([
                 api.get('/api/admin/dealer/rfqs'),
                 api.get('/api/treasury/rate-book'),
                 api.get('/api/admin/company-revenue'),
                 getTreasuryPositions(),
             ]);
+            const rfqRes = rfqResult.status === 'fulfilled' ? rfqResult.value : { data: { rfqs: [] } };
+            const rateBookRes = rateBookResult.status === 'fulfilled' ? rateBookResult.value : { data: { rateBook: {} } };
+            const revenueRes = revenueResult.status === 'fulfilled' ? revenueResult.value : { data: { revenue: {} } };
+            const positionsRes = positionsResult.status === 'fulfilled' ? positionsResult.value : { data: {} };
             const rateBook = rateBookRes.data.rateBook || {};
             const baseRates = rateBook.usdBaseRates || {};
             const kesRate = Number(baseRates.KES);
             const spread = Number(rateBook.spreadBps || 0);
             const rates = ['USD', 'EUR', 'USDT', 'USDC'].filter(asset => Number(baseRates[asset]) > 0 && Number.isFinite(kesRate)).map(asset => ({ pair: `${asset}/KES`, price: kesRate / Number(baseRates[asset]), spread }));
-            const rfqs = (rfqRes.data.rfqs || []).map((rfq: any) => ({ ...rfq, customer: rfq.customerName, sellAsset: rfq.fromAsset, buyAsset: rfq.toAsset, settlement: String(rfq.settlementChannel || 'BANK_TO_WALLET').split('_').join(' '), channel: rfq.channel || 'DEALER', country: 'KE', timeAgo: rfq.createdAt ? new Date(rfq.createdAt).toLocaleString() : '' }));
+            const rfqs = (rfqRes.data.rfqs || []).map((rfq: any) => ({ ...rfq, customer: rfq.customerName || rfq.clientName || 'Unknown customer', sellAsset: rfq.fromAsset || rfq.asset || 'N/A', buyAsset: rfq.toAsset || 'N/A', amount: Number(rfq.amount ?? rfq.size ?? 0), settlement: String(rfq.settlementChannel || 'BANK_TO_WALLET').split('_').join(' '), channel: rfq.channel || 'DEALER', country: 'KE', timeAgo: rfq.createdAt ? new Date(rfq.createdAt).toLocaleString() : rfq.timeAgo || '' }));
             const revenue = revenueRes.data.revenue || {};
             const positions = positionsRes.data || {};
             const positionRows = [...(positions.fiat || []), ...(positions.stablecoins || [])];
@@ -109,19 +113,20 @@ export default function InstitutionalRFQsPage() {
 
     const StatusBadge = ({ status }: { status: string }) => {
         const s = status.toLowerCase();
-        if (s === 'pending') return <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border text-amber-400 bg-amber-400/10 border-amber-400/20">{status}</span>;
+        if (s === 'pending' || s === 'quote_ready') return <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border text-amber-400 bg-amber-400/10 border-amber-400/20">{status.replace('_', ' ')}</span>;
         if (s === 'quoted') return <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border text-blue-400 bg-blue-400/10 border-blue-400/20">{status}</span>;
         if (s === 'executed') return <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border text-emerald-400 bg-emerald-400/10 border-emerald-400/20">{status}</span>;
+        if (s === 'blocked') return <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border text-red-400 bg-red-400/10 border-red-400/20">blocked</span>;
         return <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border text-red-400 bg-red-400/10 border-red-400/20">{status}</span>;
     };
 
-    const fmt = (num: number, dec=2) => num.toLocaleString('en-US', {minimumFractionDigits: dec, maximumFractionDigits: dec});
+    const fmt = (num: number, dec=2) => Number(num || 0).toLocaleString('en-US', {minimumFractionDigits: dec, maximumFractionDigits: dec});
     const visibleRfqs = workspaceData.rfqs.filter((rfq) => {
         const query = queueSearch.trim().toLowerCase();
         return !query || [rfq.id, rfq.rfq_display, rfq.customer, rfq.sellAsset, rfq.buyAsset].some(value => String(value || '').toLowerCase().includes(query));
     });
-    const formatMetric = (value: number) => Number.isFinite(value) ? value.toLocaleString('en-US', { maximumFractionDigits: 2 }) : 'N/A';
-    const findCheck = (group: any[] | undefined, key: string) => group?.find((check: any) => check.key === key)?.value || 'N/A';
+    const formatMetric = (value: number) => Number.isFinite(Number(value)) ? Number(value).toLocaleString('en-US', { maximumFractionDigits: 2 }) : 'N/A';
+    const findCheck = (group: any[] | undefined, ...keys: string[]) => group?.find((check: any) => keys.includes(check.key))?.value || 'N/A';
     const marketRate = selectedRfq ? workspaceData.rates.find(rate => rate.pair === `${selectedRfq.sellAsset}/${selectedRfq.buyAsset}`)?.price : undefined;
 
     return (

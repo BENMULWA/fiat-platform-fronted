@@ -1,7 +1,5 @@
 from typing import Any
 
-from dealer_engine.positions import TreasuryPositionEngine
-
 
 class LiquidityEngine:
     """Loads executable internal and external liquidity sources for an RFQ."""
@@ -12,16 +10,19 @@ class LiquidityEngine:
     async def sources(self, asset: str, market_rate: float) -> list[dict[str, Any]]:
         sources: list[dict[str, Any]] = []
         position = await self.db["treasury_positions"].find_one({"asset": asset})
-        treasury_position = await TreasuryPositionEngine(self.db).available(asset)
-        if position or asset.upper() == "USDA" and treasury_position["source"] == "cardano_master_wallet":
+        if position:
+            total = float(position.get("total", 0) or 0)
+            reserved = float(position.get("reserved", 0) or 0)
+            pending = float(position.get("pending", 0) or 0)
+            available = max(total - reserved - pending, 0)
             sources.append({
                 "id": "internal_treasury",
                 "name": "Internal Treasury",
                 "asset": asset,
-                "rate": float((position or {}).get("rate", market_rate) or market_rate),
-                "fee": float((position or {}).get("fee", 0) or 0),
-                "available": float(treasury_position["available"]),
-                "settlement_method": (position or {}).get("settlement_method", "internal"),
+                "rate": float(position.get("rate", market_rate) or market_rate),
+                "fee": float(position.get("fee", 0) or 0),
+                "available": available,
+                "settlement_method": position.get("settlement_method", "internal"),
             })
 
         external = await self.db["liquidity_sources"].find({"asset": asset, "enabled": {"$ne": False}}).to_list(length=50)

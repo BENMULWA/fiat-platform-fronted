@@ -12,11 +12,24 @@ from typing import Optional
 from database import get_db
 from Brain_Engine.corridor_1_airtime import AirtimeCeloCorridor
 from services.safaricom_daraja import DarajaService
-from routes.retail import SUPPORTED_ASSETS
+from routes.retail import SUPPORTED_ASSETS, safe_object_id
 from routes.cardano import get_master_wallet_balance
 from routes.valora import ASSET_CONTRACTS, get_treasury_address, w3
-from web3 import Web3
-from routes.auth import get_current_user, get_current_user_with_role, is_admin_role
+from routes.swap_engine import settle_crypto_on_celo
+from routes.auth import get_current_user, get_current_user_with_role, get_verified_current_user, is_admin_role
+from celo_wallet import derive_celo_account, get_or_create_celo_wallet_index
+from cardano_child_wallet import derive_cardano_child_account, get_or_create_cardano_wallet_index
+from stellar_child_wallet import get_or_create_stellar_wallet_index, derive_stellar_child_account
+from workers.stellar_deposit_watcher import (
+    provision_stellar_account_sync,
+    is_stellar_account_provisioned_sync,
+    send_stellar_withdrawal_sync,
+)
+from stellar_audit import log_stellar_audit_event
+from notifications import notify_user
+from two_factor import verify_withdrawal_2fa
+from wallet_utils import debit_wallet, credit_wallet
+from decimal import Decimal
 
 router = APIRouter(prefix="/api/treasury", tags=["Treasury"])
 daraja = DarajaService()
@@ -39,9 +52,86 @@ class TreasuryRateBookUpdate(BaseModel):
     notes: Optional[str] = None
 
 
+class MasterCeloWithdrawal(BaseModel):
+    asset: str
+    amount: float
+    destination: str
+    counterparty: Optional[str] = None
+
+
 def ensure_admin(current_user: dict):
     if not is_admin_role(current_user.get("role")):
         raise HTTPException(status_code=403, detail="Admin role required")
+
+# withdrawal multi asset for celo crypto wallet from master pool
+
+@router.post("/master-wallet/withdraw", status_code=201)
+async def withdraw_from_celo_master_wallet(
+    payload: MasterCeloWithdrawal,
+    db=Depends(get_db),
+    current_user=Depends(get_current_user_with_role),
+):
+    """Send USDT, USDC, or cUSD directly from the Celo treasury wallet."""
+    ensure_admin(current_user)
+
+    asset = payload.asset.strip()
+    if asset not in {"USDT", "USDC", "cUSD"}:
+        raise HTTPException(status_code=400, detail="Supported Celo assets are USDT, USDC, and cUSD.")
+    if payload.amount <= 0:
+        raise HTTPException(status_code=400, detail="Withdrawal amount must be greater than zero.")
+
+    try:
+        destination = w3.to_checksum_address(payload.destination.strip())
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid Celo destination address.")
+
+    try:
+        treasury_address = get_treasury_address()
+        contract = w3.eth.contract(address=ASSET_CONTRACTS[asset], abi=[{
+            "constant": True,
+            "inputs": [{"name": "account", "type": "address"}],
+            "name": "balanceOf",
+            "outputs": [{"name": "", "type": "uint256"}],
+            "type": "function",
+        }])
+        decimals = 18 if asset == "cUSD" else 6
+        available = contract.functions.balanceOf(treasury_address).call() / (10 ** decimals)
+        if available < payload.amount:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Insufficient {asset} master-wallet balance. Available: {available:.6f} {asset}, Requested: {payload.amount:.6f} {asset}.",
+            )
+
+        result = await settle_crypto_on_celo(destination, asset, payload.amount)
+        if not result.get("success"):
+            raise RuntimeError(result.get("error", "Celo transfer failed"))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Celo on-chain error: {str(exc)}")
+
+    now = datetime.utcnow()
+    await db["treasury_withdrawals"].insert_one({
+        "asset": asset,
+        "amount": payload.amount,
+        "destination": destination,
+        "counterparty": payload.counterparty or destination,
+        "network": "celo",
+        "txHash": result["tx_hash"],
+        "status": "COMPLETED",
+        "performedBy": current_user.get("_id"),
+        "createdAt": now,
+    })
+
+    return {
+        "status": "COMPLETED",
+        "source": "celo_master_wallet",
+        "asset": asset,
+        "amount_sent": payload.amount,
+        "destination": destination,
+        "tx_hash": result["tx_hash"],
+        "block": result.get("block"),
+    }
 
 
 def _default_rate_book() -> dict:
@@ -203,6 +293,37 @@ async def get_swap_quote(from_asset: str, to_asset: str, amount: float = 1.0, db
     }
 
 
+@router.get("/public-rates")
+async def get_public_rates(db=Depends(get_db)):
+    """Read-only indicative rates for the public landing page.
+
+    These values come from the same controlled treasury rate book used for
+    authenticated quotes. They are explicitly indicative: execution is always
+    re-quoted server-side for an authenticated customer.
+    """
+    rate_book = await get_or_create_rate_book(db)
+    rates = deepcopy(DEFAULT_USD_BASE_RATES)
+    rates.update(rate_book.get("usd_base_rates", {}))
+    display_assets = ["USDA", "USDC", "USDT", "AIRT", "IMP", "BTC", "ETH"]
+    kes_rate = float(rates.get("KES", 0) or 0)
+    pairs = []
+    if kes_rate > 0:
+        for asset in display_assets:
+            asset_rate = float(rates.get(asset, 0) or 0)
+            if asset_rate > 0:
+                pairs.append({"pair": f"{asset}/KES", "price": round(kes_rate / asset_rate, 6), "asset": asset})
+
+    return {
+        "status": "success",
+        "active": bool(rate_book.get("active", True)),
+        "referenceSource": rate_book.get("reference_source", "Treasury"),
+        "updatedAt": _serialize_rate_book(rate_book).get("updatedAt"),
+        "usdBaseRates": rates,
+        "pairs": pairs,
+        "disclaimer": "Indicative rates only. Your executable rate is confirmed after sign-in.",
+    }
+
+
 @router.get("/rate-book/history")
 async def get_treasury_rate_book_history(db=Depends(get_db), current_user=Depends(get_current_user_with_role)):
     ensure_admin(current_user)
@@ -332,6 +453,40 @@ async def get_treasury_dashboard(db=Depends(get_db)):
     except Exception as e:
         traceback.print_exc()
         return {"status": "success", "vaults": {}, "settlements": []}
+
+
+@router.get("/master-wallet/balance")
+async def get_celo_master_wallet_balance(current_user=Depends(get_current_user_with_role)):
+    """Return live Celo treasury balances for supported ERC-20 assets."""
+    ensure_admin(current_user)
+    try:
+        treasury_address = get_treasury_address()
+        balance_abi = [{
+            "constant": True,
+            "inputs": [{"name": "account", "type": "address"}],
+            "name": "balanceOf",
+            "outputs": [{"name": "", "type": "uint256"}],
+            "type": "function",
+        }]
+        balances = {}
+        for asset, contract_address in ASSET_CONTRACTS.items():
+            contract = w3.eth.contract(address=contract_address, abi=balance_abi)
+            decimals = 6 if asset in {"USDC", "USDT"} else 18
+            balances[asset] = round(
+                contract.functions.balanceOf(treasury_address).call() / (10 ** decimals),
+                decimals,
+            )
+
+        celo_wei = w3.eth.get_balance(treasury_address)
+        return {
+            "status": "success",
+            "network": "celo",
+            "address": treasury_address,
+            "celo": round(float(w3.from_wei(celo_wei, "ether")), 8),
+            "balances": balances,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch Celo master balance: {str(exc)}")
 
 
 @router.get("/positions")
@@ -569,32 +724,20 @@ async def simulate_swap(req: SimSwapReq, db=Depends(get_db)):
 # 🟢 DYNAMIC MULTI-CHAIN DEPOSIT GATEWAY & WALLET GENERATOR
 # ======================================================================
 
-def get_celo_hot_wallet():
-    """Mathematically derives the Celo address from the Private Key so it CANNOT mismatch."""
-    pk = os.getenv("CELO_TREASURY_PK")
-    if pk:
-        try:
-            w3 = Web3()
-            clean_pk = pk if pk.startswith("0x") else f"0x{pk}"
-            return w3.eth.account.from_key(clean_pk).address
-        except Exception as e:
-            print(f"Error deriving wallet from PK: {e}")
-            pass
-    # Absolute fallback if PK is missing entirely
-    return os.getenv("CELO_HOT_WALLET_ADDRESS", "0x6f7BeAb48EAfC47B89041899a35a0525a6A60F59")
-
 @router.get("/deposit-info")
-async def get_deposit_info(asset: str = "USDT", network: str = "stellar"):
+async def get_deposit_info(
+    asset: str = "USDT",
+    network: str = "stellar",
+    db=Depends(get_db),
+    current_user=Depends(get_verified_current_user),
+):
     """
     Dynamically generates deposit addresses and Memos based on the requested network.
-    Called by the React DepositPage when a user selects a crypto channel.
+    Called by the React DepositPage as soon as a user picks a network — no separate
+    "start listening" action needed, matching how Binance/Coinbase-style exchanges
+    show a permanent deposit address immediately.
     """
-    stellar_address = os.getenv("STELLAR_MASTER_ADDRESS", "GB44UP5VEV2GEHO7UBQQGLWDN5UURTFXTECVYZRX63KBV2PUYLNFQ6K2")
     tron_address = os.getenv("TRON_MASTER_ADDRESS", "TNZZyXUR6JDmxd7Gub8pgdaHWFg6RmSk5U")
-    cardano_address = os.getenv("MASTER_WALLET_ADDRESS", "addr1qx2p8zzt0u9e5n62354c4n2mamlaka_master_vault")
-
-    # Derives the EXACT address that the valora.py scanner is listening to!
-    celo_address = get_celo_hot_wallet()
 
     response_data = {
         "address": "",
@@ -605,22 +748,207 @@ async def get_deposit_info(asset: str = "USDT", network: str = "stellar"):
 
     network_lower = network.lower()
 
-    # 1. EVM Networks (Celo, Polygon, Ethereum) - No Memo required
-    if network_lower in ["celo", "polygon", "ethereum"]:
-        response_data["address"] = celo_address
-        
-    # 2. Tron Network - No Memo required
+    # 1. Celo — a permanent, unique address per user (see celo_wallet.py). The
+    #    background watcher (workers/celo_deposit_watcher.py) watches every
+    #    registered address continuously, so there's nothing to "start" here.
+    if network_lower == "celo":
+        wallet_index = await get_or_create_celo_wallet_index(db, current_user.get("_id"))
+        response_data["address"] = derive_celo_account(wallet_index).address
+
+    # 2. Polygon / Ethereum — no real detection endpoint exists yet (see
+    #    RETAIL_GO_LIVE_CHECKLIST.md); these networks are disabled in the UI.
+    elif network_lower in ["polygon", "ethereum"]:
+        response_data["address"] = ""
+
+    # 3. Tron Network - No Memo required (also disabled in the UI for now)
     elif network_lower in ["tron", "trc20"]:
         response_data["address"] = tron_address
-        
-    # 3. Stellar Network - MEMO IS STRICTLY REQUIRED
-    elif network_lower == "stellar":
-        response_data["address"] = stellar_address
-        unique_memo = f"JASIRI-{uuid.uuid4().hex[:6].upper()}"
-        response_data["memo"] = unique_memo
 
-    # 4. Cardano Network
+    # 4. Stellar — a permanent, unique address per user (see stellar_child_wallet.py),
+    #    watched continuously by workers/stellar_deposit_watcher.py. No memo needed
+    #    anymore since each user has their own account, not a shared one. Only USDC
+    #    is supported (Tether does not officially issue USDT on Stellar).
+    #
+    #    Unlike Celo/Cardano, showing this address does NOT provision it on-chain —
+    #    deriving it is free, but actually creating the account + USDC trustline
+    #    costs real, locked XLM (see workers/stellar_deposit_watcher.py). That real
+    #    on-chain step only happens via POST /api/treasury/stellar/activate-deposit,
+    #    triggered by explicit user intent, not just viewing this page.
+    elif network_lower == "stellar":
+        stellar_wallet_index = await get_or_create_stellar_wallet_index(db, current_user.get("_id"))
+        response_data["address"] = derive_stellar_child_account(stellar_wallet_index).public_key
+        response_data["provisioned"] = await asyncio.to_thread(is_stellar_account_provisioned_sync, stellar_wallet_index)
+
+    # 5. Cardano — a permanent, unique address per user (see cardano_child_wallet.py),
+    #    watched continuously by workers/cardano_deposit_watcher.py. Same "no start
+    #    step needed" model as Celo, not the old shared-master-wallet address.
     elif network_lower == "cardano":
-        response_data["address"] = cardano_address
+        cardano_wallet_index = await get_or_create_cardano_wallet_index(db, current_user.get("_id"))
+        _, cardano_child_address = derive_cardano_child_account(cardano_wallet_index)
+        response_data["address"] = str(cardano_child_address)
 
     return {"status": "success", "data": response_data}
+
+
+@router.post("/stellar/activate-deposit")
+async def activate_stellar_deposit(db=Depends(get_db), current_user=Depends(get_verified_current_user)):
+    """The real, costly on-chain step for Stellar deposits: creates the user's
+    account and USDC trustline if they don't exist yet. Triggered by explicit
+    user intent (a button click), not by merely viewing the deposit page —
+    unlike Celo/Cardano, every Stellar account genuinely costs locked XLM to
+    bring into existence, so it's not provisioned automatically on page view.
+    Safe to call again for an already-provisioned account — it's a no-op."""
+    stellar_wallet_index = await get_or_create_stellar_wallet_index(db, current_user.get("_id"))
+    try:
+        stellar_address = await asyncio.to_thread(provision_stellar_account_sync, stellar_wallet_index)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Stellar deposits are temporarily unavailable while the treasury account is being funded. Please try again shortly.",
+        ) from exc
+    return {"status": "success", "data": {"address": stellar_address, "provisioned": True}}
+
+
+# Withdrawal limits — same rationale as Celo's (routes/valora.py): a stolen
+# session/JWT should never be able to drain an unbounded amount instantly.
+STELLAR_MAX_WITHDRAWAL_PER_TX = float(os.getenv("STELLAR_MAX_WITHDRAWAL_PER_TX", "500"))
+STELLAR_MAX_WITHDRAWAL_PER_DAY = float(os.getenv("STELLAR_MAX_WITHDRAWAL_PER_DAY", "2000"))
+
+
+class StellarWithdrawRequest(BaseModel):
+    amount: float
+    to_address: Optional[str] = None
+    toAddress: Optional[str] = None
+    address: Optional[str] = None
+    asset: str = "USDC"
+    otp_session_id: str = ""
+    otp_code: str = ""
+    totp_code: Optional[str] = None
+
+    def get_destination(self) -> str:
+        dest = self.to_address or self.toAddress or self.address
+        if not dest or not dest.strip():
+            raise HTTPException(status_code=400, detail="Destination Stellar address is required.")
+        return dest.strip()
+
+
+@router.post("/stellar/withdraw", status_code=201)
+async def withdraw_stellar_usdc(
+    body: StellarWithdrawRequest,
+    db=Depends(get_db),
+    current_user=Depends(get_verified_current_user),
+):
+    """Send USDC from the Stellar treasury to an external address. Only USDC
+    is supported — Tether does not officially issue USDT on Stellar (see
+    workers/stellar_deposit_watcher.py)."""
+    # Verified before anything else touches the balance.
+    await verify_withdrawal_2fa(db, current_user, body.otp_session_id, body.otp_code, body.totp_code)
+
+    if body.asset.strip().upper() != "USDC":
+        raise HTTPException(status_code=400, detail="Only USDC withdrawals are supported on Stellar.")
+
+    dest_address = body.get_destination()
+    amount = round(float(body.amount), 6)
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Withdrawal amount must be greater than zero.")
+
+    user_id = safe_object_id(current_user.get("_id"))
+
+    await log_stellar_audit_event(
+        db, "withdrawal_requested",
+        userId=str(user_id), asset="USDC", amount=amount, destination=dest_address,
+    )
+
+    if amount > STELLAR_MAX_WITHDRAWAL_PER_TX:
+        await log_stellar_audit_event(
+            db, "withdrawal_blocked_limit",
+            userId=str(user_id), asset="USDC", amount=amount, destination=dest_address,
+            reason="per_tx_limit", limit=STELLAR_MAX_WITHDRAWAL_PER_TX,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Withdrawals are capped at {STELLAR_MAX_WITHDRAWAL_PER_TX} USDC per transaction.",
+        )
+
+    day_ago = datetime.utcnow() - timedelta(hours=24)
+    daily_totals = await db["stellar_audit_log"].aggregate([
+        {"$match": {"event": "withdrawal_broadcast", "userId": str(user_id), "asset": "USDC", "createdAt": {"$gte": day_ago}}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}},
+    ]).to_list(length=1)
+    already_withdrawn_today = daily_totals[0]["total"] if daily_totals else 0.0
+
+    if already_withdrawn_today + amount > STELLAR_MAX_WITHDRAWAL_PER_DAY:
+        await log_stellar_audit_event(
+            db, "withdrawal_blocked_limit",
+            userId=str(user_id), asset="USDC", amount=amount, destination=dest_address,
+            reason="daily_limit", limit=STELLAR_MAX_WITHDRAWAL_PER_DAY, alreadyWithdrawnToday=already_withdrawn_today,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Daily withdrawal limit reached: up to {STELLAR_MAX_WITHDRAWAL_PER_DAY} USDC per 24 hours. You've already withdrawn {already_withdrawn_today:.2f} USDC today.",
+        )
+
+    # Sums/debits across every retail_wallets row for this user — see
+    # wallet_utils.py. A plain find_one here (the old code) could see a
+    # different, smaller balance than what GET /wallet displays.
+    await debit_wallet(db, current_user.get("_id"), "USDC", amount)
+
+    try:
+        tx_hash = await asyncio.to_thread(send_stellar_withdrawal_sync, dest_address, Decimal(str(amount)))
+    except ValueError as exc:
+        await credit_wallet(db, current_user.get("_id"), "USDC", amount)
+        await log_stellar_audit_event(
+            db, "withdrawal_failed",
+            userId=str(user_id), asset="USDC", amount=amount, destination=dest_address, error=str(exc),
+        )
+        await notify_user(
+            db, user_id, "withdrawal", "error",
+            "Withdrawal failed",
+            f"Your withdrawal of {amount:g} USDC failed and was refunded. {exc}",
+            extra={"asset": "USDC", "amount": amount},
+        )
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        await credit_wallet(db, current_user.get("_id"), "USDC", amount)
+        await log_stellar_audit_event(
+            db, "withdrawal_failed",
+            userId=str(user_id), asset="USDC", amount=amount, destination=dest_address, error=str(exc),
+        )
+        await notify_user(
+            db, user_id, "withdrawal", "error",
+            "Withdrawal failed",
+            f"Your withdrawal of {amount:g} USDC failed and was refunded. {exc}",
+            extra={"asset": "USDC", "amount": amount},
+        )
+        raise HTTPException(status_code=502, detail=f"Stellar on-chain error: {str(exc)}")
+
+    now = datetime.utcnow()
+    await db["ramp_entries"].insert_one({
+        "_id": f"TRADE_{uuid.uuid4().hex[:8].upper()}",
+        "direction": "off", "channel": "Stellar Blockchain", "fromAsset": "USDC", "toAsset": "USDC",
+        "fromAmount": amount, "toAmount": amount, "rate": 1.0, "fee": 0.0,
+        "counterparty": dest_address[:10] + "…" + dest_address[-6:],
+        "status": "COMPLETED",
+        "cardanoTxHash": tx_hash,
+        "cardanoAddress": dest_address,
+        "userId": user_id, "createdAt": now, "date": now.strftime("%b %d, %Y"), "timeAgo": "Just now",
+    })
+
+    await log_stellar_audit_event(
+        db, "withdrawal_broadcast",
+        userId=str(user_id), asset="USDC", amount=amount, destination=dest_address, txHash=tx_hash,
+    )
+
+    await notify_user(
+        db, user_id, "withdrawal", "success",
+        "Withdrawal completed",
+        f"{amount:g} USDC was sent to {dest_address[:10]}…",
+        extra={"asset": "USDC", "amount": amount, "txHash": tx_hash},
+    )
+
+    return {
+        "tx_hash": tx_hash,
+        "amount_sent": amount,
+        "status": "COMPLETED",
+        "message": f"Successfully sent {amount} USDC to {dest_address[:10]}…",
+    }

@@ -26,12 +26,18 @@ export default function KYCpage() {
   const [toast, setToast] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
     const fetchStatus = async () => {
       try {
         const res = await getKycStatus();
+        if (!isMounted) return;
         if (res.data?.kycStatus) {
           setStatus(res.data.kycStatus);
-          updateUser({ kycStatus: res.data.kycStatus });
+          updateUser({
+            kycStatus: res.data.kycStatus,
+            name: res.data?.kycDetails?.fullName || user?.name,
+            email: res.data?.kycDetails?.email || user?.email,
+          });
         }
         if (res.data?.kycSubmittedAt) {
           setSubmittedAt(res.data.kycSubmittedAt);
@@ -41,13 +47,16 @@ export default function KYCpage() {
       }
     };
     fetchStatus();
+    // Approval happens in a separate admin session. Poll while the customer is
+    // on this screen so the account unlocks without a manual sign-out/refresh.
+    const timer = window.setInterval(fetchStatus, 5_000);
+    return () => { isMounted = false; window.clearInterval(timer); };
   }, []);
 
   // --- PERMANENT REDIRECT FOR VERIFIED USERS ---
   useEffect(() => {
     if (status === 'verified') {
-      // If they are verified, auto-redirect them away from this page after 3 seconds!
-      const timer = setTimeout(() => navigate('/dashboard'), 3000);
+      const timer = setTimeout(() => navigate('/dashboard'), 700);
       return () => clearTimeout(timer);
     }
   }, [status, navigate]);

@@ -17,8 +17,8 @@ const retailNavMain = [
 
 const retailNavActions = [
   { to: '/deposit', label: 'Deposits', icon: ArrowDownRight },
+  { to: '/swap', label: 'Convert', icon: ArrowRightLeft },
   { to: '/withdraw', label: 'Withdrawals', icon: ArrowUpRight },
-  { to: '/swap', label: 'Quick Swap', icon: ArrowRightLeft },
   { to: '/redeem-airtime', label: 'Redeem Airtime', icon: Radio },
   // { to: '/impala-coin', label: 'Impala Coin', icon: Coins },
 ]
@@ -67,6 +67,7 @@ const otcSections = [
     title: 'TREASURY / FINANCE',
     items: [
       { id: 'positions', path: '/admin/positions', label: 'Positions', icon: Landmark },
+      { id: 'settlements', path: '/admin/settlements', label: 'Settlement Queue', icon: Receipt },
       { id: 'liquidity', path: '/admin/liquidity', label: 'Liquidity', icon: Droplet },
       { id: 'exposure', path: '/admin/exposure', label: 'Exposure', icon: Activity },
       { id: 'pnl', path: '/admin/pnl', label: 'P&L', icon: DollarSign }

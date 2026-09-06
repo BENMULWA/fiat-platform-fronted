@@ -156,7 +156,7 @@ export default function OnOffRampPage() {
       }
       // MOBILE MONEY LOGIC
       else {
-        await executeRamp({ direction, channel, from_asset: fromAsset, to_asset: toAsset, amount: numericAmount, rate: rate, fee: 0, counterparty })
+        await executeRamp({ direction, channel, from_asset: fromAsset, to_asset: toAsset, amount: numericAmount, rate: rate, fee: 0, counterparty, momo_provider: 'M-Pesa' })
         setSuccessMessage(direction === 'on' ? 'STK Push sent! Check your phone.' : 'Payout dispatched to M-Pesa.')
       }
 

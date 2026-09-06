@@ -26,9 +26,9 @@ export default function AdminRoute({ children, requiredPermissions }: AdminRoute
 
     // Safe role check using optional chaining and type assertion
     const userRole = (user as any).role?.toString().toLowerCase() || '';
-    const viewAsAdmin = (user as any).viewAsAdmin === true;
-
-    const isAdmin = userRole === 'super_admin' || userRole === 'admin' || viewAsAdmin;
+    // Match the server-side role policy. UI checks improve navigation safety;
+    // every privileged API must still enforce its own role dependency.
+    const isAdmin = !['', 'retail', 'trader', 'user'].includes(userRole);
 
     if (!isAdmin) {
         return (

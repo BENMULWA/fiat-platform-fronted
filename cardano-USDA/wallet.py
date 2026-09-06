@@ -71,8 +71,12 @@ class CardanoWallet:
 
             self._signing_key = PaymentSigningKey.from_primitive(priv_bytes)
         # Derive verification key and address from the signing key.
-        # The to_verification_key() method exists on both extended and non-extended signing keys.
-        vk = self._signing_key.to_verification_key()
+        # Both extended and non-extended signing keys support `from_signing_key`.
+        if hasattr(self._signing_key, "to_verification_key"):
+            vk = PaymentVerificationKey.from_signing_key(self._signing_key)
+        else:
+            vk = PaymentVerificationKey.from_signing_key(self._signing_key)
+
         self.address: Address = Address(payment_part=vk.hash(), network=get_network())
 
     @property

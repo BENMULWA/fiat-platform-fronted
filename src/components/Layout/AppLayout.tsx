@@ -1,12 +1,13 @@
 
 //@ts-nocheck
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Menu, Bell, User, LogOut, Settings, ChevronDown, FileText, ShieldCheck, Scale, CircleAlert, CheckCircle2 } from 'lucide-react'
+import { Menu, Bell, User, LogOut, Settings, ChevronDown, FileText, ShieldCheck, Scale, CircleAlert, CheckCircle2, XCircle } from 'lucide-react'
 import Sidebar from './Sidebar'
 import { useAuth } from '../../contexts/AuthContext'
 import { getAdminNotifications, markAllAdminNotificationsRead, getRetailNotifications, markAllRetailNotificationsRead } from '../../api/client'
+import useWebsocket from '../../hooks/useWebsocket'
 
 export default function AppLayout() {
   const { user, logout, viewAsAdmin, toggleViewAsAdmin } = useAuth()
@@ -24,7 +25,7 @@ export default function AppLayout() {
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
   const notificationType = isAdmin ? 'admin' : 'retail'
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     try {
       const res = isAdmin ? await getAdminNotifications() : await getRetailNotifications()
       setNotifications(res.data?.notifications || [])
@@ -32,7 +33,25 @@ export default function AppLayout() {
     } catch {
       // keep UI quiet if notifications are unavailable
     }
-  }
+  }, [isAdmin])
+
+  // Real-time push: the backend (see backend/notifications.py's notify_user,
+  // called from ramp.py/swap_engine.py/airtime_ledger.py/the deposit watchers/
+  // otc_admin.py's KYC review) broadcasts a `notification` event over the
+  // existing /ws/dashboard socket the instant a deposit/withdrawal/swap/
+  // airtime redemption/KYC review happens, instead of waiting for the bell's
+  // next 30s poll.
+  const currentUserId = (() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('meshex_user') || 'null')
+      return stored ? (stored._id || stored.id || null) : null
+    } catch { return null }
+  })()
+
+  useWebsocket('/ws/dashboard', isAdmin ? null : currentUserId, (msg: any) => {
+    if (!msg || msg.type !== 'notification') return
+    fetchNotifications()
+  })
 
   // Close sidebars/menus on route change or resize
   useEffect(() => {
@@ -170,10 +189,17 @@ export default function AppLayout() {
                         <span className="text-[10px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full font-bold">{unreadCount} New</span>
                       </div>
                       <div className="max-h-[300px] overflow-y-auto">
-                        {notifications.length > 0 ? notifications.map((notification) => (
+                        {notifications.length > 0 ? notifications.map((notification) => {
+                          // `type` carries severity — "error"/"high" for failures (deposit/
+                          // withdrawal/swap/airtime/KYC failures, low-balance alerts),
+                          // "success" for the new event notifications, everything else
+                          // (e.g. "medium" liquidity warnings) in between.
+                          const isBad = notification.type === 'error' || notification.type === 'high'
+                          const isWarn = notification.type === 'medium'
+                          return (
                           <div key={notification.id} className={`p-4 border-b border-[#1E2533]/50 hover:bg-[#111827] transition-colors cursor-pointer flex gap-3 ${notification.isRead ? 'opacity-70' : ''}`}>
-                            <div className={`w-8 h-8 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${notification.category === 'liquidity' ? 'bg-amber-500/10 border-amber-500/20' : 'bg-emerald-500/10 border-emerald-500/20'}`}>
-                              {notification.category === 'liquidity' ? <CircleAlert className="w-4 h-4 text-amber-400" /> : <ShieldCheck className="w-4 h-4 text-emerald-400" />}
+                            <div className={`w-8 h-8 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${isBad ? 'bg-red-500/10 border-red-500/20' : isWarn ? 'bg-amber-500/10 border-amber-500/20' : 'bg-emerald-500/10 border-emerald-500/20'}`}>
+                              {isBad ? <XCircle className="w-4 h-4 text-red-400" /> : isWarn ? <CircleAlert className="w-4 h-4 text-amber-400" /> : <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
                             </div>
                             <div>
                               <p className="text-sm font-bold text-white mb-0.5">{notification.title}</p>
@@ -181,7 +207,8 @@ export default function AppLayout() {
                               <p className="text-[10px] text-gray-500 mt-2 font-mono">{notification.createdAtLabel || 'Just now'}</p>
                             </div>
                           </div>
-                        )) : (
+                          )
+                        }) : (
                           <div className="p-4 text-sm text-gray-500">No notifications yet.</div>
                         )}
                       </div>
@@ -199,9 +226,13 @@ export default function AppLayout() {
                   onClick={() => { setShowUserMenu(!showUserMenu); setShowNotifMenu(false); }}
                   className="flex items-center gap-1.5 hover:opacity-80 transition-opacity ml-1"
                 >
-                  <div className="w-8 h-8 rounded-full bg-[#00d282] text-[#06090F] flex items-center justify-center font-bold text-sm uppercase">
-                    {user?.name?.[0] || user?.displayName?.[0] || 'U'}
-                  </div>
+                  {user?.avatarUrl ? (
+                    <img src={user.avatarUrl} alt="" className="w-8 h-8 rounded-full object-cover border border-[#1E2533]" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-[#00d282] text-[#06090F] flex items-center justify-center font-bold text-sm uppercase">
+                      {user?.name?.[0] || user?.displayName?.[0] || 'U'}
+                    </div>
+                  )}
                   <ChevronDown className="w-4 h-4 text-gray-400" />
                 </button>
 

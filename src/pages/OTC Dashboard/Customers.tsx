@@ -38,12 +38,15 @@ export default function Customers() {
         }
     };
 
-    const handleViewDocs = (docName: string) => {
-        if (!docName || docName === 'None provided') {
+    const handleViewDocs = (kycDetails?: any) => {
+        const docName = kycDetails?.documentName;
+        const documentDataUrl = kycDetails?.documentDataUrl;
+        if (!docName || !documentDataUrl) {
             alert("No documents are on file for this user.");
             return;
         }
-        alert(`File on record: ${docName}\n\n(Cloud storage bucket retrieval pending implementation)`);
+        const documentWindow = window.open(documentDataUrl, '_blank', 'noopener,noreferrer');
+        if (!documentWindow) alert('Your browser blocked the document window. Allow pop-ups and try again.');
     };
 
     const exportStatementCSV = async (customer: any) => {
@@ -414,7 +417,7 @@ export default function Customers() {
                                 <button onClick={() => exportStatementPDF(selectedCustomer)} disabled={isExporting} className="flex-1 py-3 bg-[#111827] hover:bg-[#1e2d3d] border border-[#1e2d3d] text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50">
                                     <FileText className="w-4 h-4 text-blue-400" /> {isExporting ? 'Generating...' : 'Download PDF'}
                                 </button>
-                                <button onClick={() => handleViewDocs(selectedCustomer.kycDetails?.documentName)} className="flex-1 py-3 bg-[#111827] hover:bg-[#1e2d3d] border border-[#1e2d3d] text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors">
+                                <button onClick={() => handleViewDocs(selectedCustomer.kycDetails)} className="flex-1 py-3 bg-[#111827] hover:bg-[#1e2d3d] border border-[#1e2d3d] text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors">
                                     <Eye className="w-4 h-4 text-amber-400" /> View Docs
                                 </button>
                             </div>

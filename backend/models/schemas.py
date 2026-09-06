@@ -49,6 +49,8 @@ class RampExecute(BaseModel):
     rate: float = 1.0
     fee: float = 0.0
     counterparty: Optional[str] = None
+    momo_provider: Optional[str] = None
+    momo_provider: Optional[str] = None
 
     class Config:
         populate_by_name = True

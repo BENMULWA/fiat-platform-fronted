@@ -11,6 +11,7 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import FAQPage from './pages/FAQPage'
 import AppLayout from './components/Layout/AppLayout'
+import AdminRoute from './components/Guards/AdminRoute'
 
 // --- ADMIN PAGES ---
 import DashboardPage from './pages/DashboardPage'
@@ -24,6 +25,7 @@ import DashboardOverview from './pages/OTC Dashboard/DashboardOverview';
 import { RetailTransactionsPage } from './pages/OTC Dashboard/RetailTransactions';
 import PaymentsPage from './pages/OTC Dashboard/Payments';
 import { TreasuryPage } from './pages/OTC Dashboard/Treasury';
+import { TreasurySettlementsPage } from './pages/OTC Dashboard/TreasurySettlements';
 import LiquidityPage from './pages/OTC Dashboard/Liquidity';
 import KycAmlPage from './pages/OTC Dashboard/KycAml'
 import CustomersPage from './pages/OTC Dashboard/Customers';
@@ -62,7 +64,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 // Gate Keeper Wrapper: Forced KYC Gateway
 function KycProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading, viewAsAdmin } = useAuth()
-  const location = useLocation()
 
   if (isLoading) {
     return (
@@ -76,10 +77,25 @@ function KycProtectedRoute({ children }: { children: React.ReactNode }) {
   // Admins bypass KYC
   if (viewAsAdmin) return <>{children}</>
 
-  // If retail user is unverified/pending, force them to KYC page
-  
+  // KYC is also enforced by backend dependencies on every value-moving API.
+  // This guard makes the requirement visible before a user starts a flow.
+  if (!['verified', 'approved'].includes((user.kycStatus || '').toLowerCase())) {
+    return <Navigate to="/kyc" replace />
+  }
 
   return <>{children}</>
+}
+
+function RoleAwareLayout() {
+  const location = useLocation()
+  const adminOnlyPaths = ['/admin', '/vault', '/market-maker', '/general-ledger', '/rates']
+  const isAdminPath = adminOnlyPaths.some((path) =>
+    path === '/admin' ? location.pathname.startsWith('/admin') : location.pathname === path
+  )
+
+  return isAdminPath ? (
+    <AdminRoute><AppLayout /></AdminRoute>
+  ) : <AppLayout />
 }
 
 // ------------------------------------------------------------------
@@ -107,7 +123,7 @@ function AppRoutes() {
       <Route path="/faq" element={<FAQPage />} />
 
       {/* PROTECTED LAYOUT */}
-      <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+      <Route path="/" element={<ProtectedRoute><RoleAwareLayout /></ProtectedRoute>}>
 
         {/* 🟢 STRICT RETAIL GATEWAY: All core pages are now KYC Protected */}
         <Route path="dashboard" element={<KycProtectedRoute><RetailDashboardPage /></KycProtectedRoute>} />
@@ -136,6 +152,7 @@ function AppRoutes() {
         <Route path="admin/payments" element={<PaymentsPage />} />
         <Route path="admin/treasury" element={<TreasuryPage />} />
         <Route path="admin/positions" element={<TreasuryPage />} />
+        <Route path="admin/settlements" element={<TreasurySettlementsPage />} />
         <Route path="admin/exposure" element={<TreasuryPage />} />
         <Route path="admin/pnl" element={<CompanyRevenuePage />} />
         <Route path="admin/dealer-workspace" element={<DealerWorkspaceWizard />} />

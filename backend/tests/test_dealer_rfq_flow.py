@@ -1,14 +1,10 @@
 import asyncio
 import unittest
-from unittest.mock import AsyncMock, patch
 
 from datetime import datetime, timedelta
-from bson import ObjectId
 
-from dealer_engine.liquidity import LiquidityEngine
-from dealer_engine.positions import TreasuryPositionEngine
 from dealer_engine.liquidity import SmartRouter
-from routes.otc_admin import _serialize_dealer_rfq, accept_dealer_rfq, create_dealer_rfq, execute_dealer_rfq, get_dealer_rfq_analysis, get_dealer_settlement, quote_dealer_rfq
+from routes.otc_admin import accept_dealer_rfq, create_dealer_rfq, execute_dealer_rfq, get_dealer_rfq_analysis, get_dealer_settlement, quote_dealer_rfq
 
 
 class FakeCollection:
@@ -74,75 +70,12 @@ class FakeDB:
         self.liquidity_sources = FakeCollection()
         self.users = FakeCollection()
         self.retail_wallets = FakeCollection()
-        self.ramp_entries = FakeCollection()
         self.users.docs.append({"_id": "CUST-01", "status": "active", "kycStatus": "verified"})
         self.treasury_positions.docs.append({"asset": "USDC", "total": 200000, "reserved": 0, "pending": 0})
         self.retail_wallets.docs.append({"userId": "CUST-01", "USDA": 200000})
 
 
 class DealerRfqFlowTests(unittest.TestCase):
-    def test_rfq_serializer_converts_nested_object_ids(self):
-        serialized = _serialize_dealer_rfq({
-            "customerId": ObjectId(),
-            "analysis": {"allocations": [{"providerQuoteId": ObjectId()}]},
-        })
-
-        self.assertIsInstance(serialized["customerId"], str)
-        self.assertIsInstance(serialized["analysis"]["allocations"][0]["providerQuoteId"], str)
-
-    def test_customer_volume_is_calculated_per_merchant_from_transactions(self):
-        async def run_test():
-            db = FakeDB()
-            db.users.docs.extend([
-                {"_id": "CUST-02", "status": "active", "kycStatus": "verified", "dailyLimit": 5000},
-            ])
-            today = datetime.utcnow()
-            db.ramp_entries.docs.extend([
-                {"userId": "CUST-01", "fromAmount": 1200, "status": "completed", "createdAt": today},
-                {"userId": "CUST-01", "fromAmount": 300, "status": "completed", "createdAt": today},
-                {"userId": "CUST-02", "fromAmount": 800, "status": "completed", "createdAt": today},
-                {"userId": "CUST-02", "fromAmount": 900, "status": "pending", "createdAt": today},
-            ])
-
-            first = await create_dealer_rfq({"amount": 100, "from_asset": "USDC", "to_asset": "KES", "customer_id": "CUST-01", "side": "BUY", "settlement_channel": "BANK_TO_WALLET", "destination_wallet": "wallet-cust-01", "network": "Celo"}, db)
-            second = await create_dealer_rfq({"amount": 100, "from_asset": "USDC", "to_asset": "KES", "customer_id": "CUST-02", "side": "BUY", "settlement_channel": "BANK_TO_WALLET", "destination_wallet": "wallet-cust-02", "network": "Celo"}, db)
-
-            first_checks = first["rfq"]["analysis"]["customer"]
-            second_checks = second["rfq"]["analysis"]["customer"]
-            self.assertEqual(next(check for check in first_checks if check["key"] == "customer_volume")["value"], "1,500.00")
-            self.assertEqual(next(check for check in first_checks if check["key"] == "customer_limit")["value"], "9,998,500.00")
-            self.assertEqual(next(check for check in second_checks if check["key"] == "customer_volume")["value"], "800.00")
-            self.assertEqual(next(check for check in second_checks if check["key"] == "customer_limit")["value"], "4,200.00")
-
-        asyncio.run(run_test())
-
-    def test_buying_usda_requires_and_tracks_destination_wallet(self):
-        async def run_test():
-            db = FakeDB()
-            payload = {"amount": 1, "from_asset": "USDA", "to_asset": "KES", "customer_id": "CUST-01", "side": "BUY", "settlement_channel": "BANK_TO_WALLET", "destination_wallet": "addr_test1merchant", "network": "Cardano"}
-            result = await create_dealer_rfq(payload, db)
-            quote = await quote_dealer_rfq(result["rfq"]["id"], {"send_quote": True}, db)
-            self.assertEqual(quote["rfq"]["quote"]["destinationWallet"], "addr_test1merchant")
-            self.assertEqual(quote["rfq"]["quote"]["network"], "Cardano")
-
-        asyncio.run(run_test())
-
-    def test_usda_treasury_uses_live_master_wallet_token_balance(self):
-        async def run_test():
-            db = FakeDB()
-            db.treasury_positions.docs.append({"asset": "USDA", "total": 5.88, "reserved": 0, "pending": 0})
-            live_balance = {"status": "success", "ada": 5.88, "usda": 38.16}
-
-            with patch("routes.cardano.get_master_wallet_balance", new=AsyncMock(return_value=live_balance)):
-                position = await TreasuryPositionEngine(db).available("USDA")
-                sources = await LiquidityEngine(db).sources("USDA", 1.0)
-
-            self.assertEqual(position["total"], 38.16)
-            self.assertEqual(position["available"], 38.16)
-            self.assertEqual(sources[0]["available"], 38.16)
-
-        asyncio.run(run_test())
-
     def test_dealer_rfq_analysis_and_quote_flow(self):
         async def run_test():
             db = FakeDB()
@@ -166,12 +99,6 @@ class DealerRfqFlowTests(unittest.TestCase):
             self.assertEqual(treasury["total"], 200000)
             self.assertEqual(treasury["required"], 1000)
             self.assertEqual(treasury["coverage"], 20000)
-            customer_checks = result["rfq"]["analysis"]["customer"]
-            self.assertEqual(next(check for check in customer_checks if check["key"] == "customer_volume")["value"], "0.00")
-            self.assertEqual(next(check for check in customer_checks if check["key"] == "customer_limit")["value"], "10,000,000.00")
-            compliance_checks = result["rfq"]["analysis"]["compliance"]
-            self.assertEqual(next(check for check in compliance_checks if check["key"] == "compliance_kyc")["value"], "CLEAR")
-            self.assertEqual(next(check for check in compliance_checks if check["key"] == "risk_rating")["value"], "LOW")
 
             rfq_id = result["rfq"]["id"]
             analysis = await get_dealer_rfq_analysis(rfq_id, db)
@@ -184,18 +111,20 @@ class DealerRfqFlowTests(unittest.TestCase):
             self.assertEqual(quoted["rfq"]["status"], "quoted")
             self.assertTrue(quoted["rfq"]["quote"]["route"])
 
-            accepted = await accept_dealer_rfq(rfq_id, db, {"_id": ObjectId(), "role": "admin"})
+            accepted = await accept_dealer_rfq(rfq_id, db, {"_id": "dealer-01", "role": "admin"})
             self.assertEqual(accepted["status"], "success")
             self.assertEqual(accepted["rfq"]["status"], "accepted")
             self.assertTrue(accepted["rfq"]["reservationId"])
             self.assertEqual(db.dealer_executions.docs[0]["status"], "accepted")
-            self.assertIsInstance(accepted["execution"]["acceptedBy"], str)
 
             executed = await execute_dealer_rfq(rfq_id, db)
             settlement_id = executed["settlement"]["id"]
+            settlement = db.dealer_settlements.docs[0]
+            settlement["createdAt"] = datetime.utcnow() - timedelta(seconds=5)
             completed = await get_dealer_settlement(settlement_id, db)
-            self.assertEqual(completed["settlement"]["status"], "pending")
-            self.assertFalse(completed["settlement"]["simulation"])
+            self.assertEqual(completed["settlement"]["status"], "completed")
+            self.assertEqual(completed["settlement"]["legs"]["fiat"]["status"], "confirmed")
+            self.assertEqual(completed["settlement"]["legs"]["crypto"]["status"], "confirmed")
 
     def test_analysis_blocks_insufficient_treasury_inventory(self):
         async def run_test():
@@ -209,8 +138,6 @@ class DealerRfqFlowTests(unittest.TestCase):
                     "customer_id": "CUST-01",
                     "side": "BUY",
                     "settlement_channel": "BANK_TO_WALLET",
-                    "destination_wallet": "wallet-cust-01",
-                    "network": "Celo",
                 },
                 db,
             )

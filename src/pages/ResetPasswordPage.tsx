@@ -45,7 +45,6 @@ export default function ResetPasswordPage() {
         setError('');
 
         try {
-            // This API call needs to be implemented on the backend
             await resetPassword({ token, new_password: password });
             setSuccess(true);
             setTimeout(() => navigate('/login', { state: { successMessage: 'Password has been reset successfully. You can now log in.' } }), 3000);

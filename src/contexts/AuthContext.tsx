@@ -12,6 +12,7 @@ export interface User {
   viewAsAdmin?: boolean;
   workspaceId?: string;
   walletAddress?: string;
+  avatarUrl?: string;
   [key: string]: any;
 }
 
@@ -56,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       kycStatus: userData.kycStatus,
       workspaceId: userData.workspaceId,
       walletAddress: userData.walletAddress,
+      avatarUrl: userData.avatarUrl,
     };
 
     setUser(mappedUser);
@@ -99,10 +101,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: userData.email || '',
           name: userData.displayName || userData.name || '',
           role: userData.role || 'retail',
-          kycStatus: userData.kycStatus || 'pending',
+          kycStatus: userData.kycStatus || 'unverified',
           permissions: userData.permissions || [],
           workspaceId: userData.workspaceId,
           walletAddress: userData.walletAddress,
+          avatarUrl: userData.avatarUrl,
         };
 
         setUser(mappedUser);

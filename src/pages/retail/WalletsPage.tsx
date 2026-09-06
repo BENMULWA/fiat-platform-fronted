@@ -1,8 +1,9 @@
 // @ts-nocheck
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-    ArrowDown, ArrowUp, RefreshCw,
-    DollarSign, Bitcoin, Hexagon, CircleDollarSign, Coins, Radio
+    ArrowDown, ArrowUp, ArrowRight, RefreshCw,
+    DollarSign, Bitcoin, Hexagon, CircleDollarSign, Coins, Radio, Eye, EyeOff, ChevronDown
 } from 'lucide-react';
 import { getRetailWallet, getRampHistory } from '../../api/client';
 
@@ -22,8 +23,21 @@ const getFlagUrl = (assetCode: string) => {
     return null;
 };
 
+// Mirrors the active/coming-soon distinction TradePage's ASSETS list already
+// makes (USDT/USDC/USDA/cUSD/KES/AIRT/USD are live; UGX/TZS/RWF/BIF/XAF/XOF/
+// IMP are not). BTC and ETH aren't in that list at all — there's no deposit,
+// swap, or withdraw path for them anywhere in the app — so they're treated
+// as unsupported here too rather than shown as if they were real holdings.
+// Ideally this list is defined once and imported wherever it's needed
+// instead of duplicated per page; duplicating it is how the two pages drift
+// out of sync with each other in the first place.
+const SUPPORTED_ASSETS = new Set(['KES', 'USDT', 'USDC', 'USDA', 'cUSD', 'AIRT', 'USD']);
+
 export default function WalletsPage() {
+    const navigate = useNavigate();
     const [anchorCurrency, setAnchorCurrency] = useState<'KES' | 'USD'>('KES');
+    const [hideBalances, setHideBalances] = useState(false);
+    const [showAllAssets, setShowAllAssets] = useState(false);
     const [balances, setBalances] = useState<Balances>({
         KES: 0, USDA: 0, USDT: 0, USDC: 0, cUSD: 0, USD: 0,
         UGX: 0, TZS: 0, RWF: 0, BIF: 0, XAF: 0, XOF: 0,
@@ -31,6 +45,9 @@ export default function WalletsPage() {
     });
     const [transactions, setTransactions] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    // Full search/filter/pagination already lives on TransactionsPage — this
+    // page only needs a teaser so it doesn't duplicate that page's job.
+    const RECENT_ACTIVITY_COUNT = 5;
 
     useEffect(() => {
         let isMounted = true;
@@ -62,8 +79,17 @@ export default function WalletsPage() {
         BIF: 2850.00, XAF: 605.00, XOF: 605.00, AIRT: 130.50,
         BTC: 1 / 64000, ETH: 1 / 3500
     };
+    // Same rate table, just used to convert the USD total into KES for the
+    // header toggle below — this is the piece that was missing before.
+    const kesPerUsd = usdBaseRates.KES;
 
     const sortedWalletCards = useMemo(() => {
+        // Per-currency color restored (this is what you originally had) —
+        // each supported asset keeps its own identity color for the card
+        // background/border/icon. Unsupported ("coming soon") assets stay
+        // neutral regardless of the color assigned here, so a currency with
+        // no real deposit/swap path still doesn't look as "live" as one you
+        // actually hold — see the `supported` check at render time below.
         const cards = [
             { id: 'KES', name: 'Kenyan Shilling', balance: balances.KES, gradient: 'from-emerald-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-emerald-500/30 hover:border-emerald-500/60', text: 'text-emerald-400' },
             { id: 'USDA', name: 'USDA Stablecoin', balance: balances.USDA, icon: DollarSign, gradient: 'from-amber-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-amber-500/30 hover:border-amber-500/60', text: 'text-amber-400' },
@@ -83,11 +109,25 @@ export default function WalletsPage() {
             { id: 'ETH', name: 'Ethereum', balance: balances.ETH, icon: Hexagon, gradient: 'from-indigo-400/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-indigo-400/30 hover:border-indigo-400/60', text: 'text-indigo-300' },
         ];
 
-        return cards.map(card => ({
-            ...card,
-            usdValue: card.balance / (usdBaseRates[card.id] || 1)
-        })).sort((a, b) => b.usdValue - a.usdValue);
+        return cards
+            .map(card => ({
+                ...card,
+                usdValue: card.balance / (usdBaseRates[card.id] || 1),
+                supported: SUPPORTED_ASSETS.has(card.id),
+            }))
+            .sort((a, b) => b.usdValue - a.usdValue);
     }, [balances]);
+
+    // Assets you actually hold surface first and always show; zero-balance
+    // and not-yet-supported assets are tucked behind a toggle instead of
+    // filling the grid at equal weight — a new user with two currencies
+    // shouldn't have to scan past fourteen empty cards to find them.
+    const heldCards = sortedWalletCards.filter(c => c.balance > 0);
+    const otherCards = sortedWalletCards.filter(c => c.balance <= 0);
+    const cardsToShow = heldCards.length > 0 ? (showAllAssets ? sortedWalletCards : heldCards) : sortedWalletCards;
+
+    const totalUsdValue = useMemo(() => sortedWalletCards.reduce((sum, c) => sum + c.usdValue, 0), [sortedWalletCards]);
+    const totalDisplayValue = anchorCurrency === 'USD' ? totalUsdValue : totalUsdValue * kesPerUsd;
 
     const formatTimeEAT = (isoDate: string | null | undefined, fallbackAgo: string) => {
         if (!isoDate) return fallbackAgo || 'Recently';
@@ -99,116 +139,176 @@ export default function WalletsPage() {
     return (
         <div className={`max-w-7xl mx-auto space-y-8 transition-opacity duration-500 animate-in fade-in ${isLoading ? 'opacity-50' : 'opacity-100'}`}>
 
-            {/* Page Title & Sort Info */}
+            {/* Page Title */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-white tracking-tight">Your Multi-Currency Wallets</h1>
+                    <h1 className="text-2xl font-bold text-white tracking-tight">Your Wallets</h1>
                     <p className="text-gray-400 text-sm mt-0.5">Track fiat balances, stablecoins, and synthetics across African corridors</p>
                 </div>
-                <div className="text-xs bg-[#0F1520] border border-[#1E2533] px-3 py-1.5 rounded-lg text-gray-500 font-medium">
-                    Auto-sorted by highest value
+            </div>
+
+            {/* Total Balance header — anchors the page the way Binance/Coinbase lead
+                with a single portfolio figure. The KES/USD toggle now actually does
+                something; previously `anchorCurrency` was set once and never used. */}
+            <div className="bg-gradient-to-br from-emerald-500/10 via-[#0B0E14] to-[#0B0E14] border border-emerald-500/20 rounded-2xl p-6 sm:p-8">
+                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                    <div>
+                        <div className="flex items-center gap-2 mb-2">
+                            <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Total balance</span>
+                            <button
+                                onClick={() => setHideBalances(h => !h)}
+                                className="text-gray-500 hover:text-gray-300 transition-colors"
+                                aria-label={hideBalances ? 'Show balances' : 'Hide balances'}
+                            >
+                                {hideBalances ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                            </button>
+                        </div>
+                        <p className="text-4xl font-extrabold text-white font-mono tracking-tight">
+                            {hideBalances
+                                ? '***'
+                                : anchorCurrency === 'USD'
+                                    ? `$${totalDisplayValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                    : `KES ${totalDisplayValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">Across {sortedWalletCards.filter(c => c.supported).length} supported assets</p>
+                    </div>
+
+                    <div className="flex items-center gap-1 bg-[#0B0E14] border border-[#1E2533] rounded-lg p-1 shrink-0">
+                        {(['KES', 'USD'] as const).map(cur => (
+                            <button
+                                key={cur}
+                                onClick={() => setAnchorCurrency(cur)}
+                                className={`px-4 py-1.5 rounded-md text-xs font-bold transition-colors ${anchorCurrency === cur ? 'bg-emerald-500 text-slate-950' : 'text-gray-400 hover:text-gray-200'}`}
+                            >
+                                {cur}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             </div>
 
-            {/* Professional Cards Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-                {sortedWalletCards.map((w) => {
-                    const flagUrl = getFlagUrl(w.id);
-                    const IconComponent = w.icon;
-                    const isCrypto = ['BTC', 'ETH', 'USDC', 'USDT', 'cUSD', 'USDA', 'IMP'].includes(w.id);
+            {/* Asset Cards — single accent (emerald) for supported assets you hold,
+                neutral slate for everything else, differentiated by icon/flag and
+                name rather than by a different border hue per currency. */}
+            <div>
+                <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wide">
+                        {heldCards.length > 0 && !showAllAssets ? 'Your assets' : 'All assets'}
+                    </h2>
+                    {heldCards.length > 0 && (
+                        <button
+                            onClick={() => setShowAllAssets(s => !s)}
+                            className="flex items-center gap-1 text-xs font-bold text-blue-400 hover:text-blue-300 transition-colors"
+                        >
+                            {showAllAssets ? 'Show only assets I hold' : `Show ${otherCards.length} more assets`}
+                            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showAllAssets ? 'rotate-180' : ''}`} />
+                        </button>
+                    )}
+                </div>
 
-                    return (
-                        <div key={w.id} className={`bg-gradient-to-br ${w.gradient} border ${w.border} rounded-2xl p-6 transition-all shadow-xl backdrop-blur-md group hover:-translate-y-0.5 duration-300`}>
-                            <div className="flex justify-between items-start mb-6">
-                                <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-[#0F1520]/80 border border-[#1E2533] shadow-inner overflow-hidden p-2">
-                                    {flagUrl ? (
-                                        <img src={flagUrl} alt={`${w.id} flag`} className="w-8 h-6 object-cover rounded shadow" />
-                                    ) : IconComponent ? (
-                                        <IconComponent className={`w-6 h-6 ${w.text}`} />
-                                    ) : (
-                                        <div className="w-6 h-6 rounded-full bg-emerald-500 shadow-md" />
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                    {cardsToShow.map((w) => {
+                        const flagUrl = getFlagUrl(w.id);
+                        const IconComponent = w.icon;
+                        const isCrypto = ['BTC', 'ETH', 'USDC', 'USDT', 'cUSD', 'USDA', 'IMP'].includes(w.id);
+                        const isEmpty = w.balance <= 0;
+
+                        return (
+                            <div
+                                key={w.id}
+                                className={`relative rounded-2xl p-6 transition-all duration-300 border ${
+                                    w.supported
+                                        ? `bg-gradient-to-br ${w.gradient} ${w.border} shadow-xl`
+                                        : 'bg-[#0B0E14]/60 border-[#1E2533]/60'
+                                } ${isEmpty ? 'opacity-70' : ''} group hover:-translate-y-0.5`}
+                            >
+                                {!w.supported && (
+                                    <span className="absolute top-4 right-4 text-[9px] font-bold uppercase tracking-wider text-gray-500 bg-white/5 px-2 py-0.5 rounded-md">
+                                        Coming soon
+                                    </span>
+                                )}
+                                <div className="flex justify-between items-start mb-6">
+                                    <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-[#0F1520]/80 border border-[#1E2533] shadow-inner overflow-hidden p-2">
+                                        {flagUrl ? (
+                                            <img src={flagUrl} alt={`${w.id} flag`} className="w-8 h-6 object-cover rounded shadow" />
+                                        ) : IconComponent ? (
+                                            <IconComponent className={`w-6 h-6 ${w.supported ? w.text : 'text-gray-500'}`} />
+                                        ) : (
+                                            <div className={`w-6 h-6 rounded-full ${w.supported ? 'bg-emerald-500' : 'bg-gray-600'} shadow-md`} />
+                                        )}
+                                    </div>
+                                    {w.supported && (
+                                        <span className="text-xs font-extrabold text-white uppercase tracking-widest bg-[#0F1520] px-2.5 py-1 rounded-lg border border-[#1E2533]">
+                                            {w.id}
+                                        </span>
                                     )}
                                 </div>
-                                <div className="text-right">
-                                    <span className="text-xs font-extrabold text-white uppercase tracking-widest bg-[#0F1520] px-2.5 py-1 rounded-lg border border-[#1E2533]">
-                                        {w.id}
-                                    </span>
-                                </div>
+                                <p className="text-xs text-gray-400 font-semibold tracking-wide mb-1">{w.name}</p>
+                                <p className={`text-3xl font-extrabold text-white font-mono tracking-tight transition-colors ${w.supported ? `group-hover:${w.text}` : ''}`}>
+                                    {hideBalances ? '***' : w.balance.toLocaleString(undefined, {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: isCrypto ? 4 : 2
+                                    })}
+                                </p>
+                                <p className="text-[10px] text-gray-500 font-mono mt-1">
+                                    {hideBalances ? '≈ ***' : `≈ $${w.usdValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                                </p>
                             </div>
-                            <p className="text-xs text-gray-400 font-semibold tracking-wide mb-1">{w.name}</p>
-                            <p className="text-3xl font-extrabold text-white font-mono tracking-tight group-hover:text-amber-400 transition-colors">
-                                {w.balance.toLocaleString(undefined, {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: isCrypto ? 4 : 2
-                                })}
-                            </p>
-                            {/* Anchor Value Subtext */}
-                            <p className="text-[10px] text-gray-500 font-mono mt-1">
-                                ≈ ${(w.usdValue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </p>
-                        </div>
-                    );
-                })}
+                        );
+                    })}
+                </div>
             </div>
 
-            {/* Transaction History Sub-Panel */}
+            {/* Recent Activity teaser — the full searchable/filterable/paginated
+                ledger already lives on TransactionsPage; duplicating that here
+                added nothing but a second, less capable copy of the same data.
+                This stays scoped to what a wallets page should show: a quick
+                glance at what just happened, with a link to the real thing. */}
             <div className="bg-[#0B0E14] border border-[#1E2533] rounded-2xl overflow-hidden mt-8 shadow-2xl">
                 <div className="p-6 border-b border-[#1E2533] flex items-center justify-between">
-                    <h2 className="text-base font-bold text-white tracking-wide">Multi-Asset Transaction History</h2>
-                    <span className="text-xs text-gray-500 font-mono">Real-time ledger sync</span>
+                    <h2 className="text-base font-bold text-white tracking-wide">Recent Activity</h2>
+                    <button
+                        onClick={() => navigate('/transactions')}
+                        className="flex items-center gap-1 text-xs font-bold text-blue-400 hover:text-blue-300 transition-colors"
+                    >
+                        View all <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
                 </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                        <thead>
-                            <tr className="border-b border-[#1E2533] bg-[#0F1520]/60">
-                                <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-wider w-12"></th>
-                                <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Type</th>
-                                <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Date</th>
-                                <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-wider text-right">Amount</th>
-                                <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-wider text-right">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[#1E2533]/40">
-                            {transactions.map((tx: any) => (
-                                <tr key={tx.id} className="hover:bg-[#0F1520]/80 transition-colors">
-                                    <td className="py-4 px-6">
-                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${tx.direction === 'swap' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
-                                            tx.direction === 'on' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-orange-500/10 text-orange-400 border-orange-500/20'
-                                            }`}>
-                                            {tx.direction === 'swap' ? <RefreshCw className="w-3.5 h-3.5" /> :
-                                                tx.direction === 'on' ? <ArrowDown className="w-3.5 h-3.5" /> :
-                                                    <ArrowUp className="w-3.5 h-3.5" />}
-                                        </div>
-                                    </td>
-                                    <td className="py-4 px-6 text-sm font-bold text-white capitalize">
+                <div className="divide-y divide-[#1E2533]/40">
+                    {transactions.slice(0, RECENT_ACTIVITY_COUNT).map((tx: any) => (
+                        <div key={tx.id} className="flex items-center justify-between px-6 py-4 hover:bg-[#0F1520]/80 transition-colors">
+                            <div className="flex items-center gap-3">
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center border shrink-0 ${tx.direction === 'swap' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
+                                    tx.direction === 'on' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-orange-500/10 text-orange-400 border-orange-500/20'
+                                    }`}>
+                                    {tx.direction === 'swap' ? <RefreshCw className="w-3.5 h-3.5" /> :
+                                        tx.direction === 'on' ? <ArrowDown className="w-3.5 h-3.5" /> :
+                                            <ArrowUp className="w-3.5 h-3.5" />}
+                                </div>
+                                <div>
+                                    <p className="text-sm font-bold text-white">
                                         {tx.direction === 'swap' ? 'Swap' : tx.direction === 'on' ? 'Deposit' : 'Withdrawal'}
-                                    </td>
-                                    <td className="py-4 px-6 text-xs text-gray-400 font-mono whitespace-nowrap">
-                                        {formatTimeEAT(tx.createdAt, tx.timeAgo)}
-                                    </td>
-                                    <td className="py-4 px-6 text-right font-bold text-sm text-white font-mono">
-                                        {tx.direction === 'swap'
-                                            ? `${tx.fromAmount} ${tx.fromAsset} → ${tx.toAmount} ${tx.toAsset}`
-                                            : `${tx.fromAmount} ${tx.fromAsset}`}
-                                    </td>
-                                    <td className="py-4 px-6 text-right flex justify-end">
-                                        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-lg uppercase tracking-wide border ${tx.status?.toLowerCase() === 'pending' ? 'text-orange-500 bg-orange-500/10 border-orange-500/20' :
-                                            tx.status?.toLowerCase() === 'failed' ? 'text-red-400 bg-red-500/10 border-red-500/20' : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
-                                            }`}>
-                                            {tx.status || 'Completed'}
-                                        </span>
-                                    </td>
-                                </tr>
-                            ))}
-                            {transactions.length === 0 && (
-                                <tr>
-                                    <td colSpan={5} className="py-16 text-center text-sm text-gray-500">
-                                        No transactions found.
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
+                                    </p>
+                                    <p className="text-[11px] text-gray-500 font-mono">{formatTimeEAT(tx.createdAt, tx.timeAgo)}</p>
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-sm font-bold text-white font-mono">
+                                    {tx.direction === 'swap'
+                                        ? `${tx.fromAmount} ${tx.fromAsset} → ${tx.toAmount} ${tx.toAsset}`
+                                        : `${tx.fromAmount} ${tx.fromAsset}`}
+                                </p>
+                                <span className={`text-[10px] font-bold uppercase tracking-wide ${tx.status?.toLowerCase() === 'pending' ? 'text-orange-500' :
+                                    tx.status?.toLowerCase() === 'failed' ? 'text-red-400' : 'text-emerald-400'
+                                    }`}>
+                                    {tx.status || 'Completed'}
+                                </span>
+                            </div>
+                        </div>
+                    ))}
+                    {transactions.length === 0 && (
+                        <div className="py-16 text-center text-sm text-gray-500">No transactions found.</div>
+                    )}
                 </div>
             </div>
         </div>

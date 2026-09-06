@@ -6,7 +6,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from database import get_db
-from routes.auth import get_current_user
+from routes.auth import get_current_user, get_verified_current_user
 
 router = APIRouter(prefix="/api/stellar", tags=["Stellar Network"])
 
@@ -24,7 +24,7 @@ class DepositStatusRes(BaseModel):
 
 # 1. GENERATE MEMO AND SAVE TO DB
 @router.post("/deposit/initiate")
-async def initiate_deposit(req: InitiateDepositReq, db=Depends(get_db), current_user=Depends(get_current_user)):
+async def initiate_deposit(req: InitiateDepositReq, db=Depends(get_db), current_user=Depends(get_verified_current_user)):
     user_id = current_user.get("_id")
     unique_memo = f"JASIRI-{uuid.uuid4().hex[:6].upper()}"
     
@@ -51,7 +51,7 @@ async def initiate_deposit(req: InitiateDepositReq, db=Depends(get_db), current_
 
 # 2. SYNCHRONOUS ON-DEMAND POLLING CHECK
 @router.get("/deposit/{dep_id}/status", response_model=DepositStatusRes)
-async def get_deposit_status(dep_id: str, db=Depends(get_db), current_user=Depends(get_current_user)):
+async def get_deposit_status(dep_id: str, db=Depends(get_db), current_user=Depends(get_verified_current_user)):
     user_id = current_user.get("_id")
     dep = await db["pending_deposits"].find_one({"_id": dep_id, "userId": user_id})
     

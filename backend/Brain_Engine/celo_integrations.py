@@ -19,7 +19,9 @@ ERC20_ABI = json.loads('[{"constant":false,"inputs":[{"name":"_to","type":"addre
 
 class CorridorIntegrations:
     def __init__(self):
-        self.live_mode = True 
+        
+        # bot live mode is switched off by default for testing and development
+        self.live_mode = False
         self.celo_rpc_url = os.getenv("CELO_RPC_URL", "https://forno.celo.org")
         
         # =========================================================

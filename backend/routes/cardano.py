@@ -8,8 +8,10 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Request, HTTPException, Body
 from pydantic import BaseModel
 from database import get_db
-from routes.auth import get_current_user
+from routes.auth import get_current_user, get_current_user_with_role, get_verified_current_user, is_admin_role
 from config import settings
+from two_factor import verify_withdrawal_2fa
+from wallet_utils import debit_wallet, credit_wallet
 
 try:
     from bson import ObjectId
@@ -46,6 +48,24 @@ class WithdrawRequest(BaseModel):
     address: Optional[str] = None
     asset: str = "USDA"
     idempotency_key: str = ""
+    counterparty: str = ""
+    otp_session_id: str = ""
+    otp_code: str = ""
+    totp_code: Optional[str] = None
+
+    def get_destination(self) -> str:
+        dest = self.to_address or self.toAddress or self.address
+        if not dest or not dest.strip():
+            raise HTTPException(status_code=400, detail="Destination Cardano address is required.")
+        return dest.strip()
+
+
+class MasterWithdrawRequest(BaseModel):
+    amount: float
+    to_address: Optional[str] = None
+    toAddress: Optional[str] = None
+    address: Optional[str] = None
+    asset: str = "USDA"
     counterparty: str = ""
 
     def get_destination(self) -> str:
@@ -123,7 +143,11 @@ async def estimate_fee(body: FeeEstimateRequest = Body(...), db=Depends(get_db),
         "network_fee_usda": standard_usda_fee
     }
 @router.post("/withdraw", status_code=201)
-async def withdraw_usda(body: WithdrawRequest, db=Depends(get_db), current_user=Depends(get_current_user)):
+async def withdraw_usda(body: WithdrawRequest, db=Depends(get_db), current_user=Depends(get_verified_current_user)):
+    # Verified before anything else touches the balance — a failed 2FA check
+    # must never have already moved funds.
+    await verify_withdrawal_2fa(db, current_user, body.otp_session_id, body.otp_code, body.totp_code)
+
     user_id = safe_object_id(current_user["_id"])
     dest_address = body.get_destination()
     withdraw_amount = float(body.amount)
@@ -131,23 +155,10 @@ async def withdraw_usda(body: WithdrawRequest, db=Depends(get_db), current_user=
     if withdraw_amount <= 0:
         raise HTTPException(status_code=400, detail="Withdrawal amount must be greater than zero.")
 
-    # 1. Check user retail balance
-    user_wallet = await db["retail_wallets"].find_one({"userId": user_id})
-    user_usda = float(user_wallet.get("USDA", 0.0)) if user_wallet else 0.0
-
-    if user_usda < withdraw_amount:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Insufficient USDA balance. Available: {user_usda:.4f} USDA, Requested: {withdraw_amount:.4f} USDA."
-        )
-
-    # 2. Atomically lock and deduct user balance
-    deduct_result = await db["retail_wallets"].update_one(
-        {"userId": user_id, "USDA": {"$gte": withdraw_amount}},
-        {"$inc": {"USDA": -withdraw_amount}}
-    )
-    if deduct_result.modified_count == 0:
-        raise HTTPException(status_code=400, detail="Balance update failed. Please try again.")
+    # 1-2. Sums/debits across every retail_wallets row for this user — see
+    # wallet_utils.py. A plain find_one on a single userId form (the old code)
+    # could see a different, smaller balance than what GET /wallet displays.
+    await debit_wallet(db, current_user["_id"], "USDA", withdraw_amount)
 
     # 3. Broadcast on-chain via Blockfrost
     tx_hash = None
@@ -159,7 +170,7 @@ async def withdraw_usda(body: WithdrawRequest, db=Depends(get_db), current_user=
         tx_hash = usda_ops.send_usda(platform_wallet, dest_address, withdraw_amount)
     except Exception as exc:
         # Refund on failure
-        await db["retail_wallets"].update_one({"userId": user_id}, {"$inc": {"USDA": withdraw_amount}})
+        await credit_wallet(db, current_user["_id"], "USDA", withdraw_amount)
         raise HTTPException(status_code=502, detail=f"Cardano on-chain error: {str(exc)}")
 
     # 4. Insert ramp ledger entry
@@ -191,10 +202,76 @@ async def withdraw_usda(body: WithdrawRequest, db=Depends(get_db), current_user=
         "status": "COMPLETED",
         "message": f"Successfully sent {withdraw_amount} USDA to {dest_address[:10]}…"
     }
+
+
+@router.post("/master-wallet/withdraw", status_code=201)
+async def withdraw_from_master_wallet(
+    body: MasterWithdrawRequest,
+    db=Depends(get_db),
+    current_user=Depends(get_current_user_with_role),
+):
+    """Send USDA directly from the custodial master wallet to an external address."""
+    if not is_admin_role(current_user.get("role")):
+        raise HTTPException(status_code=403, detail="Admin role required")
+    if body.asset.upper() != "USDA":
+        raise HTTPException(status_code=400, detail="Only USDA master-wallet withdrawals are supported.")
+
+    withdraw_amount = float(body.amount)
+    if withdraw_amount <= 0:
+        raise HTTPException(status_code=400, detail="Withdrawal amount must be greater than zero.")
+
+    dest_address = body.get_destination()
+    try:
+        _cardano_guard()
+        CardanoWallet, _, usda_ops = _import_cardano()
+        platform_idx = getattr(settings, "cardano_platform_account_index", 0)
+        platform_wallet = CardanoWallet(platform_idx)
+        master_balance = usda_ops.get_balance(platform_wallet.address_str)
+        available_usda = float(master_balance.get("usda", 0.0))
+        if available_usda < withdraw_amount:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Insufficient master-wallet USDA balance. Available: {available_usda:.4f} USDA, Requested: {withdraw_amount:.4f} USDA.",
+            )
+
+        tx_hash = usda_ops.send_usda(platform_wallet, dest_address, withdraw_amount)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Cardano on-chain error: {str(exc)}")
+
+    now = datetime.utcnow()
+    await db["ramp_entries"].insert_one({
+        "_id": f"TRADE_{uuid.uuid4().hex[:8].upper()}",
+        "direction": "off",
+        "channel": "Cardano Master Wallet",
+        "fromAsset": "USDA",
+        "toAsset": "USDA",
+        "fromAmount": withdraw_amount,
+        "toAmount": max(0.0, withdraw_amount - 0.17),
+        "rate": 1.0,
+        "fee": 0.17,
+        "counterparty": body.counterparty or dest_address[:15] + "…" + dest_address[-6:],
+        "status": "COMPLETED",
+        "cardanoTxHash": tx_hash,
+        "cardanoAddress": dest_address,
+        "performedBy": current_user.get("_id"),
+        "createdAt": now,
+        "date": now.strftime("%b %d, %Y"),
+        "timeAgo": "Just now",
+    })
+
+    return {
+        "tx_hash": tx_hash,
+        "amount_sent": withdraw_amount,
+        "status": "COMPLETED",
+        "source": "master_wallet",
+        "message": f"Successfully sent {withdraw_amount} USDA to {dest_address[:10]}…",
+    }
     
     
 @router.post("/on-ramp/verify", status_code=201)
-async def verify_on_ramp(body: VerifyRequest, db=Depends(get_db), current_user=Depends(get_current_user)):
+async def verify_on_ramp(body: VerifyRequest, db=Depends(get_db), current_user=Depends(get_verified_current_user)):
     """Verifies an incoming on-chain deposit transaction."""
     user_id = safe_object_id(current_user["_id"])
     

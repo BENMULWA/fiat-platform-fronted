@@ -76,6 +76,12 @@ export const getLatestStkDispatch = (params: { phone?: string; reference?: strin
 export const getDepositDetails = (asset: string, network: string) =>
   api.get('/api/treasury/deposit-info', { params: { asset, network } });
 
+// Stellar-only: showing the address is free (just derivation), but actually
+// creating the account + USDC trustline costs real, locked XLM — so it only
+// happens on explicit user intent via this call, not just viewing the page.
+export const activateStellarDeposit = () =>
+  api.post('/api/treasury/stellar/activate-deposit');
+
 // 🟢 NEW: ADD THESE TWO LINES FOR CELO AUTO-DETECTION
 export const initiateValoraDeposit = (data: { asset: string, amount: number }) =>
   api.post('/api/valora/deposit/initiate', data);
@@ -89,6 +95,31 @@ export const checkValoraDepositStatus = (depositId: string) =>
 
 export const getRetailWallet = () => api.get('/api/retail/wallet');
 export const updateProfile = (data: any) => api.put('/api/retail/profile', data);
+
+// ==========================================
+// WITHDRAWAL SECURITY (email OTP + optional TOTP authenticator app)
+// See backend/two_factor.py — required by every withdrawal endpoint.
+// ==========================================
+
+export const requestWithdrawalOtp = () => api.post('/api/auth/withdrawal/request-otp');
+export const getTwoFactorStatus = () => api.get('/api/auth/2fa/status');
+export const setupTotp = () => api.post('/api/auth/2fa/totp/setup');
+export const verifyTotpSetup = (code: string) => api.post('/api/auth/2fa/totp/verify-setup', { code });
+export const disableTotp = (code: string) => api.post('/api/auth/2fa/totp/disable', { code });
+
+// ==========================================
+// PROFILE SECURITY EXTRAS: anti-phishing code, avatar, active sessions
+// ==========================================
+
+export const getAntiPhishingCode = () => api.get('/api/auth/anti-phishing-code');
+export const setAntiPhishingCode = (code: string) => api.post('/api/auth/anti-phishing-code', { code });
+
+export const uploadAvatar = (dataUrl: string) => api.post('/api/auth/avatar', { dataUrl });
+export const deleteAvatar = () => api.delete('/api/auth/avatar');
+
+export const listSessions = () => api.get('/api/auth/sessions');
+export const revokeSession = (sessionId: string) => api.delete(`/api/auth/sessions/${sessionId}`);
+export const revokeOtherSessions = () => api.post('/api/auth/sessions/revoke-others');
 
 // ==========================================
 // 🟢 NEW: STELLAR & AUTO-LISTENER ENDPOINTS
@@ -113,6 +144,8 @@ export const submitKyc = (data: any) => api.post('/api/retail/kyc/submit', data)
 
 export const getAirtimeSummary = () => api.get('/api/airtime/summary');
 export const getAirtimeHistory = () => api.get('/api/airtime/history');
+export const getAirtimeTokenizationOverview = () => api.get('/api/airtime/tokenization/overview');
+export const getAirtimeTokenizationOperations = (limit: number = 50) => api.get('/api/airtime/tokenization/operations', { params: { limit } });
 export const mintAirt = (data: any) => api.post('/api/airtime/mint', data);
 export const redeemAirt = (data: any) => api.post('/api/airtime/redeem', data);
 
@@ -186,11 +219,18 @@ export const executeHftCorridor = (data: { amount: number; corridor_id: string }
 
 export const verifyValoraDeposit = (data: { amount: number; tx_hash: string; asset: string; counterparty?: string }) => api.post('/api/valora/on-ramp/verify', data);
 
-export const executeValoraWithdraw = (data: { amount: number; identifier: string; asset: string }) =>
+export const executeValoraWithdraw = (data: { amount: number; identifier: string; asset: string; otp_session_id?: string; otp_code?: string; totp_code?: string }) =>
   api.post('/api/valora/withdraw', data);
 
 export const registerValoraPhone = (data: { phone: string; celo_address: string }) =>
   api.post('/api/valora/register-phone', data);
+
+// ==========================================
+// STELLAR APIS
+// ==========================================
+
+export const executeStellarWithdraw = (data: { amount: number; to_address: string; asset?: string; otp_session_id?: string; otp_code?: string; totp_code?: string }) =>
+  api.post('/api/treasury/stellar/withdraw', data);
 
 // ==========================================
 // OTC ADMIN APIS
@@ -202,11 +242,14 @@ export const getDealerRfqs = () => api.get('/api/admin/dealer/rfqs');
 export const analyzeDealerRfq = (id: string) => api.get(`/api/admin/dealer/rfqs/${id}/analysis`);
  export const createDealerRfq = (data: { customer_id: string; from_asset: string; to_asset: string; side: string; amount: number; channel?: string; settlement_channel?: string; collection_phone?: string; destination_wallet?: string; network?: string }) =>
   api.post('/api/admin/dealer/rfqs', data);
-export const quoteDealerRfq = (id: string, spread_bps: number) =>
-  api.post(`/api/admin/dealer/rfqs/${id}/quote`, { spread_bps });
+export const quoteDealerRfq = (id: string, spread_bps: number, send_quote = true) =>
+  api.post(`/api/admin/dealer/rfqs/${id}/quote`, { spread_bps, send_quote });
+export const acceptDealerRfq = (id: string) => api.post(`/api/admin/dealer/rfqs/${id}/accept`);
 export const executeDealerRfq = (id: string) => api.post(`/api/admin/dealer/rfqs/${id}/execute`);
 export const getDealerSettlements = () => api.get('/api/admin/dealer/settlements');
 export const getDealerSettlement = (id: string) => api.get(`/api/admin/dealer/settlements/${id}`);
+export const actOnDealerSettlement = (id: string, action: string, details: Record<string, unknown> = {}) =>
+  api.post(`/api/admin/dealer/settlements/${id}/action`, { action, ...details });
 
 export const getChartAnalytics = (days: number = 7) => api.get('/api/admin/analytics/chart-data', { params: { days } });
 

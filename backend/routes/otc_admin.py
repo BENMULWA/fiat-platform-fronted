@@ -9,6 +9,7 @@ import os
 import httpx
 from routes.ramp import _extract_status_and_success, _has_reconcile_evidence
 from broadcast import broadcast_manager
+from notifications import notify_user
 from datetime import datetime, timedelta
 from collections import defaultdict
 from config import settings
@@ -1098,6 +1099,7 @@ async def get_all_retail_transactions(userId: str = None, limit: int = 200, db=D
             if user:
                 customer_name = user.get("displayName") or user.get("name") or user.get("email") or "Unknown User"
 
+        provider_report = e.get("providerReport") if isinstance(e.get("providerReport"), dict) else {}
         formatted_entries.append({
             "id": str(e["_id"]),
             "createdAt": e.get("createdAt", datetime.utcnow()).isoformat() + "Z" if e.get("createdAt") else None,
@@ -1105,7 +1107,15 @@ async def get_all_retail_transactions(userId: str = None, limit: int = 200, db=D
             "direction": e.get("direction", "swap"),
             "fromAmount": e.get("fromAmount", 0), "fromAsset": e.get("fromAsset", ""),
             "toAmount": e.get("toAmount", 0), "toAsset": e.get("toAsset", ""),
-            "status": e.get("status", "pending")
+            "status": e.get("status", "pending"),
+            "providerReference": e.get("providerReference"),
+            "secureId": e.get("secureId") or (e.get("providerReport") or {}).get("secureId"),
+            "externalId": e.get("externalId") or (e.get("providerReport") or {}).get("externalId") or e.get("providerReference"),
+            "providerReport": provider_report,
+            "providerCallbackReference": provider_report.get("reference") or provider_report.get("transactionReference"),
+            "mobileMoneyProvider": e.get("mobileMoneyProvider"),
+            "providerStatus": e.get("providerStatus"),
+            "failureReason": e.get("error_reason") or (e.get("providerReport") or {}).get("message") or (e.get("providerReport") or {}).get("transactionReport") or ((e.get("providerReport") or {}).get("transaction") or {}).get("message"),
         })
 
     return {"status": "success", "entries": formatted_entries}
@@ -1435,6 +1445,11 @@ async def approve_kyc(id: str, db=Depends(get_db), current_user: dict = Depends(
         },
     )
     if res.modified_count == 0: raise HTTPException(404, "User not found")
+    await notify_user(
+        db, safe_obj_id(id), "kyc", "success",
+        "KYC approved",
+        "Your identity verification was approved. You can now trade and withdraw.",
+    )
     return {"status": "approved"}
 
 @router.post("/compliance/kyc/{id}/reject")
@@ -1452,10 +1467,16 @@ async def reject_kyc(id: str, db=Depends(get_db), current_user: dict = Depends(g
         },
     )
     if res.modified_count == 0: raise HTTPException(404, "User not found")
+    await notify_user(
+        db, safe_obj_id(id), "kyc", "error",
+        "KYC rejected",
+        "Your identity verification was rejected. Please review your submission and try again.",
+    )
     return {"status": "rejected"}
 
 @router.get("/finance/customers")
-async def get_customers_list(db=Depends(get_db)):
+async def get_customers_list(db=Depends(get_db), current_user: dict = Depends(get_current_user_with_role)):
+    ensure_admin(current_user)
     users = await db["users"].find().sort("createdAt", -1).limit(100).to_list(100)
     customers = []
     for u in users:
@@ -1479,6 +1500,18 @@ async def get_customers_list(db=Depends(get_db)):
             "phone": kyc_details.get("phone") or u.get("phone", "N/A"),
             "idNumber": kyc_details.get("idNumber") or u.get("idNumber", "N/A"),
             "documentName": kyc_details.get("documentName") or u.get("documentName", "None provided"),
+            # The customer modal needs the complete, server-authoritative KYC
+            # record. This route is admin-only; retail APIs never expose it.
+            "kycDetails": {
+                "fullName": kyc_details.get("fullName"),
+                "idNumber": kyc_details.get("idNumber"),
+                "phone": kyc_details.get("phone"),
+                "email": kyc_details.get("email"),
+                "documentName": kyc_details.get("documentName"),
+                "documentMimeType": kyc_details.get("documentMimeType"),
+                "documentSize": kyc_details.get("documentSize"),
+                "documentDataUrl": kyc_details.get("documentDataUrl"),
+            },
             "kycSubmittedAt": kyc_date_iso,
             "joinedAt": joined_at_iso,
             "kyc": u.get("kycStatus", "unverified").lower(),

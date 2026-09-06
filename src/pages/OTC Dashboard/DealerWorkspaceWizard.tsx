@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { ArrowRight, Check, CheckCircle2, Circle, X, Zap } from 'lucide-react';
-import { api, analyzeDealerRfq, createDealerRfq, executeDealerRfq, getDealerClients, getDealerSettlement, quoteDealerRfq } from '../../api/client';
+import { acceptDealerRfq, api, analyzeDealerRfq, createDealerRfq, executeDealerRfq, getDealerClients, getDealerSettlement, quoteDealerRfq } from '../../api/client';
 import { useSearchParams } from 'react-router-dom';
 
 // Types
@@ -46,11 +46,13 @@ export default function DealerWorkspaceWizard({ initialOpen = true, rfqId }: { i
 
   useEffect(() => {
     if (!requestedRfqId) return;
-    api.get(`/api/admin/dealer/rfqs`).then(response => {
+    api.get(`/api/admin/dealer/rfqs`).then(async response => {
       const existing = (response.data.rfqs || []).find((item: RfqRecord) => item.id === requestedRfqId);
       if (!existing) throw new Error('RFQ not found');
       setRfq(existing);
-      setAnalysis(existing.analysis || null);
+      const analysisResponse = await analyzeDealerRfq(requestedRfqId);
+      setRfq(analysisResponse.data.rfq || existing);
+      setAnalysis(analysisResponse.data.analysis || null);
     }).catch(() => setError('Unable to load this RFQ.'));
   }, [requestedRfqId]);
 
@@ -75,7 +77,17 @@ export default function DealerWorkspaceWizard({ initialOpen = true, rfqId }: { i
 
   const createQuote = async () => {
     if (!rfq) return;
-    try { const response = await quoteDealerRfq(rfq.id, Number(spread)); setRfq(response.data.rfq); setStage(3); } catch (err) { handleError(err); }
+    try { const response = await quoteDealerRfq(rfq.id, Number(spread), false); setRfq(response.data.rfq); setStage(2); } catch (err) { handleError(err); }
+  };
+
+  const sendQuote = async () => {
+    if (!rfq) return;
+    try { const response = await quoteDealerRfq(rfq.id, Number(spread), true); setRfq(response.data.rfq); } catch (err) { handleError(err); }
+  };
+
+  const acceptQuote = async () => {
+    if (!rfq) return;
+    try { const response = await acceptDealerRfq(rfq.id); setRfq(response.data.rfq); setStage(3); } catch (err) { handleError(err); }
   };
 
   const execute = async () => {
@@ -138,8 +150,8 @@ export default function DealerWorkspaceWizard({ initialOpen = true, rfqId }: { i
           <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-6 lg:p-8">
             {error && <div className="max-w-5xl mx-auto mb-4 rounded-md border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</div>}
             {stage === 0 && <NewRfq form={form} setForm={setForm} clients={clients} onSubmit={create} />}
-            {stage === 1 && rfq && <Analysis rfq={rfq} analysis={analysis} onRefresh={refreshAnalysis} onNext={() => setStage(2)} />}
-            {stage === 2 && rfq && <Quote rfq={rfq} spread={spread} setSpread={setSpread} onBack={() => setStage(1)} onNext={createQuote} />}
+            {stage === 1 && rfq && <Analysis rfq={rfq} analysis={analysis} onRefresh={refreshAnalysis} onNext={createQuote} />}
+            {stage === 2 && rfq && <Quote rfq={rfq} spread={spread} setSpread={setSpread} onBack={() => setStage(1)} onSend={sendQuote} onNext={acceptQuote} />}
             {stage === 3 && rfq && <Execution onExecute={execute} />}
             {stage === 4 && rfq && <Settlement settlement={settlement} onRefresh={refreshSettlement} onNext={() => setStage(5)} />}
             {stage === 5 && rfq && <Completed rfq={rfq} settlement={settlement} onNew={() => { setStage(0); setForm(EMPTY_FORM); setRfq(null); setAnalysis(null); setSettlement(null); }} onClose={() => setOpen(false)} />}
@@ -208,8 +220,16 @@ function Analysis({ rfq, analysis, onRefresh, onNext }: { rfq: RfqRecord; analys
     ['TREASURY CHECKS', analysis?.treasury || []],
     ['COMPLIANCE CHECKS', analysis?.compliance || []],
   ];
+  const formatMetric = (value: any, suffix = '') => value === undefined || value === null ? 'N/A' : `${Number(value).toLocaleString('en-US', { maximumFractionDigits: 4 })}${suffix}`;
+  const liquidity = analysis?.liquidity || {};
+  const treasury = analysis?.treasurySummary || {};
+  const costs = analysis?.costs || {};
+  const risk = analysis?.risk || {};
+  const sources = liquidity.sources || [];
+  const totalAvailable = sources.reduce((total: number, source: any) => total + Number(source.available || 0), 0);
+  const segments = sources.map((source: any) => ({ ...source, width: totalAvailable ? `${(Number(source.amount || 0) / totalAvailable) * 100}%` : '0%' }));
   return (
-    <div className="max-w-5xl mx-auto flex flex-col gap-6 mt-4">
+    <div className="max-w-5xl mx-auto flex flex-col gap-5 mt-4">
       <div className="flex justify-between items-start">
         <div>
           <h2 className="text-[22px] font-bold text-white mb-1">RFQ Analysis</h2>
@@ -217,9 +237,12 @@ function Analysis({ rfq, analysis, onRefresh, onNext }: { rfq: RfqRecord; analys
         </div>
       </div>
 
-      <div className="bg-[#121822] rounded-xl p-5 border border-[#232D39]">
-        <h3 className="text-white font-bold mb-2">{rfq.id}</h3>
-        <div className="text-sm font-mono text-gray-400 space-y-1.5">
+      <div className="bg-[#121822] rounded-xl p-4 border border-[#232D39]">
+        <div className="flex flex-wrap justify-between gap-3 mb-2">
+          <h3 className="text-white font-bold">{rfq.id}</h3>
+          {analysis?.expiresAt && <span className="text-[11px] font-mono text-amber-400">Expiry: {analysis.expiresAt}</span>}
+        </div>
+        <div className="text-sm font-mono text-gray-400 space-y-1">
           <p>Customer: <span className="text-gray-300">{rfq.customerName}</span></p>
           <p>{rfq.side}: <span className="text-blue-400">{rfq.amount.toLocaleString()} {rfq.fromAsset}</span></p>
           <p>Pay with: {rfq.toAsset}</p>
@@ -234,7 +257,7 @@ function Analysis({ rfq, analysis, onRefresh, onNext }: { rfq: RfqRecord; analys
             <div className="p-4 flex-1">
               <h4 className="text-gray-500 text-[11px] font-bold uppercase tracking-wider mb-4">{title}</h4>
               <div className="space-y-3 text-[13px]">
-                {checks.map(check => <div key={check.key} className="flex justify-between gap-3"><span className="text-gray-400">{check.label}</span><span className={check.passed ? 'text-emerald-400 font-bold text-right' : 'text-red-400 font-bold text-right'}>{check.passed ? '✓ ' : '✕ '}{check.value}</span></div>)}
+                {checks.map(check => <div key={check.key} className="flex justify-between gap-3 border-b border-[#232D39]/70 pb-1.5"><span className="text-gray-400">{check.label}</span><span className={check.passed ? 'text-emerald-400 font-bold text-right' : 'text-red-400 font-bold text-right'}>{check.passed ? '✓ ' : '✕ '}{check.value}</span></div>)}
               </div>
             </div>
             <div className={`text-center py-2.5 text-xs font-bold tracking-widest border-t ${checks.every(check => check.passed) ? 'bg-[#0e1715] text-emerald-500 border-[#1a2f26]' : 'bg-red-950/30 text-red-400 border-red-900/40'}`}>{checks.every(check => check.passed) ? 'PASS' : 'BLOCKED'}</div>
@@ -242,36 +265,59 @@ function Analysis({ rfq, analysis, onRefresh, onNext }: { rfq: RfqRecord; analys
         ))}
       </div>
 
-      <div className="flex justify-center -my-3 relative z-10">
+      <div className="bg-[#121822] border border-[#232D39] rounded-xl p-4">
+        <h4 className="text-gray-500 text-[11px] font-bold uppercase tracking-wider mb-4">TREASURY POSITION</h4>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-[12px]">
+          {[
+            [`Total to ${treasury.side === 'SELL' ? 'sell' : 'buy'}`, treasury.requestedAmount, treasury.requestedAsset],
+            ['Reserved', treasury.reserved, treasury.asset],
+            ['Available', treasury.available, treasury.asset],
+            ['Required', treasury.required, treasury.asset],
+            ['Coverage', treasury.coverage, '%'],
+            ['Internal inventory', treasury.internalInventory, ''],
+          ].map(([label, value, unit]) => (
+            <div key={String(label)} className="border-l border-[#232D39] pl-3 first:border-l-0 first:pl-0">
+              <p className="text-gray-500 mb-1">{label}</p>
+              <p className="text-gray-200 font-mono font-bold">{typeof value === 'string' && ['FULL', 'PARTIAL', 'UNAVAILABLE'].includes(value) ? value : `${formatMetric(value)} ${unit || ''}`}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex justify-center -my-2 relative z-10">
         <button className="bg-[#1C2431] border border-[#232D39] text-gray-300 font-bold text-[11px] px-6 py-2 rounded-md uppercase tracking-wider shadow-lg">LIQUIDITY ENGINE</button>
       </div>
 
-      <div className="bg-[#121822] border border-[#232D39] rounded-xl p-5 pt-8 -mt-5 space-y-6">
-        <div className="text-sm text-gray-400">Liquidity routing is calculated by the backend during quote creation.</div>
+      <div className="bg-[#121822] border border-[#232D39] rounded-xl p-4 pt-7 -mt-4 space-y-5">
+        <div className="text-xs text-gray-500">Liquidity routing is calculated from current treasury inventory and executable sources.</div>
 
         <div>
           <p className="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-2">SMART ROUTER — RECOMMENDED ROUTE</p>
-          <div className="flex items-center gap-2 mb-2 text-xs text-gray-300 font-mono">
-            <span className="flex items-center gap-1"><div className="w-2.5 h-2.5 bg-blue-500 rounded-sm"></div> Awaiting executable quote</span>
+          <div className="grid grid-cols-[auto_1fr_auto] gap-x-3 gap-y-2 text-[11px] font-mono text-gray-400 mb-2">
+            <span>SOURCE</span><span>RATE</span><span className="text-right">AVAILABLE</span>
+            {sources.map((source: any) => <Fragment key={source.name}><span className="text-gray-300">{source.name}</span><span>{formatMetric(source.rate)}</span><span className="text-right">{formatMetric(source.available)}</span></Fragment>)}
           </div>
+          <div className="border-t border-[#232D39] pt-2 text-[10px] text-gray-500 uppercase tracking-wider">SMART ROUTER — RECOMMENDED ROUTE</div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-gray-400 mb-2">{segments.map((source: any, index: number) => <span key={source.name}><i className={`inline-block w-2 h-2 mr-1 ${['bg-blue-500', 'bg-emerald-400', 'bg-amber-400'][index % 3]}`} />{source.name} — {formatMetric(source.amount)} @ {formatMetric(source.rate)}</span>)}</div>
           <div className="h-4 w-full bg-[#1C2431] rounded flex overflow-hidden">
-            <div className="h-full bg-blue-500 text-[9px] font-bold flex items-center justify-center text-white" style={{width: '100%'}}>PENDING</div>
+            {segments.map((source: any, index: number) => <div key={source.name} className={`h-full ${['bg-blue-500', 'bg-emerald-400', 'bg-amber-400'][index % 3]} text-[9px] font-bold flex items-center justify-center text-[#07101a]`} style={{ width: source.width }}>{Math.round(Number(source.width.replace('%', '')))}%</div>)}
           </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 text-[12px]"><div className="flex justify-between"><span className="text-gray-400">Blended acquisition cost</span><span className="font-mono text-gray-200">{formatMetric(liquidity.blendedCost)} {rfq.toAsset}</span></div><div className="flex justify-between"><span className="text-gray-400">Liquidity sufficient</span><span className="font-bold text-emerald-400">{liquidity.sufficient ? 'YES' : 'NO'}</span></div></div>
         </div>
 
         <div className="border-t border-[#232D39] pt-4 grid grid-cols-1 gap-2 text-[13px]">
           <div className="flex justify-between"><span className="text-gray-400">Analysis result</span><span className="font-mono text-white font-bold">{analysis?.passed ? 'ELIGIBLE FOR QUOTE' : 'BLOCKED'}</span></div>
         </div>
 
-        <div className="border-t border-[#232D39] pt-4">
+        <div className="border-t border-[#232D39] pt-3">
            <p className="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-3">COST & RISK ENGINE</p>
            <div className="space-y-2 text-[13px]">
-              <div className="flex justify-between"><span className="text-gray-400">Funding cost</span><span className="font-mono text-gray-300">$0.00</span></div>
-              <div className="flex justify-between"><span className="text-gray-400">FX conversion cost</span><span className="font-mono text-gray-300">$600.00</span></div>
-              <div className="flex justify-between"><span className="text-gray-400">Network / blockchain cost</span><span className="font-mono text-gray-300">$62.00</span></div>
-              <div className="flex justify-between"><span className="text-gray-400">USDC exposure — before → after</span><span className="font-mono text-gray-300">2,700,000 → 700,000</span></div>
-              <div className="flex justify-between"><span className="text-gray-400">Limit utilization — before → after</span><span className="font-mono text-gray-300">57% → 24%</span></div>
-              <div className="flex justify-between"><span className="text-gray-400">Risk level</span><span className="font-bold text-emerald-400">LOW</span></div>
+              <div className="flex justify-between"><span className="text-gray-400">Funding cost</span><span className="font-mono text-gray-300">${formatMetric(costs.fundingUsd)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-400">FX conversion cost</span><span className="font-mono text-gray-300">${formatMetric(costs.fxUsd)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-400">Network / blockchain cost</span><span className="font-mono text-gray-300">${formatMetric(costs.networkUsd)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-400">{rfq.fromAsset} exposure — before → after</span><span className="font-mono text-gray-300">{formatMetric(risk.exposureBefore)} → {formatMetric(risk.exposureAfter)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-400">Limit utilization — before → after</span><span className="font-mono text-gray-300">{formatMetric(risk.limitBefore, '%')} → {formatMetric(risk.limitAfter, '%')}</span></div>
+              <div className="flex justify-between"><span className="text-gray-400">Risk level</span><span className="font-bold text-emerald-400">{risk.level || 'LOW'}</span></div>
            </div>
         </div>
 
@@ -291,10 +337,26 @@ function Analysis({ rfq, analysis, onRefresh, onNext }: { rfq: RfqRecord; analys
 // --------------------------------------------------------------------------------------
 // STAGE 2: DEALER QUOTE
 // --------------------------------------------------------------------------------------
-function Quote({ rfq, spread, setSpread, onBack, onNext }: { rfq: RfqRecord; spread: number; setSpread: (value: number) => void; onBack: () => void; onNext: () => void }) {
+function Quote({ rfq, spread, setSpread, onBack, onSend, onNext }: { rfq: RfqRecord; spread: number; setSpread: (value: number) => void; onBack: () => void; onSend: () => void; onNext: () => void }) {
   const quote = rfq.quote || {};
   const executionRate = Number(quote.execution_rate || 0);
   const receiveAmount = Number(quote.receive_amount || 0);
+  const isSent = Boolean(quote.sent && quote.expiresAt);
+  const [secondsLeft, setSecondsLeft] = useState(15);
+
+  useEffect(() => {
+    if (!isSent) return;
+    const updateCountdown = () => {
+      const expiresAt = new Date(quote.expiresAt).getTime();
+      setSecondsLeft(Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)));
+    };
+    updateCountdown();
+    const timer = window.setInterval(updateCountdown, 250);
+    return () => window.clearInterval(timer);
+  }, [isSent, quote.expiresAt]);
+
+  const quoteExpired = isSent && secondsLeft <= 0;
+  const progress = isSent ? Math.min((secondsLeft / 15) * 100, 100) : 0;
   return (
     <div className="max-w-5xl mx-auto flex flex-col gap-6 mt-4">
       <div>
@@ -313,11 +375,11 @@ function Quote({ rfq, spread, setSpread, onBack, onNext }: { rfq: RfqRecord; spr
         </div>
         <div>
           <p className="text-gray-500 text-[11px] mb-1">EXTERNAL LIQUIDITY</p>
-          <p>{quote.route || 'Liquidity sources resolved by backend'}</p>
+          <p>{quote.routeSummary || (Array.isArray(quote.route) ? quote.route.map((item: any) => `${item.source} ${Number(item.amount || 0).toLocaleString()}`).join(' + ') : quote.route) || 'Liquidity sources resolved by backend'}</p>
         </div>
         <div>
           <p className="text-gray-500 text-[11px] mb-1">RECOMMENDED ROUTE</p>
-          <p>{quote.route || 'Route selected by liquidity engine'}</p>
+          <p>{quote.routeSummary || (Array.isArray(quote.route) ? quote.route.map((item: any) => `${item.source} ${Number(item.amount || 0).toLocaleString()}`).join(' + ') : quote.route) || 'Route selected by liquidity engine'}</p>
         </div>
         
         <div className="border-t border-[#232D39] pt-4 w-2/3 space-y-1">
@@ -328,7 +390,7 @@ function Quote({ rfq, spread, setSpread, onBack, onNext }: { rfq: RfqRecord; spr
         </div>
       </div>
 
-      <div className="bg-[#121822] border border-[#232D39] rounded-xl p-5">
+      {!isSent && <div className="bg-[#121822] border border-[#232D39] rounded-xl p-5">
         <p className="text-gray-500 text-[11px] font-bold uppercase tracking-wider mb-4">DEALER OVERRIDE</p>
         <div className="flex items-center gap-3 text-sm text-gray-300">
           <span>Spread in basis points — dealer override:</span>
@@ -339,9 +401,9 @@ function Quote({ rfq, spread, setSpread, onBack, onNext }: { rfq: RfqRecord; spr
             className="bg-[#0A0D12] border border-[#232D39] rounded px-3 py-1.5 font-mono text-white outline-none focus:border-blue-500 w-32"
           />
         </div>
-      </div>
+      </div>}
 
-      <div className="bg-[#121822] border border-[#232D39] rounded-xl p-5">
+      {isSent && <div className="bg-[#121822] border border-[#232D39] rounded-xl p-5">
         <div className="flex justify-between items-center mb-6">
           <span className="text-red-400 text-xs font-bold uppercase tracking-widest">PAY</span>
           <span className="text-white font-mono text-[17px] font-bold">{rfq.amount.toLocaleString()} {rfq.fromAsset}</span>
@@ -354,16 +416,16 @@ function Quote({ rfq, spread, setSpread, onBack, onNext }: { rfq: RfqRecord; spr
           <span className="text-emerald-400 font-mono text-[17px] font-bold">{receiveAmount ? receiveAmount.toLocaleString() : 'Pending'} {rfq.toAsset}</span>
         </div>
         <div className="mt-8">
-          <p className="text-gray-500 text-[10px] mb-2">Quote issued by backend · expiry enforced server-side</p>
+          <p className={`text-[10px] mb-2 ${quoteExpired ? 'text-red-400' : 'text-gray-500'}`}>Quote {quoteExpired ? 'expired' : 'QT-' + rfq.id.replace('RFQ-', '') + ` · expires in ${secondsLeft}s`}</p>
           <div className="h-1 w-full bg-[#1C2431] rounded overflow-hidden">
-            <div className="h-full bg-amber-500" style={{width: '75%'}}></div>
+            <div className={`h-full transition-[width] duration-200 ${quoteExpired ? 'bg-red-500' : 'bg-amber-500'}`} style={{ width: `${progress}%` }}></div>
           </div>
         </div>
-      </div>
+      </div>}
 
       <div className="flex justify-end gap-4 mt-2 items-center">
         <button className="text-gray-400 font-bold text-sm hover:text-white px-4" onClick={onBack}>Cancel quote</button>
-        <button className={`${btnPrimary} bg-emerald-600 border-emerald-600 hover:bg-emerald-500`} onClick={onNext} disabled={!rfq.quote}><Check size={16} /> Confirm customer acceptance</button>
+        {!isSent ? <button className={`${btnPrimary} bg-blue-600 border-blue-600 hover:bg-blue-500`} onClick={onSend} disabled={!rfq.quote}><ArrowRight size={16} /> Send Quote</button> : <button className={`${btnPrimary} bg-emerald-600 border-emerald-600 hover:bg-emerald-500`} onClick={onNext} disabled={quoteExpired}><Check size={16} /> {quoteExpired ? 'Quote expired' : 'Simulate: Customer Accepts'}</button>}
       </div>
     </div>
   );
@@ -413,13 +475,15 @@ function Settlement({ settlement, onRefresh, onNext }: { settlement: any; onRefr
   const legs = settlement?.legs || {};
   const fiatStatus = legs.fiat?.status || 'pending';
   const cryptoStatus = legs.crypto?.status || 'pending';
-  const isComplete = settlement?.status === 'completed';
+  const fiatComplete = ['confirmed', 'completed'].includes(fiatStatus.toLowerCase());
+  const cryptoComplete = ['confirmed', 'completed'].includes(cryptoStatus.toLowerCase());
+  const isComplete = settlement?.status === 'completed' || (fiatComplete && cryptoComplete);
   const isFailed = settlement?.status === 'failed';
   const steps = [
     ['Trade executed', true],
-    ['Fiat collection', ['confirmed', 'completed'].includes(fiatStatus)],
-    ['Digital asset transfer', ['confirmed', 'completed', 'submitted'].includes(cryptoStatus)],
-    ['Blockchain confirmation', ['confirmed', 'completed'].includes(cryptoStatus)],
+    ['Fiat collection', fiatComplete],
+    ['Digital asset transfer', cryptoComplete],
+    ['Blockchain confirmation', cryptoComplete],
     ['Settlement complete', isComplete],
   ] as [string, boolean][];
 
@@ -495,7 +559,17 @@ function Settlement({ settlement, onRefresh, onNext }: { settlement: any; onRefr
 // --------------------------------------------------------------------------------------
 function Completed({ rfq, settlement, onNew, onClose }: { rfq: RfqRecord; settlement: any; onNew: () => void; onClose: () => void }) {
   const quote = rfq.quote || {};
-  const executionRate = Number(quote.execution_rate || 0);
+  const analysis = rfq.analysis || {};
+  const costs = analysis.costs || {};
+  const customerRate = Number(quote.execution_rate || 0);
+  const blendedCost = Number(quote.blended_cost || analysis.liquidity?.blendedCost || 0);
+  const difference = customerRate - blendedCost;
+  const grossMargin = difference * Number(rfq.amount || 0);
+  const totalCostsUsd = Number(costs.fundingUsd || 0) + Number(costs.fxUsd || 0) + Number(costs.networkUsd || 0);
+  const totalCosts = totalCostsUsd * (blendedCost || customerRate || 1);
+  const netPnl = grossMargin - totalCosts;
+  const formatAmount = (value: number, decimals = 4) => Number.isFinite(value) ? value.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) : 'Unavailable';
+  const settlementComplete = String(settlement?.status || '').toLowerCase() === 'completed';
   return (
     <div className="max-w-4xl mx-auto flex flex-col gap-6 mt-4 pb-12">
       <div>
@@ -503,21 +577,23 @@ function Completed({ rfq, settlement, onNew, onClose }: { rfq: RfqRecord; settle
         <p className="text-gray-400 text-sm">Immutable trade record, reconciled across ledger, wallet/bank and blockchain.</p>
       </div>
 
-      <div className="bg-[#121822] border border-[#232D39] rounded-xl p-6 font-mono text-[13px] text-gray-300 space-y-3">
+      <div className="bg-[#0A0D12] border border-[#232D39] rounded-xl p-4 sm:p-5 font-mono text-[13px] text-gray-300 space-y-2">
         <p className="text-white font-bold text-sm mb-4">{settlement?.id || rfq.id}</p>
         <p>Trade: <span className="text-emerald-400">EXECUTED</span></p>
-        <p>Settlement: <span className="text-emerald-400">{settlement?.status || 'COMPLETED'}</span></p>
-        <p>RFQ: <span className="text-gray-300">{rfq.id}</span></p>
-        <p className="text-gray-500 pt-2">Settlement status is reconciled from persisted fiat and digital asset leg confirmations.</p>
+        <p>Settlement: <span className="text-emerald-400">{settlementComplete ? 'COMPLETE' : String(settlement?.status || 'PENDING').toUpperCase()}</span></p>
+        <p>Reconciliation: <span className="text-emerald-400">{settlementComplete ? 'MATCHED' : 'PENDING'}</span></p>
+        <p className="text-gray-500 pt-2">Trade ledger - Treasury wallet/bank - Blockchain/bank confirmation: {settlementComplete ? 'all match' : 'awaiting confirmation'}</p>
       </div>
 
       <div>
         <p className="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-4">P&L BREAKDOWN</p>
-        <div className="space-y-3 font-mono text-[13px]">
-          <div className="flex justify-between"><span className="text-gray-400">Execution rate</span><span className="text-white">{executionRate || 'Unavailable'}</span></div>
-          <div className="flex justify-between"><span className="text-gray-400">Receive amount</span><span className="text-white">{quote.receive_amount || 'Unavailable'} {rfq.toAsset}</span></div>
-          <div className="flex justify-between"><span className="text-gray-400">Requested amount</span><span className="text-white">{rfq.amount.toLocaleString()} {rfq.fromAsset}</span></div>
-          <div className="flex justify-between pt-3"><span className="text-gray-400 font-sans">Expected P&amp;L</span><span className="text-emerald-400 font-bold">{quote.expected_pnl ?? 'Unavailable'}</span></div>
+        <div className="space-y-2 font-mono text-[13px]">
+          <div className="flex justify-between gap-4"><span className="text-gray-500">Customer rate</span><span className="text-white">{formatAmount(customerRate)} {rfq.toAsset}/{rfq.fromAsset}</span></div>
+          <div className="flex justify-between gap-4"><span className="text-gray-500">Blended acquisition cost</span><span className="text-white">{formatAmount(blendedCost)}</span></div>
+          <div className="flex justify-between gap-4"><span className="text-gray-500">Difference</span><span className="text-white">{formatAmount(difference)}</span></div>
+          <div className="flex justify-between gap-4"><span className="text-gray-500">Gross trading margin</span><span className="text-white">{formatAmount(grossMargin, 2)} {rfq.toAsset}</span></div>
+          <div className="flex justify-between gap-4 border-b border-[#232D39] pb-2"><span className="text-gray-500">Funding + FX + network costs</span><span className="text-rose-400">-{formatAmount(totalCosts, 2)} {rfq.toAsset}</span></div>
+          <div className="flex justify-between gap-4 pt-1"><span className="text-gray-400 font-sans font-semibold">Net P&amp;L</span><span className={`${netPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'} font-bold`}>{formatAmount(netPnl, 2)} {rfq.toAsset}</span></div>
         </div>
         <p className="text-gray-500 text-[10px] mt-4">Flows into Dealer P&L · Treasury P&L · Daily P&L · Customer profitability</p>
       </div>

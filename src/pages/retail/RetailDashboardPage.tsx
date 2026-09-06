@@ -5,8 +5,8 @@ import {
   ArrowDown, ArrowUp, RefreshCw, Phone,
   DollarSign, Bitcoin, Hexagon, CircleDollarSign,
   ArrowRightLeft, ArrowDownRight, ArrowUpRight, CheckCircle2,
-  Wallet, Radio, Clock
-  
+  Wallet, Radio, Clock, Eye, EyeOff, ChevronRight
+
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getRetailWallet, getRampHistory } from '../../api/client';
@@ -31,7 +31,6 @@ export default function RetailDashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const [anchorCurrency, setAnchorCurrency] = useState<'KES' | 'USDT'>('KES');
   const [balances, setBalances] = useState<Balances>({
     KES: 0, USDA: 0, USDT: 0, USDC: 0, cUSD: 0, USD: 0,
     UGX: 0, TZS: 0, RWF: 0, BIF: 0, XAF: 0, XOF: 0,
@@ -39,6 +38,7 @@ export default function RetailDashboardPage() {
   });
   const [history, setHistory] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [hideBalance, setHideBalance] = useState(false);
   const [webhookToast, setWebhookToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
@@ -83,17 +83,18 @@ export default function RetailDashboardPage() {
     BTC: 1 / 64000, ETH: 1 / 3500
   };
 
-  const totalPortfolioValue = useMemo(() => {
+  // Full detail — currency toggle, per-asset breakdown — lives on WalletsPage.
+  // This is a glance, not a ledger, so it fixes on one currency (KES) rather
+  // than duplicating that page's toggle here too.
+  const totalPortfolioValueKes = useMemo(() => {
     let totalUsd = 0;
     Object.keys(balances).forEach((key) => {
       const balance = balances[key as keyof Balances] || 0;
       const rateToUsd = usdBaseRates[key] || 1;
       totalUsd += (balance / rateToUsd);
     });
-    if (anchorCurrency === 'KES') return totalUsd * usdBaseRates.KES;
-    // USDT is treated as a 1:1 USD equivalent in this portfolio estimator.
-    return totalUsd / (usdBaseRates.USDT || 1);
-  }, [balances, anchorCurrency]);
+    return totalUsd * usdBaseRates.KES;
+  }, [balances]);
 
   const sortedWalletCards = useMemo(() => {
     const cards = [
@@ -134,7 +135,7 @@ export default function RetailDashboardPage() {
       )}
 
       {/* Welcome & Portfolio */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
             Welcome, {user?.name?.split(' ')[0] || user?.displayName?.split(' ')[0] || 'User'}
@@ -142,25 +143,42 @@ export default function RetailDashboardPage() {
           <p className="text-gray-400 text-sm mt-1">Here's your portfolio overview</p>
         </div>
 
-        {/* Anchor currency selector in portfolio card showing the usd equivalent */}
-        <div className="bg-[#0B0E14] border border-[#1E2533] rounded-2xl p-6 shadow-xl min-w-[300px]">
-          <div className="flex items-center gap-4 justify-between mb-2">
-            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Total Portfolio Value</p>
-            <select
-              value={anchorCurrency}
-              onChange={(e) => setAnchorCurrency(e.target.value as 'KES' | 'USDT')}
-              className="bg-[#111827] border border-[#1E2533] text-white text-xs font-bold rounded-lg px-2 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
-              aria-label="Select portfolio display currency"
+        {/* This is the number that holds a user's total value, so it stays a
+            real hero — not shrunk into a pill — but single-currency (KES)
+            rather than duplicating WalletsPage's currency-toggle detail view.
+            Color convention matches Binance/Coinbase: the label is neutral
+            gray, the balance itself is bold white (color is reserved for
+            gain/loss indicators, not the balance figure) — green on the
+            label was misleading since it implies "this number is good news"
+            rather than just "this is your balance". */}
+        <div className="bg-gradient-to-br from-amber-500/10 via-[#0B0E14] to-[#0B0E14] border border-amber-500/20 rounded-2xl px-6 py-5 shadow-xl w-full lg:w-auto lg:min-w-[340px]">
+          <div className="flex items-center justify-between gap-3 mb-1.5">
+            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Total portfolio value</span>
+            <button
+              onClick={() => setHideBalance(h => !h)}
+              className="text-gray-500 hover:text-gray-300 transition-colors"
+              aria-label={hideBalance ? 'Show balance' : 'Hide balance'}
             >
-              <option value="KES">KES Equivalent</option>
-              <option value="USDT">USDT Equivalent</option>
-            </select>
+              {hideBalance ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </button>
           </div>
-          <div className="flex items-end gap-3">
-            <h2 className="text-4xl font-extrabold text-green-600 font-mono tracking-tight flex items-baseline gap-2">
-              <span className="text-xl text-green-600  mb-1">{anchorCurrency}</span>
-              {totalPortfolioValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </h2>
+          <div className="flex items-end justify-between gap-4">
+            <p className="text-3xl md:text-4xl font-extrabold text-white font-mono tracking-tight">
+              {hideBalance ? (
+                '***'
+              ) : (
+                <>
+                  <span className="text-lg text-gray-500 mr-2">KES</span>
+                  {totalPortfolioValueKes.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </>
+              )}
+            </p>
+            <button
+              onClick={() => navigate('/wallets')}
+              className="flex items-center gap-0.5 text-xs font-bold text-amber-500 hover:text-amber-400 whitespace-nowrap shrink-0 pb-1"
+            >
+              Breakdown <ChevronRight className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       </div>

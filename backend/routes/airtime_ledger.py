@@ -6,12 +6,13 @@ from pydantic import BaseModel
 import asyncio
 
 from database import get_db
-from routes.auth import get_current_user, get_current_user_with_role, is_admin_role
+from routes.auth import get_current_user, get_current_user_with_role, get_verified_current_user, is_admin_role
 from services.safaricom_daraja import DarajaService
 
 from cardano.airt import mint_airt, receipt_hash
 from cardano.wallet import CardanoWallet
 from services.impala_airtime import impala_airtime
+from notifications import notify_user
 
 router = APIRouter(prefix="/api/airtime", tags=["Airtime Tokenization"])
 mam_laka = DarajaService()
@@ -136,13 +137,14 @@ async def get_history(db=Depends(get_db), current_user=Depends(get_current_user)
             "usd": h.get("usd", 0.0),
             "network": h.get("network", "Unknown"),
             "country": h.get("country", "Kenya"),
-            "status": h.get("status", "Completed"), 
+            "status": h.get("status", "Completed"),
+            "error": h.get("error"),
             "time": h.get("timestamp").strftime("%b %d, %H:%M") if h.get("timestamp") else "Just now"
         })
     return {"status": "success", "history": formatted}
 
 @router.post("/mint")
-async def mint_imp(req: MintRequest, db=Depends(get_db), current_user=Depends(get_current_user)):
+async def mint_imp(req: MintRequest, db=Depends(get_db), current_user=Depends(get_verified_current_user)):
     """Mint AIRT only after a provider receipt and Cardano policy are verified."""
     if req.amount <= 0:
         raise HTTPException(status_code=400, detail="Mint amount must be greater than zero.")
@@ -199,7 +201,7 @@ async def mint_imp(req: MintRequest, db=Depends(get_db), current_user=Depends(ge
     }
 
 @router.post("/redeem")
-async def redeem_airtime(req: RedeemRequest, db=Depends(get_db), current_user=Depends(get_current_user)):
+async def redeem_airtime(req: RedeemRequest, db=Depends(get_db), current_user=Depends(get_verified_current_user)):
     if req.amount <= 0 or req.amount != int(req.amount):
         raise HTTPException(status_code=400, detail="AIRT redemption must be a positive whole number.")
     if not req.phone.strip():
@@ -239,6 +241,23 @@ async def redeem_airtime(req: RedeemRequest, db=Depends(get_db), current_user=De
             {"_id": operation_id},
             {"$set": {"status": "FAILED", "error": str(exc), "updatedAt": datetime.utcnow()}},
         )
+        await db["airtime_history"].insert_one({
+            "_id": f"{operation_id}-FAILED",
+            "user_id": user_id,
+            "type": "AIRT Redemption",
+            "amount": int(req.amount),
+            "network": req.provider.upper(),
+            "phone": req.phone.strip(),
+            "status": "Failed",
+            "timestamp": datetime.utcnow(),
+            "error": str(exc),
+        })
+        await notify_user(
+            db, user_id, "airtime", "error",
+            "Airtime redemption failed",
+            f"Your redemption of {int(req.amount)} KES to {req.phone.strip()} failed and AIRT was refunded. {exc}",
+            extra={"amount": int(req.amount), "phone": req.phone.strip()},
+        )
         raise HTTPException(status_code=502, detail=f"Airtime delivery failed; AIRT refunded: {exc}")
 
     provider_id = result.get("receipt_id", operation_id)
@@ -257,6 +276,12 @@ async def redeem_airtime(req: RedeemRequest, db=Depends(get_db), current_user=De
         "timestamp": datetime.utcnow(),
         "providerReference": provider_id,
     })
+    await notify_user(
+        db, user_id, "airtime", "success",
+        "Airtime redeemed",
+        f"{int(req.amount)} KES of airtime was sent to {req.phone.strip()}.",
+        extra={"amount": int(req.amount), "phone": req.phone.strip()},
+    )
     return {
         "status": "success",
         "operationId": operation_id,

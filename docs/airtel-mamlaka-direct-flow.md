@@ -6,7 +6,8 @@ Jasiri now uses the Mamlaka sandbox API directly for Airtel collections and disb
 
 The active flow is:
 
-```text
+```
+text
 Jasiri -> Mamlaka sandbox API -> Airtel network
                                       |
                                       v
@@ -77,6 +78,7 @@ AIRTEL_API_BASE_URL=https://sandbox.payments.mamlakapsp.com/api/v1
 AIRTEL_API_USERNAME=meshex_sandbox
 AIRTEL_API_PASSWORD=<sandbox password>
 AIRTEL_CALLBACK_BASE_URL=https://hemathermal-ha-dextrously.ngrok-free.dev
+AIRTEL_USE_PORTAL_CALLBACK=false
 ```
 
 `AIRTEL_CALLBACK_BASE_URL` is a base URL. Jasiri appends the callback paths itself.
@@ -92,6 +94,9 @@ https://hemathermal-ha-dextrously.ngrok-free.dev/api/v1/callbacks/disbursements
 ```
 
 Do not place a callback path inside `AIRTEL_CALLBACK_BASE_URL`, or Jasiri will append a second path.
+
+The previous external portal relay is disabled by default. To temporarily restore it,
+set `AIRTEL_USE_PORTAL_CALLBACK=true` and configure `AIRTEL_PORTAL_COLLECTIONS_CALLBACK_URL`.
 
 ## Authentication Flow
 

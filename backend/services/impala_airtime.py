@@ -26,7 +26,7 @@ class ImpalaAirtimeClient:
         self.token_path = os.getenv("AIRTIME_PROVIDER_TOKEN_PATH", "/api/auth/token")
         self.purchase_path = os.getenv("AIRTIME_PROVIDER_PURCHASE_PATH", "/deposit")
         self.balance_path = os.getenv("AIRTIME_PROVIDER_BALANCE_PATH", "/api/v1/read/payouts/balance")
-        self.send_path = os.getenv("AIRTIME_PROVIDER_SEND_PATH", "/send")
+        self.send_path = os.getenv("AIRTIME_PROVIDER_SEND_PATH", "/api/airtel/send")
         self.paybill = os.getenv("AIRTIME_PROVIDER_PAYBILL", "")
         self.account_number = os.getenv("AIRTIME_PROVIDER_ACCOUNT_NUMBER", "")
         self.api_key = os.getenv("AIRTIME_API_KEY", "").strip()
@@ -76,30 +76,43 @@ class ImpalaAirtimeClient:
             self._token_expires_at = time.time() + expires_in
             return token
 
+
     def send_airtime(self, phone: str, amount_kes: int, reference: str) -> dict[str, Any]:
         """Disburse physical airtime and return a normalized provider receipt."""
         if amount_kes <= 0:
             raise ValueError("Airtime amount must be greater than zero")
         token = self.get_access_token()
-        response = requests.post(
-            self._url(self.send_path),
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-            json={"number": phone, "amount": int(amount_kes), "email": self.customer_email},
-            timeout=self.timeout,
-        )
-        response.raise_for_status()
-        payload = response.json()
-        if payload.get("success") is False:
-            raise RuntimeError("Provider rejected the airtime request")
-        data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
-        receipt_id = data.get("requestRef") or data.get("airtelTransID") or data.get("transactionId") or data.get("receiptId") or reference
-        return {
-            "status": "success",
-            "receipt_id": str(receipt_id),
-            "request_ref": data.get("requestRef"),
-            "provider_transaction_id": data.get("airtelTransID"),
-            "wallet_balance": data.get("walletBalance"),
-        }
+        try:
+            response = requests.post(
+                self._url(self.send_path),
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json={"number": phone, "amount": int(amount_kes), "email": self.customer_email},
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            if payload.get("success") is False:
+                raise RuntimeError("Provider rejected the airtime request")
+            data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+            if isinstance(data, dict):
+                status = str(data.get("status") or payload.get("status") or "").lower()
+                message = str(data.get("message") or payload.get("message") or "")
+                if status in {"failed", "error", "rejected", "cancelled", "declined"} or "failed" in message.lower() or "error" in message.lower():
+                    raise RuntimeError(f"Provider rejected the airtime request: {message or data}")
+            receipt_id = data.get("requestRef") or data.get("airtelTransID") or data.get("transactionId") or data.get("receiptId") or reference
+            return {
+                "status": "success",
+                "receipt_id": str(receipt_id),
+                "request_ref": data.get("requestRef"),
+                "provider_transaction_id": data.get("airtelTransID"),
+                "wallet_balance": data.get("walletBalance"),
+            }
+        except Exception as exc:
+            # ImpalaPay is the only airtime provider this platform actually
+            # purchases airtime from — Mamlaka/Lipad is a separate M-Pesa
+            # payment gateway (see services/safaricom_daraja.py), not an
+            # airtime source, so it must never silently stand in here.
+            raise RuntimeError(f"ImpalaPay airtime send failed: {exc}") from exc
 
     def get_payout_balance(self) -> dict[str, Any]:
         """Read the authenticated payout wallet's physical airtime balance."""

@@ -14,7 +14,6 @@ export default function ForgotPasswordPage() {
         setLoading(true);
         setError('');
         try {
-            // This API call needs to be implemented on the backend
             await forgotPassword({ email });
             setSubmitted(true);
         } catch (err: any) {

@@ -8,6 +8,8 @@ export const TransactionsPage = () => {
     const [filter, setFilter] = useState('All');
     const [transactions, setTransactions] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [page, setPage] = useState(0);
+    const PAGE_SIZE = 10;
 
     // 🟢 NEW STATE FOR ERROR MODAL
     const [errorModalOpen, setErrorModalOpen] = useState(false);
@@ -64,13 +66,21 @@ export const TransactionsPage = () => {
 
     // --- ROBUST ERROR EXTRACTOR ---
     const getErrorReason = (tx: any) => {
-        // Checks common backend error field names
-        return tx.failureReason
+        // Checks common backend error field names.
+        // errorReason is what the Airtel/mobile-money callback path (ramp.py, from
+        // the DB's error_reason field) sends on deposit/withdrawal failure - the
+        // most common failure source - so it must be checked, not just
+        // `error`/`failureReason` (used by swap_engine.py for swap rollbacks).
+        return tx.errorReason
+            || tx.failureReason
             || tx.error
             || tx.metadata?.error
             || tx.callbackMessage
             || tx.responseMessage
             || tx.providerReport?.message
+            || tx.providerReport?.transactionReport
+            || tx.providerReport?.transaction?.message
+            || (tx.providerStatus ? `Provider status: ${tx.providerStatus}` : null)
             || "Unknown error occurred. If funds were deducted from your side, please contact support with the reference ID.";
     };
 
@@ -93,6 +103,7 @@ export const TransactionsPage = () => {
     // --- STATUS BADGE GENERATOR ---
     const getStatusBadge = (status: string) => {
         const s = status?.toLowerCase() || 'completed';
+        const label = s.replace(/_/g, ' ');
         let style = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
         let Icon = null;
 
@@ -100,7 +111,7 @@ export const TransactionsPage = () => {
             style = 'bg-red-500/10 text-red-400 border-red-500/20';
             Icon = AlertTriangle;
         }
-        if (s.includes('pend') || s.includes('process')) {
+        if (s.includes('pend') || s.includes('process') || s.includes('provider_confirmed') || s.includes('reconcil')) {
             style = 'bg-amber-500/10 text-amber-400 border-amber-500/20 animate-pulse';
             Icon = RefreshCw;
         }
@@ -109,7 +120,7 @@ export const TransactionsPage = () => {
             <div className="flex items-center gap-2">
                 <span className={`px-2.5 py-1 rounded-md border font-medium text-[11px] capitalize tracking-wide flex items-center gap-1.5 ${style}`}>
                     {Icon && <Icon className="w-3 h-3" />}
-                    {status || 'Completed'}
+                    {label}
                 </span>
             </div>
         );
@@ -166,6 +177,14 @@ export const TransactionsPage = () => {
     });
 
     const filterTabs = ['All', 'Deposits', 'Withdrawals', 'Swaps', 'Airtime', 'Failed'];
+
+    // Reset to page 1 whenever the search/filter changes what's being shown,
+    // otherwise a filter narrowing the results can leave the user stranded
+    // on a page number that no longer exists.
+    useEffect(() => { setPage(0); }, [searchTerm, filter]);
+
+    const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    const paged = filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
 
     // --- ERROR DETAIL MODAL ---
     const ErrorModal = () => (
@@ -302,7 +321,7 @@ export const TransactionsPage = () => {
                                     </td>
                                 </tr>
                             ) : filtered.length > 0 ? (
-                                filtered.map((tx: any) => {
+                                paged.map((tx: any) => {
                                     const assetLabel = tx.direction === 'swap'
                                         ? `${tx.fromAsset} → ${tx.toAsset}`
                                         : tx.fromAsset;
@@ -371,6 +390,28 @@ export const TransactionsPage = () => {
                         </tbody>
                     </table>
                 </div>
+
+                {filtered.length > PAGE_SIZE && (
+                    <div className="px-6 py-3.5 border-t border-[#1E2533] bg-[#0B0E14]/30 flex items-center justify-between">
+                        <button
+                            onClick={() => setPage(p => Math.max(0, p - 1))}
+                            disabled={page === 0}
+                            className="text-xs font-bold text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5"
+                        >
+                            Previous
+                        </button>
+                        <span className="text-[11px] text-gray-500 font-mono">
+                            Page {page + 1} of {totalPages} · {filtered.length} records
+                        </span>
+                        <button
+                            onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                            disabled={page >= totalPages - 1}
+                            className="text-xs font-bold text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5"
+                        >
+                            Next
+                        </button>
+                    </div>
+                )}
             </div>
 
             {/* Render Error Modal if Open */}

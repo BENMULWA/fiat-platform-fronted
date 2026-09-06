@@ -81,7 +81,7 @@ router = APIRouter(prefix="/api/retail", tags=["Retail User"])
 
 # ALL SUPPORTED ASSETS IN THE PLATFORM
 SUPPORTED_ASSETS = [
-    "KES", "USDA", "USDT", "USDC", "USD", 
+    "KES", "USDA", "USDT", "USDC", "cUSD", "USD", 
     "UGX", "TZS", "RWF", "BIF", "XAF", "XOF", 
     "AIRT", "IMP", "BTC", "ETH"
 ]
@@ -93,6 +93,7 @@ RETAIL_NOTIFICATION_THRESHOLDS = {
     "USDA": 10,
     "USDT": 10,
     "USDC": 10,
+    "cUSD": 10,
     "USD": 50,
     "UGX": 100000,
     "TZS": 100000,
@@ -185,14 +186,18 @@ async def _sync_retail_notifications(db, user_id, wallet):
             upsert=True,
         )
 
+    # Scoped to category "liquidity" only — this resync must not sweep up and
+    # silently resolve the one-off event notifications from notify_user()
+    # (deposit/withdrawal/swap/KYC events), which aren't threshold-based and
+    # have nothing to do with the current wallet snapshot.
     if active_codes:
         await db["retail_notifications"].update_many(
-            {"userId": user_id, "code": {"$nin": active_codes}, "resolved": False},
+            {"userId": user_id, "category": "liquidity", "code": {"$nin": active_codes}, "resolved": False},
             {"$set": {"resolved": True, "resolvedAt": now, "updatedAt": now}},
         )
     else:
         await db["retail_notifications"].update_many(
-            {"userId": user_id, "resolved": False},
+            {"userId": user_id, "category": "liquidity", "resolved": False},
             {"$set": {"resolved": True, "resolvedAt": now, "updatedAt": now}},
         )
 
@@ -290,7 +295,33 @@ class ProfileUpdate(BaseModel):
     phone: str
 
 @router.put("/profile")
-async def update_retail_profile(profile: ProfileUpdate):
+async def update_retail_profile(profile: ProfileUpdate, db=Depends(get_db), current_user=Depends(get_current_user)):
+    user_id = safe_object_id(current_user.get("_id"))
+
+    # get_current_user only decodes the JWT (id + workspace) and doesn't carry
+    # the persisted email, so it has to be read from the user doc here to
+    # compare against what was submitted.
+    user_doc = await db["users"].find_one({"_id": user_id}, {"email": 1})
+    if not user_doc:
+        raise HTTPException(status_code=401, detail="User session is no longer valid.")
+
+    name = profile.name.strip()
+    phone = profile.phone.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Full name cannot be empty.")
+
+    # Login is email/OTP-based (see auth.py's admin-only change-email recovery
+    # flow), so a plain profile field can't be allowed to silently repoint it —
+    # that bypasses the collision check and re-verification that flow enforces.
+    # Only name/phone are safe to self-serve here.
+    current_email = (user_doc.get("email") or "").strip().lower()
+    if profile.email.strip().lower() != current_email:
+        raise HTTPException(status_code=400, detail="Email cannot be changed here. Contact support to update your login email.")
+
+    await db["users"].update_one(
+        {"_id": user_id},
+        {"$set": {"name": name, "phone": phone}},
+    )
     return {"status": "success", "message": "Profile updated successfully"}
 
 class KycSubmission(BaseModel):
@@ -380,9 +411,15 @@ async def get_kyc_status(db=Depends(get_db), current_user=Depends(get_current_us
     if not user:
         return {"status": "success", "kycStatus": "unverified", "kycDetails": {}}
 
+    # Older accounts may have been created with pending before any KYC details
+    # existed. Treat them as unverified so they can submit the form.
+    kyc_status = user.get("kycStatus", "unverified")
+    if kyc_status == "pending" and not user.get("kycSubmittedAt") and not user.get("kycDetails"):
+        kyc_status = "unverified"
+
     return {
         "status": "success",
-        "kycStatus": user.get("kycStatus", "unverified"),
+        "kycStatus": kyc_status,
         "kycDetails": user.get("kycDetails", {}),
         "kycSubmittedAt": user.get("kycSubmittedAt"),
         "kycReviewedAt": user.get("kycReviewedAt"),

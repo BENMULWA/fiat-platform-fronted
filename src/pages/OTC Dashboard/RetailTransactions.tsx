@@ -52,7 +52,8 @@ export const RetailTransactionsPage = () => {
 
     const getSecureId = (tx: any) => String(tx.secureId || tx.id || '');
     const getExternalId = (tx: any) => tx.externalId ? String(tx.externalId) : '';
-    const getFailureReason = (tx: any) => tx.failureReason || tx.error || tx.gatewayStatusMessage || tx.gatewayResponseText || tx.providerReport?.message || 'No failure reason was recorded.';
+    const getProviderReference = (tx: any) => tx.providerCallbackReference ? String(tx.providerCallbackReference) : '';
+    const getFailureReason = (tx: any) => tx.failureReason || tx.error || tx.gatewayStatusMessage || tx.gatewayResponseText || tx.providerReport?.message || tx.providerReport?.transactionReport || tx.providerReport?.transaction?.message || 'No failure reason was recorded.';
 
     const currentUser = (() => {
         try { return JSON.parse(localStorage.getItem('meshex_user') || 'null'); } catch { return null; }
@@ -122,7 +123,7 @@ export const RetailTransactionsPage = () => {
             if (refSearch) {
                 const formattedRef = `TXN-${(tx.id || '').slice(-6).toUpperCase()}`;
                 const searchValue = refSearch.toUpperCase().trim();
-                const identifiers = [formattedRef, getSecureId(tx), getExternalId(tx)].map(value => value.toUpperCase());
+                const identifiers = [formattedRef, getSecureId(tx), getExternalId(tx), getProviderReference(tx)].map(value => value.toUpperCase());
                 if (!identifiers.some(value => value.includes(searchValue))) return false;
             }
 
@@ -450,7 +451,8 @@ export const RetailTransactionsPage = () => {
                                 <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">TYPE</th>
                                 <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em] text-right">AMOUNT</th>
                                 <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">ASSET</th>
-                                <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">REFERENCE</th>
+                                <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">RETAIL REFERENCE</th>
+                                <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">PROVIDER REF</th>
                                 <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">SECURE ID</th>
                                 <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">EXTERNAL ID</th>
                                 <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em] text-center">STATUS</th>
@@ -459,7 +461,7 @@ export const RetailTransactionsPage = () => {
                         </thead>
                         <tbody className="divide-y divide-[#1e2d3d]/50">
                             {isLoading ? (
-                                <tr><td colSpan={10} className="py-24 text-center"><RefreshCw className="w-8 h-8 animate-spin mx-auto text-emerald-500 mb-4" /><p className="text-gray-500 text-sm font-medium">Syncing Ledger...</p></td></tr>
+                                <tr><td colSpan={11} className="py-24 text-center"><RefreshCw className="w-8 h-8 animate-spin mx-auto text-emerald-500 mb-4" /><p className="text-gray-500 text-sm font-medium">Syncing Ledger...</p></td></tr>
                             ) : filteredTxs.length > 0 ? (
                                 filteredTxs.map((tx) => (
                                     <tr key={tx.id} className="hover:bg-[#151e2e] transition-colors group">
@@ -486,6 +488,15 @@ export const RetailTransactionsPage = () => {
                                             <span className="text-xs text-gray-400 font-mono font-bold bg-[#111827] border border-[#1e2d3d] px-2 py-1 rounded">
                                                 TXN-{(tx.id || '').slice(-6).toUpperCase()}
                                             </span>
+                                        </td>
+
+                                        <td className="py-4 px-6">
+                                            <div className="flex items-center gap-2 min-w-[145px]">
+                                                <span className="text-xs text-gray-400 font-mono" title={getProviderReference(tx) || 'No provider reference'}>{maskIdentifier(getProviderReference(tx))}</span>
+                                                {getProviderReference(tx) && <button onClick={() => copyIdentifier(getProviderReference(tx), 'Provider reference')} className="text-gray-500 hover:text-white transition-colors" title="Copy provider reference" aria-label="Copy provider reference">
+                                                    {copiedId === getProviderReference(tx) ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                                                </button>}
+                                            </div>
                                         </td>
 
                                         <td className="py-4 px-6">
@@ -537,7 +548,7 @@ export const RetailTransactionsPage = () => {
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={10} className="py-20 text-center">
+                                    <td colSpan={11} className="py-20 text-center">
                                         <div className="w-16 h-16 bg-[#111827] rounded-full flex items-center justify-center mx-auto mb-4 border border-[#1e2d3d]">
                                             <Search className="w-6 h-6 text-gray-600" />
                                         </div>
@@ -594,6 +605,9 @@ export const RetailTransactionsPage = () => {
                             <div className="flex justify-between gap-4 text-sm"><span className="text-gray-500">Reference</span><span className="text-white font-mono text-xs">TXN-{(failedTransaction.id || '').slice(-6).toUpperCase()}</span></div>
                             <div className="flex justify-between gap-4 text-sm"><span className="text-gray-500">Amount</span><span className="text-white font-bold">{Number(failedTransaction.fromAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} {failedTransaction.fromAsset}</span></div>
                             <div className="flex justify-between gap-4 text-sm"><span className="text-gray-500">Customer</span><span className="text-white">{failedTransaction.customerName}</span></div>
+                            <div className="flex justify-between gap-4 text-sm"><span className="text-gray-500">Provider reference</span><span className="text-white font-mono text-xs">{failedTransaction.providerReference || 'N/A'}</span></div>
+                            <div className="flex justify-between gap-4 text-sm"><span className="text-gray-500">External ID</span><span className="text-white font-mono text-xs break-all text-right">{getExternalId(failedTransaction) || 'N/A'}</span></div>
+                            <div className="flex justify-between gap-4 text-sm"><span className="text-gray-500">Secure ID</span><span className="text-white font-mono text-xs break-all text-right">{getSecureId(failedTransaction) || 'N/A'}</span></div>
                         </div>
                         <p className="text-[11px] text-gray-500 uppercase tracking-widest font-bold mb-2">Failure reason</p>
                         <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-4"><p className="text-sm text-red-300 leading-relaxed">{getFailureReason(failedTransaction)}</p></div>

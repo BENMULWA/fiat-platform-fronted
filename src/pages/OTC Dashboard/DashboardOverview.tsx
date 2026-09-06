@@ -34,8 +34,8 @@ export default function DashboardOverview() {
         setIsLoading(true);
         try {
             const [overviewRes, chartRes] = await Promise.all([
-                api.get(`/api/admin/operations-overview?days=${timeframe}`),
-                api.get(`/api/admin/analytics/chart-data?days=${timeframe}`)
+                api.get(`/api/admin/operations-overview?days=${timeframe}&scope=retail`),
+                api.get(`/api/admin/analytics/chart-data?days=${timeframe}&scope=retail`)
             ]);
             setKpis(overviewRes.data.kpis);
             setVolumeSources(overviewRes.data.volumeSources || []);
@@ -161,8 +161,8 @@ export default function DashboardOverview() {
                 <>
                     {/* KPI Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-                        <StatCard title="Today's Volume · KES equivalent" value={formatCurrency(kpis?.volumeToday || 0)} icon={Activity} trend={kpis?.volumeTrend} color="blue" subtext="OTC retail + dealer · trace records" onClick={() => navigate('/admin/retail-transactions')} />
-                        <StatCard title="Today's Revenue · KES equivalent" value={formatCurrency(kpis?.revenueToday || 0)} icon={DollarSign} trend={kpis?.revenueTrend} color="emerald" subtext="recorded P&L capture" onClick={() => navigate('/admin/company-revenue')} />
+                        <StatCard title="Retail Volume · KES equivalent" value={formatCurrency(kpis?.volumeToday || 0)} icon={Activity} trend={kpis?.volumeTrend} color="blue" subtext="completed external retail records" onClick={() => navigate('/admin/retail-transactions')} />
+                        <StatCard title="Retail Revenue · KES equivalent" value={formatCurrency(kpis?.revenueToday || 0)} icon={DollarSign} trend={kpis?.revenueTrend} color="emerald" subtext="recorded retail P&L capture" onClick={() => navigate('/admin/company-revenue')} />
                         <StatCard title="Pending Trades" value={kpis?.pendingTrades || 0} icon={ArrowRightLeft} color="amber" subtext={kpis?.pendingTrades > 0 ? "Requires attention" : "All clear"} onClick={() => navigate('/admin/retail-orders')} />
                         <StatCard title="Pending KYC" value={kpis?.pendingKyc || 0} icon={Users} color="purple" subtext="Awaiting review" onClick={() => navigate('/admin/compliance')} />
                     </div>
@@ -233,7 +233,7 @@ export default function DashboardOverview() {
                         <div className="flex items-center justify-between gap-3 mb-4">
                             <div>
                                 <h3 className="text-sm font-bold text-white">Today&apos;s volume sources</h3>
-                                <p className="text-[11px] text-gray-500 mt-1">These ledger rows add up to the volume KPI.</p>
+                                <p className="text-[11px] text-gray-500 mt-1">Completed external retail rows add up to the retail volume KPI.</p>
                             </div>
                             <button type="button" onClick={() => navigate('/admin/retail-transactions')} className="text-xs font-bold text-blue-400 hover:text-blue-300">Open OTC records</button>
                         </div>
@@ -270,7 +270,7 @@ export default function DashboardOverview() {
                             <h3 className="text-sm font-bold text-white mb-6">Risk Alerts</h3>
                             <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
                                 {riskAlerts.length ? riskAlerts.map((alert) => (
-                                    <div key={alert.id} className={`p-4 rounded-xl border-l-4 ${alert.level === 'high' ? 'border-red-500/80 bg-[#2b0f12]' : alert.level === 'medium' ? 'border-amber-500/80 bg-[#2b2010]' : 'border-emerald-500/80 bg-[#0f2a1e]'}`}>
+                                    <div key={alert.id} className={`p-4 rounded-xl border-l-4 ${alert.severity === 'high' ? 'border-red-500/80 bg-[#2b0f12]' : alert.severity === 'medium' ? 'border-amber-500/80 bg-[#2b2010]' : 'border-emerald-500/80 bg-[#0f2a1e]'}`}>
                                         <p className="text-sm font-bold text-white leading-relaxed">{alert.message}</p>
                                         <p className="text-[11px] text-gray-400 mt-2">{alert.timeAgo}</p>
                                     </div>

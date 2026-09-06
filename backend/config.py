@@ -35,13 +35,35 @@ class Settings(BaseSettings):
     otp_max_attempts: int = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
     otp_resend_cooldown_seconds: int = int(os.getenv("OTP_RESEND_COOLDOWN_SECONDS", "30"))
     otp_max_resends: int = int(os.getenv("OTP_MAX_RESENDS", "5"))
+
+    # Used to build the password-reset link emailed to users — must point at
+    # the deployed frontend, not the API, since /reset-password?token=... is
+    # a React route (see src/pages/ResetPasswordPage.tsx).
+    frontend_url: str = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    password_reset_expiry_minutes: int = int(os.getenv("PASSWORD_RESET_EXPIRY_MINUTES", "30"))
     
-    # Crucial Fix: Read the list from .env, or use these live defaults
-    cors_origins: list[str] = [
-        "http://localhost:5173", 
-        "http://127.0.0.1:5173", 
-        "https://fiat-platform-fronted-git-feature-your-659257-ray-gees-projects.vercel.app"
-    ]
+    # Comma-separated allowlist. Never use "*" with credentialed requests.
+    # This must stay a plain str field, not list[str] — pydantic-settings
+    # intercepts any env var matching a field name and, for list-typed
+    # fields, tries to JSON-decode it rather than using this class's own
+    # comma-split logic. A previous version of this field was list[str] and
+    # crashed the app at startup the moment CORS_ORIGINS was actually set in
+    # the environment (as opposed to left to the Python-side default below,
+    # which pydantic-settings never touches since there's no env var to
+    # intercept). The field_validator below does the comma-splitting instead,
+    # after pydantic-settings has already handed off a plain string.
+    cors_origins_raw: str = os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173,https://jasiricapital.africa,https://fiat-platform-fronted-git-feature-your-659257-ray-gees-projects.vercel.app",
+    )
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [
+            origin.strip()
+            for origin in self.cors_origins_raw.split(",")
+            if origin.strip() and origin.strip() != "*"
+        ]
 
     # Cardano / Blockfrost
     blockfrost_project_id: Optional[str] = os.getenv("BLOCKFROST_PROJECT_ID", None)
