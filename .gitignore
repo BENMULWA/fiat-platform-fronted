@@ -16,6 +16,10 @@
 *.code-workspace
 node_modules
 
+# Local Claude Code tooling config (agent/command definitions) — not
+# application code, shouldn't be shared via the project repo.
+.claude/
+
 # backend/ is its own separate git repository
 # (Fiat-Crypto-Gateway-platform-B2B-Transaction) — it was accidentally
 # committed into this frontend repo too at some point. Untracked here via
