@@ -46,8 +46,11 @@ const customStyles = `
     animation: fade-in-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
 
+  /* Rate/country tickers convey live data, not decorative motion, so they
+     keep scrolling even with prefers-reduced-motion — only fade-in-up
+     (a one-shot entrance animation) respects that preference. */
   @media (prefers-reduced-motion: reduce) {
-    .animate-marquee, .animate-marquee-slow, .animate-fade-in-up {
+    .animate-fade-in-up {
       animation: none !important;
     }
   }
@@ -163,13 +166,24 @@ export default function LandingPage() {
     return () => { active = false; clearInterval(interval); };
   }, []);
 
+  // Comma-groups the integer part of a raw "1234.5" string as the user
+  // types, without touching an in-progress decimal ("1234." or "1234.5")
+  // so typing isn't fought mid-edit.
+  const formatAmountInput = (value: string) => {
+    if (!value) return '';
+    const [intPart, ...rest] = value.split('.');
+    const groupedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return rest.length ? `${groupedInt}.${rest.join('.')}` : groupedInt;
+  };
+
   // --- CALCULATE HERO RECEIVE AMOUNT ---
   const calculateReceive = () => {
     const num = parseFloat(payAmount);
     if (isNaN(num) || num <= 0 || !liveRates[payAsset] || !liveRates[receiveAsset]) return "—";
     const usdValue = num * liveRates[payAsset];
     const receiveValue = usdValue / liveRates[receiveAsset];
-    return receiveValue > 1000 ? receiveValue.toFixed(2) : receiveValue.toFixed(4);
+    const decimals = receiveValue > 1000 ? 2 : 4;
+    return receiveValue.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
   };
 
   const currentReceiveAmount = calculateReceive();
@@ -267,9 +281,9 @@ export default function LandingPage() {
     <div className={`min-h-screen ${current.bg} ${current.text} font-sans transition-colors duration-300`}>
       <style>{customStyles}</style>
 
-      {/* TOP TICKER — real computed % change per asset, not a placeholder */}
+      {/* TOP TICKER — real computed % change per asset, with live price updates and scrolling animation */}
       <div className="w-full bg-[#000000] text-white text-xs py-2 overflow-hidden whitespace-nowrap border-b border-emerald-500/20 flex items-center relative z-50">
-        <div className={enableMotion ? 'animate-marquee' : 'flex w-full justify-center'}>
+        <div className={marketRates.length ? 'animate-marquee' : 'flex w-full justify-center'}>  
           {marketRates.length ? [...marketRates, ...marketRates].map((rate, i) => (
             <div key={i} className="inline-flex items-center mx-6 font-medium">
               <img src={rate.img} alt={rate.pair} className="w-4 h-4 mr-2 rounded-full object-cover bg-white" />
@@ -493,9 +507,13 @@ export default function LandingPage() {
                       )}
 
                       <input
-                        type="number"
-                        value={payAmount}
-                        onChange={(e) => setPayAmount(e.target.value)}
+                        type="text"
+                        inputMode="decimal"
+                        value={formatAmountInput(payAmount)}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/,/g, '');
+                          if (/^\d*\.?\d*$/.test(raw)) setPayAmount(raw);
+                        }}
                         placeholder="0.00"
                         className="bg-transparent text-2xl font-bold outline-none w-1/2 text-right"
                       />
