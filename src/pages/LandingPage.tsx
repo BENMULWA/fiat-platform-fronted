@@ -781,7 +781,7 @@ export default function LandingPage() {
                 </div>
                 <div className={`flex justify-between items-center p-5 rounded-2xl border ${theme === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-[#09090b] border-white/5'}`}>
                   <span className="font-semibold text-sm">Stellar</span>
-                  <span className={`text-[11px] px-2.5 py-1 rounded-full border ${theme === 'light' ? 'bg-slate-100 border-slate-200 text-slate-600' : 'bg-white/5 border-white/10 text-slate-400'}`}>Coming soon</span>
+                  <span className={`text-[11px] px-2.5 py-1 rounded-full border ${theme === 'light' ? 'bg-slate-100 border-slate-200 text-slate-600' : 'bg-white/5 border-emerald-500/30 text-emerald-400'}`}>Deposits & payouts</span>
                 </div>
                 <div className={`flex justify-between items-center p-5 rounded-2xl border ${theme === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-[#09090b] border-white/5'}`}>
                   <span className="font-semibold text-sm">Bank Transfer</span>
