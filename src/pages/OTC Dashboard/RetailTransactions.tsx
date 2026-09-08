@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { RefreshCw, Search, Download, Filter, ChevronDown, FileText, User, CheckCircle2, AlertCircle, Copy, Check, X, Eye } from 'lucide-react';
-import { getOtcRetailTransactions, updateOtcRetailTransactionStatus } from '../../api/client';
+import { getOtcRetailTransactions, updateOtcRetailTransactionStatus, getCallbackEvents, refundWithdrawal } from '../../api/client';
 import useWebsocket from '../../hooks/useWebsocket';
 import SimpleToast from '../../components/ui/SimpleToast';
 
@@ -26,6 +26,14 @@ export const RetailTransactionsPage = () => {
     const [evidenceNetwork, setEvidenceNetwork] = useState('');
     const [evidenceVerified, setEvidenceVerified] = useState(false);
     const [failedTransaction, setFailedTransaction] = useState<any | null>(null);
+    const [refundTransaction, setRefundTransaction] = useState<any | null>(null);
+    const [refundReason, setRefundReason] = useState('');
+    const [refundCaseId, setRefundCaseId] = useState('');
+    const [refundEvidence, setRefundEvidence] = useState('');
+    const [refundSubmitting, setRefundSubmitting] = useState(false);
+    const [showCallbackEvents, setShowCallbackEvents] = useState(false);
+    const [callbackEvents, setCallbackEvents] = useState<any[]>([]);
+    const [callbackEventsLoading, setCallbackEventsLoading] = useState(false);
 
     const addToast = (title: string | undefined, body: string) => {
         const id = `t_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
@@ -302,6 +310,57 @@ export const RetailTransactionsPage = () => {
         setEvidenceNetwork('');
     };
 
+    const openRefund = (tx: any) => {
+        setRefundTransaction(tx);
+        setRefundReason('');
+        setRefundCaseId('');
+        setRefundEvidence(getProviderReference(tx) || getExternalId(tx) || '');
+    };
+
+    const submitRefund = async () => {
+        if (!refundTransaction) return;
+        if (!refundEvidence.trim()) {
+            addToast('Evidence required', 'Enter the provider reference, receipt, or support ticket evidence first.');
+            return;
+        }
+        const reference = refundTransaction.providerReference || getExternalId(refundTransaction) || refundTransaction.id;
+        setRefundSubmitting(true);
+        try {
+            const res = await refundWithdrawal({
+                references: [String(reference)],
+                refund_wallet: true,
+                provider_report: { source: 'admin_refund', receipt: refundEvidence.trim(), operator_note: 'Admin-initiated refund: payout did not reach the customer.' },
+                support_case_id: refundCaseId.trim(),
+                reason: refundReason.trim() || 'Customer requested refund',
+            });
+            const corrected = res?.data?.corrected || [];
+            if (corrected.length > 0) {
+                addToast('Refunded', `Refunded ${corrected[0].amount} ${corrected[0].asset} back to the customer's wallet.`);
+                setRefundTransaction(null);
+                fetchTransactions();
+            } else {
+                addToast('Nothing to refund', res?.data?.message || 'No matching completed withdrawal found for this reference, or it was already refunded.');
+            }
+        } catch (err: any) {
+            addToast('Refund failed', err?.response?.data?.detail || err?.message || 'Refund request failed.');
+        } finally {
+            setRefundSubmitting(false);
+        }
+    };
+
+    const openCallbackEvents = async () => {
+        setShowCallbackEvents(true);
+        setCallbackEventsLoading(true);
+        try {
+            const res = await getCallbackEvents(50);
+            setCallbackEvents(res?.data?.events || []);
+        } catch (err: any) {
+            addToast('Could not load callback events', err?.response?.data?.detail || err?.message || 'Request failed.');
+        } finally {
+            setCallbackEventsLoading(false);
+        }
+    };
+
     const formatToEAT = (dateInput: any) => {
         if (!dateInput) return 'N/A';
         try {
@@ -359,6 +418,13 @@ export const RetailTransactionsPage = () => {
                     <p className="text-xs text-gray-500 mt-1">Real-time ledger of all customer activity</p>
                 </div>
 
+                <div className="flex items-center gap-3">
+                <button
+                    onClick={openCallbackEvents}
+                    className="flex items-center gap-2 bg-[#1e2d3d] hover:bg-[#2a3a50] text-gray-200 font-bold px-4 py-2.5 rounded-xl text-sm transition-all active:scale-[0.98]"
+                >
+                    <AlertCircle className="w-4 h-4" /> Reconciliation
+                </button>
                 <div className="flex" ref={menuRef}>
                     <button
                         onClick={handleExportCSV}
@@ -393,6 +459,7 @@ export const RetailTransactionsPage = () => {
                             </div>
                         )}
                     </div>
+                </div>
                 </div>
             </div>
 
@@ -534,12 +601,14 @@ export const RetailTransactionsPage = () => {
                                         </td>
 
                                         <td className="py-4 px-6 text-right">
-                                            {tx.status.toLowerCase() === 'pending' || tx.status.toLowerCase() === 'processing' ? (
+                                            {['pending', 'processing', 'matched', 'provider_confirmed'].includes(tx.status.toLowerCase()) ? (
                                                 <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <button onClick={() => openReview(tx)} className="bg-emerald-500 hover:bg-emerald-400 text-black px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-lg shadow-emerald-500/20 active:scale-95 flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5" /> Review</button>
                                                 </div>
                                             ) : tx.status.toLowerCase() === 'failed' ? (
                                                 <button onClick={() => openReview(tx)} className="bg-[#1e2d3d] hover:bg-[#2a3a50] text-gray-300 px-4 py-1.5 rounded-lg text-xs font-bold transition-colors">Review</button>
+                                            ) : (String(tx.direction).toLowerCase() === 'off' || String(tx.direction).toLowerCase() === 'withdrawal') && ['completed', 'credited'].includes(tx.status.toLowerCase()) ? (
+                                                <button onClick={() => openRefund(tx)} className="bg-[#1e2d3d] hover:bg-[#2a3a50] text-amber-300 px-4 py-1.5 rounded-lg text-xs font-bold transition-colors opacity-0 group-hover:opacity-100">Refund</button>
                                             ) : (
                                                 <span className="text-xs text-gray-600 font-medium">—</span>
                                             )}
@@ -612,6 +681,75 @@ export const RetailTransactionsPage = () => {
                         <p className="text-[11px] text-gray-500 uppercase tracking-widest font-bold mb-2">Failure reason</p>
                         <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-4"><p className="text-sm text-red-300 leading-relaxed">{getFailureReason(failedTransaction)}</p></div>
                         <button onClick={() => setFailedTransaction(null)} className="w-full mt-6 py-3 rounded-xl bg-[#1e2d3d] hover:bg-[#2a3a50] text-white font-bold text-sm">Close</button>
+                    </div>
+                </div>
+            )}
+
+            {refundTransaction && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => !refundSubmitting && setRefundTransaction(null)}>
+                    <div className="w-full max-w-lg bg-[#0b0f19] border border-[#1e2d3d] rounded-2xl shadow-2xl p-6" onClick={event => event.stopPropagation()}>
+                        <div className="flex items-start justify-between gap-4 mb-5">
+                            <div>
+                                <h2 className="text-lg font-bold text-white">Refund withdrawal</h2>
+                                <p className="text-xs text-gray-500 mt-1">TXN-{(refundTransaction.id || '').slice(-6).toUpperCase()} · {refundTransaction.customerName} · {Number(refundTransaction.fromAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} {refundTransaction.fromAsset}</p>
+                            </div>
+                            <button onClick={() => setRefundTransaction(null)} className="text-gray-500 hover:text-white" aria-label="Close refund"><X className="w-5 h-5" /></button>
+                        </div>
+                        <p className="text-xs text-amber-400/80 mb-4">This puts the {refundTransaction.fromAsset} back into the customer's wallet and marks the withdrawal reversed. Only do this when the payout did not actually reach the customer.</p>
+                        <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Evidence (receipt, provider trace, or ticket note)</label>
+                        <input value={refundEvidence} onChange={event => setRefundEvidence(event.target.value)} placeholder="Provider reference / receipt / note" className="w-full bg-[#06090f] border border-[#1e2d3d] rounded-xl px-4 py-3 text-sm text-white font-mono outline-none focus:border-blue-500" />
+                        <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mt-4 mb-2">Reason</label>
+                        <input value={refundReason} onChange={event => setRefundReason(event.target.value)} placeholder="e.g. Customer requested refund before payout cleared" className="w-full bg-[#06090f] border border-[#1e2d3d] rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-blue-500" />
+                        <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mt-4 mb-2">Support case ID (optional)</label>
+                        <input value={refundCaseId} onChange={event => setRefundCaseId(event.target.value)} placeholder="e.g. ZD-4821" className="w-full bg-[#06090f] border border-[#1e2d3d] rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-blue-500" />
+                        <div className="flex justify-end gap-3 mt-6">
+                            <button onClick={() => setRefundTransaction(null)} disabled={refundSubmitting} className="px-4 py-2 rounded-lg text-sm font-bold text-gray-300 bg-[#1e2d3d] hover:bg-[#2a3a50] disabled:opacity-50">Cancel</button>
+                            <button onClick={submitRefund} disabled={refundSubmitting} className="px-4 py-2 rounded-lg text-sm font-bold text-black bg-amber-500 hover:bg-amber-400 disabled:opacity-50">{refundSubmitting ? 'Refunding...' : 'Refund to wallet'}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showCallbackEvents && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setShowCallbackEvents(false)}>
+                    <div className="w-full max-w-3xl max-h-[80vh] bg-[#0b0f19] border border-[#1e2d3d] rounded-2xl shadow-2xl p-6 flex flex-col" onClick={event => event.stopPropagation()}>
+                        <div className="flex items-start justify-between gap-4 mb-4">
+                            <div>
+                                <h2 className="text-lg font-bold text-white">Provider callback events</h2>
+                                <p className="text-xs text-gray-500 mt-1">Raw provider webhooks, including ones that failed to auto-process. Copy a reference and search it above to reconcile that transaction.</p>
+                            </div>
+                            <button onClick={() => setShowCallbackEvents(false)} className="text-gray-500 hover:text-white" aria-label="Close"><X className="w-5 h-5" /></button>
+                        </div>
+                        <div className="overflow-y-auto flex-1 -mx-6 px-6">
+                            {callbackEventsLoading ? (
+                                <p className="text-sm text-gray-500 py-8 text-center">Loading...</p>
+                            ) : callbackEvents.length === 0 ? (
+                                <p className="text-sm text-gray-500 py-8 text-center">No callback events found.</p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {callbackEvents.map(ev => (
+                                        <div key={ev.id} className={`border rounded-xl p-4 ${ev.processed ? 'border-[#1e2d3d] bg-[#111827]' : 'border-red-500/30 bg-red-500/5'}`}>
+                                            <div className="flex items-center justify-between gap-3">
+                                                <span className={`text-[11px] font-bold uppercase tracking-wider ${ev.processed ? 'text-emerald-400' : 'text-red-400'}`}>{ev.processed ? 'Processed' : 'Failed to process'}</span>
+                                                <span className="text-[11px] text-gray-500">{ev.receivedAt ? new Date(ev.receivedAt).toLocaleString() : ''}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-3 mt-2">
+                                                <span className="font-mono text-sm text-white break-all">{ev.reference || 'No reference extracted'}</span>
+                                                {ev.reference && (
+                                                    <button
+                                                        onClick={() => { copyIdentifier(ev.reference, 'Reference'); setRefSearch(ev.reference); }}
+                                                        className="shrink-0 bg-[#1e2d3d] hover:bg-[#2a3a50] text-gray-300 px-3 py-1 rounded-lg text-xs font-bold transition-colors"
+                                                    >
+                                                        Copy & search
+                                                    </button>
+                                                )}
+                                            </div>
+                                            {!ev.processed && ev.error && <p className="text-xs text-red-300 mt-2">{ev.error}</p>}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             )}

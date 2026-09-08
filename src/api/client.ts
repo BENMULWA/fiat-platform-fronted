@@ -266,6 +266,17 @@ export const getOtcRetailTransactionDetails = (transactionId: string) =>
 export const updateOtcRetailTransactionStatus = (transactionId: string, status: string, providerReport?: Record<string, unknown>) =>
   api.patch(`/api/admin/retail-transactions/${transactionId}/status`, { status, provider_report: providerReport });
 
+export const getCallbackEvents = (limit: number = 30) =>
+  api.get('/api/ramp/callbacks/events', { params: { limit } });
+
+export const refundWithdrawal = (payload: {
+  references: string[];
+  provider_report: Record<string, unknown>;
+  support_case_id?: string;
+  reason?: string;
+  refund_wallet?: boolean;
+}) => api.post('/api/ramp/reconcile/withdrawals/correct', payload);
+
 
 // ==========================================
 // ADMIN FINANCE & COMPLIANCE APIS
