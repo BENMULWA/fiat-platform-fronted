@@ -25,3 +25,11 @@ node_modules
 # committed into this frontend repo too at some point. Untracked here via
 # `git rm -r --cached backend`; this line stops it from being re-added.
 backend/
+
+# Build output (npm run build). Every deploy target rebuilds this locally
+# right before restarting nginx, so committing it just caused a recurring
+# git-pull conflict: whoever built most recently had different content-
+# hashed asset filenames (dist/index.html, dist/assets/*) than whatever the
+# repo had committed, blocking `git pull` until dist/ was manually
+# discarded or stashed. Untracked here via `git rm -r --cached dist`.
+dist/
