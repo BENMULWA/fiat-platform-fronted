@@ -127,6 +127,7 @@ export default function StaffPortalPage() {
                     </div>
                 </div>
 
+                
                 <p className="text-center text-xs text-gray-600 mt-10">
                     Looking for your personal wallet instead?{' '}
                     <Link to="/signup" className="text-emerald-400 hover:text-emerald-300 font-semibold">
