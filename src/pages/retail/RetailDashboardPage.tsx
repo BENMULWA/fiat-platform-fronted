@@ -2,13 +2,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowDown, ArrowUp, RefreshCw, Phone,
+  ArrowDown, ArrowUp, RefreshCw, Phone, Send,
   DollarSign, Bitcoin, Hexagon, CircleDollarSign,
   ArrowRightLeft, ArrowDownRight, ArrowUpRight, CheckCircle2,
   Wallet, Radio, Clock, Eye, EyeOff, ChevronRight
 
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import { getRetailWallet, getRampHistory } from '../../api/client';
 
 interface Balances {
@@ -29,6 +30,8 @@ const getFlagUrl = (assetCode: string) => {
 
 export default function RetailDashboardPage() {
   const { user } = useAuth();
+  const { theme } = useTheme();
+  const isLight = theme === 'light';
   const navigate = useNavigate();
 
   const [balances, setBalances] = useState<Balances>({
@@ -97,15 +100,44 @@ export default function RetailDashboardPage() {
   }, [balances]);
 
   const sortedWalletCards = useMemo(() => {
+    // Tailwind's JIT scanner needs full literal class strings, so each color
+    // is spelled out per theme rather than built with template interpolation.
+    const cardTheme = {
+      emerald: isLight
+        ? { gradient: 'from-emerald-50 via-white to-white', border: 'border-emerald-200', text: 'text-emerald-600' }
+        : { gradient: 'from-emerald-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-emerald-500/30', text: 'text-emerald-400' },
+      amber: isLight
+        ? { gradient: 'from-amber-50 via-white to-white', border: 'border-amber-200', text: 'text-amber-600' }
+        : { gradient: 'from-amber-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-amber-500/30', text: 'text-amber-400' },
+      blue: isLight
+        ? { gradient: 'from-blue-50 via-white to-white', border: 'border-blue-200', text: 'text-blue-600' }
+        : { gradient: 'from-blue-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-blue-500/30', text: 'text-blue-400' },
+      indigo: isLight
+        ? { gradient: 'from-indigo-50 via-white to-white', border: 'border-indigo-200', text: 'text-indigo-600' }
+        : { gradient: 'from-indigo-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-indigo-500/30', text: 'text-indigo-400' },
+      green: isLight
+        ? { gradient: 'from-green-50 via-white to-white', border: 'border-green-200', text: 'text-green-600' }
+        : { gradient: 'from-green-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-green-500/30', text: 'text-green-400' },
+      yellow: isLight
+        ? { gradient: 'from-yellow-50 via-white to-white', border: 'border-yellow-200', text: 'text-yellow-600' }
+        : { gradient: 'from-yellow-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-yellow-500/30', text: 'text-yellow-400' },
+      rose: isLight
+        ? { gradient: 'from-rose-50 via-white to-white', border: 'border-rose-200', text: 'text-rose-600' }
+        : { gradient: 'from-rose-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-rose-500/30', text: 'text-rose-400' },
+      orange: isLight
+        ? { gradient: 'from-orange-50 via-white to-white', border: 'border-orange-200', text: 'text-orange-600' }
+        : { gradient: 'from-orange-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-orange-500/30', text: 'text-orange-400' },
+    };
+
     const cards = [
-      { id: 'KES', name: 'Kenyan Shilling', balance: balances.KES, gradient: 'from-emerald-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-emerald-500/30', text: 'text-emerald-400' },
-      { id: 'USDA', name: 'USDA Stablecoin', balance: balances.USDA, icon: DollarSign, gradient: 'from-amber-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-amber-500/30', text: 'text-amber-400' },
-      { id: 'USDT', name: 'Tether (USDT)', balance: balances.USDT, icon: CircleDollarSign, gradient: 'from-blue-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-blue-500/30', text: 'text-blue-400' },
-      { id: 'USDC', name: 'USD Coin (USDC)', balance: balances.USDC, icon: CircleDollarSign, gradient: 'from-indigo-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-indigo-500/30', text: 'text-indigo-400' },
-      { id: 'cUSD', name: 'Celo Dollar (cUSD)', balance: balances.cUSD, icon: CircleDollarSign, gradient: 'from-green-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-green-500/30', text: 'text-green-400' },
-      { id: 'UGX', name: 'Ugandan Shilling', balance: balances.UGX, gradient: 'from-yellow-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-yellow-500/30', text: 'text-yellow-400' },
-      { id: 'AIRT', name: 'Tokenized Airtime', balance: balances.AIRT, icon: Radio, gradient: 'from-rose-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-rose-500/30', text: 'text-rose-400' },
-      { id: 'BTC', name: 'Bitcoin', balance: balances.BTC, icon: Bitcoin, gradient: 'from-orange-500/10 via-[#0B0E14] to-[#0B0E14]', border: 'border-orange-500/30', text: 'text-orange-400' },
+      { id: 'KES', name: 'Kenyan Shilling', balance: balances.KES, ...cardTheme.emerald },
+      { id: 'USDA', name: 'USDA Stablecoin', balance: balances.USDA, icon: DollarSign, ...cardTheme.amber },
+      { id: 'USDT', name: 'Tether (USDT)', balance: balances.USDT, icon: CircleDollarSign, ...cardTheme.blue },
+      { id: 'USDC', name: 'USD Coin (USDC)', balance: balances.USDC, icon: CircleDollarSign, ...cardTheme.indigo },
+      { id: 'cUSD', name: 'Celo Dollar (cUSD)', balance: balances.cUSD, icon: CircleDollarSign, ...cardTheme.green },
+      { id: 'UGX', name: 'Ugandan Shilling', balance: balances.UGX, ...cardTheme.yellow },
+      { id: 'AIRT', name: 'Tokenized Airtime', balance: balances.AIRT, icon: Radio, ...cardTheme.rose },
+      { id: 'BTC', name: 'Bitcoin', balance: balances.BTC, icon: Bitcoin, ...cardTheme.orange },
     ];
 
     // Auto-sort by highest USD equivalent value
@@ -113,7 +145,7 @@ export default function RetailDashboardPage() {
       ...card,
       usdValue: card.balance / (usdBaseRates[card.id] || 1)
     })).sort((a, b) => b.usdValue - a.usdValue).slice(0, 6); // Take top 6 for preview
-  }, [balances]);
+  }, [balances, isLight]);
 
   const formatTimeEAT = (isoDate: string | null | undefined, fallbackAgo: string) => {
     if (!isoDate) return fallbackAgo || 'Recently';
@@ -137,10 +169,10 @@ export default function RetailDashboardPage() {
       {/* Welcome & Portfolio */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
+          <h1 className={`text-2xl md:text-3xl font-bold tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
             Welcome, {user?.name?.split(' ')[0] || user?.displayName?.split(' ')[0] || 'User'}
           </h1>
-          <p className="text-gray-400 text-sm mt-1">Here's your portfolio overview</p>
+          <p className={`text-sm mt-1 ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>Here's your portfolio overview</p>
         </div>
 
         {/* This is the number that holds a user's total value, so it stays a
@@ -151,24 +183,24 @@ export default function RetailDashboardPage() {
             gain/loss indicators, not the balance figure) — green on the
             label was misleading since it implies "this number is good news"
             rather than just "this is your balance". */}
-        <div className="bg-gradient-to-br from-amber-500/10 via-[#0B0E14] to-[#0B0E14] border border-amber-500/20 rounded-2xl px-6 py-5 shadow-xl w-full lg:w-auto lg:min-w-[340px]">
+        <div className={`bg-gradient-to-br border rounded-2xl px-6 py-5 shadow-xl w-full lg:w-auto lg:min-w-[340px] ${isLight ? 'from-amber-50 via-white to-white border-amber-200' : 'from-amber-500/10 via-[#0B0E14] to-[#0B0E14] border-amber-500/20'}`}>
           <div className="flex items-center justify-between gap-3 mb-1.5">
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Total portfolio value</span>
+            <span className={`text-[11px] font-bold uppercase tracking-widest ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>Total portfolio value</span>
             <button
               onClick={() => setHideBalance(h => !h)}
-              className="text-gray-500 hover:text-gray-300 transition-colors"
+              className={`transition-colors ${isLight ? 'text-slate-400 hover:text-slate-600' : 'text-gray-500 hover:text-gray-300'}`}
               aria-label={hideBalance ? 'Show balance' : 'Hide balance'}
             >
               {hideBalance ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
             </button>
           </div>
           <div className="flex items-end justify-between gap-4">
-            <p className="text-3xl md:text-4xl font-extrabold text-white font-mono tracking-tight">
+            <p className={`text-3xl md:text-4xl font-extrabold font-mono tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
               {hideBalance ? (
                 '***'
               ) : (
                 <>
-                  <span className="text-lg text-gray-500 mr-2">KES</span>
+                  <span className={`text-lg mr-2 ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>KES</span>
                   {totalPortfolioValueKes.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </>
               )}
@@ -184,17 +216,20 @@ export default function RetailDashboardPage() {
       </div>
 
       {/* Quick Actions Bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4">
         <button onClick={() => navigate('/deposit')} className="flex items-center justify-center gap-2 py-4 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl transition-all shadow-lg shadow-amber-500/10 active:scale-[0.98]">
           <ArrowDown className="w-4 h-4" /> Deposit
         </button>
-        <button onClick={() => navigate('/withdraw')} className="flex items-center justify-center gap-2 py-4 bg-[#0F1520] border border-[#1E2533] hover:bg-[#172130] hover:border-amber-500/30 text-gray-300 hover:text-white font-bold rounded-xl transition-all active:scale-[0.98]">
+        <button onClick={() => navigate('/transfer')} className={`flex items-center justify-center gap-2 py-4 border font-bold rounded-xl transition-all active:scale-[0.98] ${isLight ? 'bg-white border-slate-200 hover:bg-slate-50 hover:border-blue-300 text-slate-600 hover:text-slate-900 shadow-sm' : 'bg-[#0F1520] border-[#1E2533] hover:bg-[#172130] hover:border-blue-500/30 text-gray-300 hover:text-white'}`}>
+          <Send className="w-4 h-4" /> Send
+        </button>
+        <button onClick={() => navigate('/withdraw')} className={`flex items-center justify-center gap-2 py-4 border font-bold rounded-xl transition-all active:scale-[0.98] ${isLight ? 'bg-white border-slate-200 hover:bg-slate-50 hover:border-amber-300 text-slate-600 hover:text-slate-900 shadow-sm' : 'bg-[#0F1520] border-[#1E2533] hover:bg-[#172130] hover:border-amber-500/30 text-gray-300 hover:text-white'}`}>
           <ArrowUp className="w-4 h-4" /> Withdraw
         </button>
-        <button onClick={() => navigate('/swap')} className="flex items-center justify-center gap-2 py-4 bg-[#0F1520] border border-[#1E2533] hover:bg-[#172130] hover:border-amber-500/30 text-gray-300 hover:text-white font-bold rounded-xl transition-all active:scale-[0.98]">
+        <button onClick={() => navigate('/swap')} className={`flex items-center justify-center gap-2 py-4 border font-bold rounded-xl transition-all active:scale-[0.98] ${isLight ? 'bg-white border-slate-200 hover:bg-slate-50 hover:border-amber-300 text-slate-600 hover:text-slate-900 shadow-sm' : 'bg-[#0F1520] border-[#1E2533] hover:bg-[#172130] hover:border-amber-500/30 text-gray-300 hover:text-white'}`}>
           <RefreshCw className="w-4 h-4" /> Swap
         </button>
-        <button onClick={() => navigate('/redeem-airtime')} className="flex items-center justify-center gap-2 py-4 bg-[#0F1520] border border-[#1E2533] hover:bg-[#172130] hover:border-amber-500/30 text-gray-300 hover:text-white font-bold rounded-xl transition-all active:scale-[0.98]">
+        <button onClick={() => navigate('/redeem-airtime')} className={`flex items-center justify-center gap-2 py-4 border font-bold rounded-xl transition-all active:scale-[0.98] ${isLight ? 'bg-white border-slate-200 hover:bg-slate-50 hover:border-amber-300 text-slate-600 hover:text-slate-900 shadow-sm' : 'bg-[#0F1520] border-[#1E2533] hover:bg-[#172130] hover:border-amber-500/30 text-gray-300 hover:text-white'}`}>
           <Phone className="w-4 h-4" /> Redeem Airtime
         </button>
       </div>
@@ -202,7 +237,7 @@ export default function RetailDashboardPage() {
       {/* Wallets Grid Preview (Auto-Sorted) */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Your Active Wallets</h3>
+          <h3 className={`text-xs font-bold uppercase tracking-widest ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>Your Active Wallets</h3>
           <button onClick={() => navigate('/wallets')} className="text-xs font-bold text-amber-500 hover:text-amber-400">View All →</button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -214,7 +249,7 @@ export default function RetailDashboardPage() {
             return (
               <div key={w.id} className={`bg-gradient-to-br ${w.gradient} border ${w.border} hover:border-opacity-60 rounded-2xl p-6 transition-all shadow-xl backdrop-blur-md group hover:-translate-y-0.5 duration-300`}>
                 <div className="flex justify-between items-start mb-6">
-                  <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-[#0F1520]/80 border border-[#1E2533] shadow-inner overflow-hidden p-2">
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-inner overflow-hidden p-2 border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#0F1520]/80 border-[#1E2533]'}`}>
                     {flagUrl ? (
                       <img src={flagUrl} alt={`${w.id} flag`} className="w-8 h-6 object-cover rounded shadow" />
                     ) : IconComponent ? (
@@ -224,13 +259,13 @@ export default function RetailDashboardPage() {
                     )}
                   </div>
                   <div className="text-right">
-                    <span className="text-xs font-extrabold text-white uppercase tracking-widest bg-[#0F1520] px-2.5 py-1 rounded-lg border border-[#1E2533]">
+                    <span className={`text-xs font-extrabold uppercase tracking-widest px-2.5 py-1 rounded-lg border ${isLight ? 'text-slate-900 bg-slate-50 border-slate-200' : 'text-white bg-[#0F1520] border-[#1E2533]'}`}>
                       {w.id}
                     </span>
                   </div>
                 </div>
-                <p className="text-xs text-gray-400 font-semibold tracking-wide mb-1">{w.name}</p>
-                <p className="text-3xl font-extrabold text-white font-mono tracking-tight group-hover:text-amber-400 transition-colors">
+                <p className={`text-xs font-semibold tracking-wide mb-1 ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>{w.name}</p>
+                <p className={`text-3xl font-extrabold font-mono tracking-tight group-hover:text-amber-500 transition-colors ${isLight ? 'text-slate-900' : 'text-white'}`}>
                   {w.balance.toLocaleString(undefined, {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: isCrypto ? 4 : 2
@@ -245,13 +280,13 @@ export default function RetailDashboardPage() {
       {/* Recent Activity */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Recent Activity</h3>
+          <h3 className={`text-xs font-bold uppercase tracking-widest ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>Recent Activity</h3>
           <button onClick={() => navigate('/transactions')} className="text-xs font-bold text-amber-500 hover:text-amber-400">Ledger →</button>
         </div>
-        <div className="bg-[#0B0E14] border border-[#1E2533] rounded-2xl overflow-hidden shadow-xl">
-          <div className="divide-y divide-[#1E2533]/50">
+        <div className={`border rounded-2xl overflow-hidden shadow-xl ${isLight ? 'bg-white border-slate-200' : 'bg-[#0B0E14] border-[#1E2533]'}`}>
+          <div className={isLight ? 'divide-y divide-slate-100' : 'divide-y divide-[#1E2533]/50'}>
             {history.length > 0 ? history.map((tx: any) => (
-              <div key={tx.id} className="p-4 sm:px-6 flex items-center justify-between hover:bg-[#0F1520] transition-colors">
+              <div key={tx.id} className={`p-4 sm:px-6 flex items-center justify-between transition-colors ${isLight ? 'hover:bg-slate-50' : 'hover:bg-[#0F1520]'}`}>
                 <div className="flex items-center gap-4">
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center border ${tx.direction === 'swap' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
                       tx.direction === 'on' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-orange-500/10 text-orange-400 border-orange-500/20'
@@ -260,14 +295,14 @@ export default function RetailDashboardPage() {
                       tx.direction === 'on' ? <ArrowDownRight className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-white capitalize">{tx.direction === 'on' ? 'Deposit' : tx.direction === 'off' ? 'Withdrawal' : 'Swap'}</p>
-                    <p className="text-xs text-gray-500 mt-0.5 whitespace-nowrap">
+                    <p className={`text-sm font-bold capitalize ${isLight ? 'text-slate-900' : 'text-white'}`}>{tx.direction === 'on' ? 'Deposit' : tx.direction === 'off' ? 'Withdrawal' : 'Swap'}</p>
+                    <p className={`text-xs mt-0.5 whitespace-nowrap ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>
                       {formatTimeEAT(tx.createdAt, tx.timeAgo)}
                     </p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-bold text-white font-mono">
+                  <p className={`text-sm font-bold font-mono ${isLight ? 'text-slate-900' : 'text-white'}`}>
                     {tx.direction === 'swap'
                       ? `${tx.fromAmount} ${tx.fromAsset} → ${tx.toAmount} ${tx.toAsset}`
                       : `${tx.direction === 'on' ? '+' : '-'}${tx.fromAmount} ${tx.fromAsset}`
@@ -280,10 +315,10 @@ export default function RetailDashboardPage() {
               </div>
             )) : (
               <div className="p-10 flex flex-col items-center justify-center text-center">
-                <div className="w-12 h-12 rounded-full bg-[#0F1520] flex items-center justify-center mb-3">
-                  <RefreshCw className="w-5 h-5 text-gray-600" />
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-3 ${isLight ? 'bg-slate-100' : 'bg-[#0F1520]'}`}>
+                  <RefreshCw className={`w-5 h-5 ${isLight ? 'text-slate-400' : 'text-gray-600'}`} />
                 </div>
-                <p className="text-sm font-medium text-gray-400">No recent activity detected.</p>
+                <p className={`text-sm font-medium ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>No recent activity detected.</p>
               </div>
             )}
           </div>

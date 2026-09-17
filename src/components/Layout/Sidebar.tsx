@@ -5,9 +5,10 @@ import {
   LayoutDashboard, Scale, ArrowLeftRight, Link2, BookOpen, Globe, LogOut, X, ChevronDown,
   Settings, DollarSign, TerminalSquare, Wallet, Radio, Repeat, ArrowDownRight, ArrowUpRight,
   ArrowRightLeft, Coins, FileText, User, ShieldCheck, Briefcase, Receipt, CreditCard,
-  Landmark, Droplet, ShieldAlert, Users, Building2, Tag, Smartphone, RefreshCw, PieChart, Activity, ListOrdered, Bitcoin, Quote, ArrowLeftRight as TradeIcon
+  Landmark, Droplet, ShieldAlert, Users, Building2, Tag, Smartphone, RefreshCw, PieChart, Activity, ListOrdered, Bitcoin, Quote, ArrowLeftRight as TradeIcon, Send
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
+import { useTheme } from '../../contexts/ThemeContext'
 
 // --- RETAIL MENU ---
 const retailNavMain = [
@@ -18,6 +19,7 @@ const retailNavMain = [
 const retailNavActions = [
   { to: '/deposit', label: 'Deposits', icon: ArrowDownRight },
   { to: '/swap', label: 'Convert', icon: ArrowRightLeft },
+  { to: '/transfer', label: 'Send to Jasiri User', icon: Send },
   { to: '/withdraw', label: 'Withdrawals', icon: ArrowUpRight },
   { to: '/redeem-airtime', label: 'Redeem Airtime', icon: Radio },
   // { to: '/impala-coin', label: 'Impala Coin', icon: Coins },
@@ -57,10 +59,9 @@ const otcSections = [
     items: [
       { id: 'retail-orders', path: '/admin/retail-orders', label: 'Retail Orders', icon: ListOrdered },
       { id: 'institutional-rfqs', path: '/admin/institutional-rfqs', label: 'Institutional RFQs', icon: Building2 },
-      { id: 'otc-crypto', path: '/admin/otc-crypto', label: 'OTC Crypto', icon: Bitcoin },
+      { id: 'otc-crypto', path: '/admin/otc-crypto', label: 'OTC Crypto', icon: Bitcoin, comingSoon: true },
       { id: 'quotes', path: '/admin/quotes', label: 'Quotes', icon: Quote },
-      { id: 'trades', path: '/admin/trades', label: 'Trades', icon: TradeIcon },
-      { id: 'dealer-workspace', path: '/admin/dealer-workspace', label: 'Dealer Workspace', icon: Briefcase }
+      { id: 'trades', path: '/admin/trades', label: 'Trades', icon: TradeIcon, comingSoon: true },
     ]
   },
   {
@@ -124,6 +125,10 @@ interface SidebarProps {
 
 export default function Sidebar({ onClose }: SidebarProps) {
   const { user, logout, viewAsAdmin } = useAuth() // ← Removed toggleViewAsAdmin
+  const { theme } = useTheme()
+  // Stays dark for the admin/treasury view regardless of the retail toggle
+  // — see the matching comment in AppLayout.tsx.
+  const isLight = !viewAsAdmin && theme === 'light'
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -165,20 +170,22 @@ export default function Sidebar({ onClose }: SidebarProps) {
 
   return (
     <aside
-      className="w-[260px] min-w-[260px] h-screen flex flex-col relative z-20"
-      style={{ background: '#070f19', borderRight: '1px solid #1a2a40' }}
+      className="w-[260px] min-w-[260px] h-screen flex flex-col relative z-20 transition-colors duration-300"
+      style={isLight
+        ? { background: '#ffffff', borderRight: '1px solid #e2e8f0' }
+        : { background: '#070f19', borderRight: '1px solid #1a2a40' }}
     >
       {/* ==========================================
           1. HEADER / LOGO
       ========================================== */}
-      <div className="py-6 px-4 border-b border-[#1a2a40] shrink-0">
+      <div className={`py-6 px-4 border-b shrink-0 ${isLight ? 'border-slate-200' : 'border-[#1a2a40]'}`}>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 w-full p-2 rounded-xl bg-[#0d1a2d] border border-[#1e3a5f]/50 shadow-inner">
+          <div className={`flex items-center gap-3 w-full p-2 rounded-xl border shadow-inner ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#0d1a2d] border-[#1e3a5f]/50'}`}>
             <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-900/30">
               <ArrowLeftRight className="w-5 h-5 text-[#070f19]" strokeWidth={2.5} />
             </div>
             <div className="overflow-hidden mb-2">
-              <p className="text-white font-bold text-lg leading-tight tracking-wide truncate">JASIRI</p>
+              <p className={`font-bold text-lg leading-tight tracking-wide truncate ${isLight ? 'text-slate-900' : 'text-white'}`}>JASIRI</p>
               <p className={`text-[12px] uppercase font-semibold tracking-wider ${modeColor}`}>
                 {modeLabel}
               </p>
@@ -187,7 +194,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
           {onClose && (
             <button
               onClick={onClose}
-              className="lg:hidden absolute right-2 top-6 w-8 h-8 flex items-center justify-center rounded-lg bg-[#1a2a40] text-gray-400 hover:text-white transition-colors"
+              className={`lg:hidden absolute right-2 top-6 w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${isLight ? 'bg-slate-100 text-slate-500 hover:text-slate-900' : 'bg-[#1a2a40] text-gray-400 hover:text-white'}`}
             >
               <X className="w-4 h-4" />
             </button>
@@ -212,12 +219,12 @@ export default function Sidebar({ onClose }: SidebarProps) {
                     onClick={onClose}
                     className={({ isActive }) => `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 ${isActive
                         ? 'bg-emerald-500/10 text-emerald-400 font-semibold'
-                        : 'text-slate-400 hover:text-slate-200 hover:bg-[#1a2a40]/50'
+                        : isLight ? 'text-slate-500 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-[#1a2a40]/50'
                       }`}
                   >
                     {({ isActive }) => (
                       <>
-                        <Icon className={`w-5 h-5 ${isActive ? 'text-emerald-400' : 'text-slate-500'}`} />
+                        <Icon className={`w-5 h-5 ${isActive ? 'text-emerald-400' : isLight ? 'text-slate-400' : 'text-slate-500'}`} />
                         {label}
                       </>
                     )}
@@ -241,12 +248,12 @@ export default function Sidebar({ onClose }: SidebarProps) {
                     <NavLink
                       to={to}
                       onClick={onClose}
-                      className={({ isActive }) => `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 ${isActive ? activeBg : 'text-slate-400 hover:text-slate-200 hover:bg-[#1a2a40]/50'
+                      className={({ isActive }) => `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 ${isActive ? activeBg : isLight ? 'text-slate-500 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-[#1a2a40]/50'
                         }`}
                     >
                       {({ isActive }) => (
                         <>
-                          <Icon className={`w-5 h-5 ${isActive ? activeColor : 'text-slate-500'}`} />
+                          <Icon className={`w-5 h-5 ${isActive ? activeColor : isLight ? 'text-slate-400' : 'text-slate-500'}`} />
                           {label}
                         </>
                       )}
@@ -258,7 +265,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
           )}
 
           {accountItems.length > 0 && (
-            <div className="mt-6 pt-4 border-t border-[#1a2a40]">
+            <div className={`mt-6 pt-4 border-t ${isLight ? 'border-slate-200' : 'border-[#1a2a40]'}`}>
               <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.15em] px-3 mb-3">Account</p>
               {accountItems.map(({ to, label, icon: Icon }) => (
                 <li key={to}>
@@ -266,13 +273,13 @@ export default function Sidebar({ onClose }: SidebarProps) {
                     to={to}
                     onClick={onClose}
                     className={({ isActive }) => `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 ${isActive
-                        ? 'text-white font-semibold'
-                        : 'text-slate-500 hover:text-slate-300 hover:bg-[#1a2a40]/30'
+                        ? isLight ? 'text-slate-900 font-semibold' : 'text-white font-semibold'
+                        : isLight ? 'text-slate-500 hover:text-slate-800 hover:bg-slate-100' : 'text-slate-500 hover:text-slate-300 hover:bg-[#1a2a40]/30'
                       }`}
                   >
                     {({ isActive }) => (
                       <>
-                        <Icon className={`w-5 h-5 ${isActive ? 'text-white' : 'text-slate-600'}`} />
+                        <Icon className={`w-5 h-5 ${isActive ? (isLight ? 'text-slate-900' : 'text-white') : 'text-slate-500'}`} />
                         <span>{label}</span>
                       </>
                     )}
@@ -387,6 +394,24 @@ export default function Sidebar({ onClose }: SidebarProps) {
                           const SubIcon = sub.icon;
                           const isActive = location.pathname === sub.path;
 
+                          if (sub.comingSoon) {
+                            return (
+                              <div
+                                key={sub.id}
+                                title="Not built yet"
+                                className="w-full flex items-center justify-between px-3 py-2 rounded-md text-[13px] text-slate-600 border border-transparent cursor-not-allowed select-none"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <SubIcon className="w-4 h-4 text-slate-600" />
+                                  <span>{sub.label}</span>
+                                </div>
+                                <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border border-slate-600/40 text-slate-500">
+                                  Soon
+                                </span>
+                              </div>
+                            )
+                          }
+
                           return (
                             <button
                               key={sub.id}
@@ -464,7 +489,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
       {/* ==========================================
           3. FOOTER - USER INFO & LOGOUT ONLY
       ========================================== */}
-      <div className="px-4 pb-6 pt-4 bg-[#050b14] border-t border-[#1a2a40] space-y-3 shrink-0 shadow-[0_-4px_20px_rgba(0,0,0,0.2)]">
+      <div className={`px-4 pb-6 pt-4 border-t space-y-3 shrink-0 shadow-[0_-4px_20px_rgba(0,0,0,0.2)] ${isLight ? 'bg-white border-slate-200' : 'bg-[#050b14] border-[#1a2a40]'}`}>
 
         {/* User Info Display 
         {user && (

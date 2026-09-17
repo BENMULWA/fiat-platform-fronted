@@ -16,6 +16,15 @@
     min-height: 100%;
   }
 
+  /* Fluid root type scale: since Tailwind's spacing/sizing utilities are
+     rem-based, scaling this one value scales the whole UI (text, padding,
+     icons) together — so the app fits phones, laptops and large desktop
+     monitors at their native resolution without the user needing to
+     zoom in/out. Caps at 18px so ultra-wide/4K displays don't overscale. */
+  html {
+    font-size: clamp(15px, 0.35vw + 13.5px, 18px);
+  }
+
   body {
     background-color: #06090F;
     background-image:
@@ -29,8 +38,19 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow-x: hidden;
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
-  
+
+  html.light body {
+    background-color: #f8fafc;
+    background-image:
+      radial-gradient(circle at top left, rgba(16, 185, 129, 0.07), transparent 22%),
+      radial-gradient(circle at bottom right, rgba(245, 158, 11, 0.06), transparent 20%),
+      radial-gradient(circle at 50% 18%, rgba(59, 130, 246, 0.05), transparent 16%),
+      linear-gradient(180deg, #ffffff 0%, #f8fafc 45%, #f1f5f9 100%);
+    color: #1e293b;
+  }
+
   body::before {
     content: '';
     position: fixed;
@@ -41,6 +61,13 @@
       radial-gradient(circle at 78% 8%, rgba(255, 255, 255, 0.03), transparent 16%);
     opacity: 0.75;
     z-index: -1;
+  }
+
+  html.light body::before {
+    background-image:
+      radial-gradient(circle at 24% 12%, rgba(15, 23, 42, 0.035), transparent 18%),
+      radial-gradient(circle at 78% 8%, rgba(15, 23, 42, 0.025), transparent 16%);
+    opacity: 0.6;
   }
 
   ::-webkit-scrollbar {
@@ -62,9 +89,22 @@
     background: #f59e0b;
   }
 
+  html.light ::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+  }
+
+  html.light ::-webkit-scrollbar-thumb:hover {
+    background: #f59e0b;
+  }
+
   select option {
     background-color: #1f2937;
     color: #f9fafb;
+  }
+
+  html.light select option {
+    background-color: #ffffff;
+    color: #1e293b;
   }
 
   input:-webkit-autofill,
@@ -89,6 +129,11 @@
   ::selection {
     background: #10b981;
     color: #000;
+  }
+
+  html.light ::selection {
+    background: #10b981;
+    color: #ffffff;
   }
 }
 

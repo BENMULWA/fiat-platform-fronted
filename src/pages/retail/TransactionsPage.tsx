@@ -2,8 +2,11 @@
 import { useState, useEffect } from 'react';
 import { RefreshCw, Search, Eye, Download, X, FileText, AlertTriangle } from 'lucide-react';
 import { getRampHistory } from '../../api/client';
+import { useTheme } from '../../contexts/ThemeContext';
 
 export const TransactionsPage = () => {
+    const { theme } = useTheme();
+    const isLight = theme === 'light';
     const [searchTerm, setSearchTerm] = useState('');
     const [filter, setFilter] = useState('All');
     const [transactions, setTransactions] = useState<any[]>([]);
@@ -189,31 +192,31 @@ export const TransactionsPage = () => {
     // --- ERROR DETAIL MODAL ---
     const ErrorModal = () => (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-[#111827] border border-[#1E2533] rounded-2xl p-6 max-w-md w-full shadow-2xl animate-in zoom-in-95 fade-in duration-300">
+            <div className={`border rounded-2xl p-6 max-w-md w-full shadow-2xl animate-in zoom-in-95 fade-in duration-300 ${isLight ? 'bg-white border-slate-200' : 'bg-[#111827] border-[#1E2533]'}`}>
                 <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    <h3 className={`text-lg font-bold flex items-center gap-2 ${isLight ? 'text-slate-900' : 'text-white'}`}>
                         <AlertTriangle className="w-5 h-5 text-red-400" /> Transaction Failed
                     </h3>
-                    <button onClick={() => setErrorModalOpen(false)} className="text-gray-500 hover:text-white transition-colors p-1">
+                    <button onClick={() => setErrorModalOpen(false)} className={`transition-colors p-1 ${isLight ? 'text-slate-400 hover:text-slate-900' : 'text-gray-500 hover:text-white'}`}>
                         <X className="w-5 h-5" />
                     </button>
                 </div>
 
-                <div className="bg-[#0B0E14] rounded-xl p-4 mb-4 space-y-3 border border-[#1E2533]">
+                <div className={`rounded-xl p-4 mb-4 space-y-3 border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#0B0E14] border-[#1E2533]'}`}>
                     <div className="flex justify-between text-sm">
-                        <span className="text-gray-500">Reference</span>
-                        <span className="text-white font-mono text-xs">{currentErrorTx?.id}</span>
+                        <span className={isLight ? 'text-slate-500' : 'text-gray-500'}>Reference</span>
+                        <span className={`font-mono text-xs ${isLight ? 'text-slate-900' : 'text-white'}`}>{currentErrorTx?.id}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                        <span className="text-gray-500">Amount</span>
-                        <span className="text-white font-bold">{currentErrorTx?.fromAmount} {currentErrorTx?.fromAsset}</span>
+                        <span className={isLight ? 'text-slate-500' : 'text-gray-500'}>Amount</span>
+                        <span className={`font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>{currentErrorTx?.fromAmount} {currentErrorTx?.fromAsset}</span>
                     </div>
                 </div>
 
                 <div className="mb-6">
-                    <span className="text-[11px] text-gray-500 uppercase tracking-widest font-bold block mb-2">Root Cause</span>
-                    <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-4">
-                        <p className="text-sm text-red-300 leading-relaxed">
+                    <span className={`text-[11px] uppercase tracking-widest font-bold block mb-2 ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>Root Cause</span>
+                    <div className={`rounded-xl p-4 border ${isLight ? 'bg-red-50 border-red-200' : 'bg-red-500/5 border-red-500/20'}`}>
+                        <p className={`text-sm leading-relaxed ${isLight ? 'text-red-600' : 'text-red-300'}`}>
                             {getErrorReason(currentErrorTx)}
                         </p>
                     </div>
@@ -221,7 +224,7 @@ export const TransactionsPage = () => {
 
                 <button
                     onClick={() => setErrorModalOpen(false)}
-                    className="w-full py-3 rounded-xl bg-[#1E2533] hover:bg-gray-600 text-white font-bold text-sm transition-all"
+                    className={`w-full py-3 rounded-xl font-bold text-sm transition-all ${isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-900' : 'bg-[#1E2533] hover:bg-gray-600 text-white'}`}
                 >
                     Close
                 </button>
@@ -230,22 +233,22 @@ export const TransactionsPage = () => {
     );
 
     return (
-        <div className="max-w-7xl mx-auto animate-in fade-in duration-500 p-4 md:p-6 text-gray-200">
+        <div className={`max-w-7xl mx-auto animate-in fade-in duration-500 p-4 md:p-6 ${isLight ? 'text-slate-700' : 'text-gray-200'}`}>
 
             {/* PAGE HEADER */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                 <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-2xl bg-gradient-to-br from-blue-500/20 to-blue-500/5 border border-blue-500/20">
+                    <div className={`p-3 rounded-2xl bg-gradient-to-br border ${isLight ? 'from-blue-50 to-white border-blue-200' : 'from-blue-500/20 to-blue-500/5 border-blue-500/20'}`}>
                         <FileText className="w-7 h-7 text-blue-500" />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-3">
+                        <h1 className={`text-2xl font-bold tracking-tight flex items-center gap-3 ${isLight ? 'text-slate-900' : 'text-white'}`}>
                             Transactions
                             <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
                                 Retail Ledger
                             </span>
                         </h1>
-                        <p className="text-gray-500 text-xs mt-1">Complete history of your deposits, withdrawals, and swaps.</p>
+                        <p className={`text-xs mt-1 ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>Complete history of your deposits, withdrawals, and swaps.</p>
                     </div>
                 </div>
 
@@ -253,43 +256,43 @@ export const TransactionsPage = () => {
                 <button
                     onClick={handleDownloadStatement}
                     disabled={filtered.length === 0}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-[#1E2533] bg-[#111827] hover:bg-[#1a2638] hover:border-gray-500 text-sm font-bold text-gray-300 transition-all disabled:opacity-40 disabled:cursor-not-allowed group"
+                    className={`flex items-center gap-2 px-5 py-2.5 rounded-xl border text-sm font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed group ${isLight ? 'border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-600 shadow-sm' : 'border-[#1E2533] bg-[#111827] hover:bg-[#1a2638] hover:border-gray-500 text-gray-300'}`}
                 >
                     <Download className="w-4 h-4 text-emerald-400 group-hover:animate-bounce" />
                     Download Statement
                 </button>
             </div>
 
-            <div className="bg-[#0B0E14] border border-[#1E2533] rounded-2xl overflow-hidden shadow-xl relative">
+            <div className={`border rounded-2xl overflow-hidden shadow-xl relative ${isLight ? 'bg-white border-slate-200' : 'bg-[#0B0E14] border-[#1E2533]'}`}>
 
                 {/* TABLE HEADER & CONTROLS */}
-                <div className="p-5 border-b border-[#1E2533] flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-[#0F1520]/30">
-                    <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest">
+                <div className={`p-5 border-b flex flex-col lg:flex-row lg:items-center justify-between gap-4 ${isLight ? 'border-slate-200 bg-slate-50/60' : 'border-[#1E2533] bg-[#0F1520]/30'}`}>
+                    <h2 className={`text-sm font-bold uppercase tracking-widest ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>
                         History ({filtered.length} records)
                     </h2>
 
                     <div className="flex flex-col sm:flex-row items-center gap-3">
                         {/* Search Box */}
                         <div className="relative w-full sm:w-72">
-                            <Search className="w-4 h-4 text-gray-500 absolute left-3 top-2.5" />
+                            <Search className={`w-4 h-4 absolute left-3 top-2.5 ${isLight ? 'text-slate-400' : 'text-gray-500'}`} />
                             <input
                                 type="text"
                                 placeholder="Search ID, asset, or error..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                className="bg-[#0B0E14] border border-[#1E2533] focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none rounded-xl py-2 pl-9 pr-4 text-sm font-medium text-white w-full transition-all placeholder-gray-600"
+                                className={`border focus:ring-1 focus:ring-blue-500/20 focus:outline-none rounded-xl py-2 pl-9 pr-4 text-sm font-medium w-full transition-all ${isLight ? 'bg-white border-slate-200 focus:border-blue-400 text-slate-900 placeholder-slate-400' : 'bg-[#0B0E14] border-[#1E2533] focus:border-blue-500 text-white placeholder-gray-600'}`}
                             />
                         </div>
 
                         {/* Filter Tabs */}
-                        <div className="flex items-center bg-[#0B0E14] border border-[#1E2533] p-1 rounded-xl w-full sm:w-auto overflow-x-auto custom-scrollbar">
+                        <div className={`flex items-center border p-1 rounded-xl w-full sm:w-auto overflow-x-auto custom-scrollbar ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#0B0E14] border-[#1E2533]'}`}>
                             {filterTabs.map(tab => (
                                 <button
                                     key={tab}
                                     onClick={() => setFilter(tab)}
                                     className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${filter === tab
-                                            ? `${tab === 'Failed' ? 'bg-red-500/10 text-red-400' : 'bg-[#1e2d3d] text-white'} shadow-sm`
-                                            : 'text-gray-500 hover:text-gray-300 hover:bg-[#1e2d3d]/50'
+                                            ? `${tab === 'Failed' ? (isLight ? 'bg-red-100 text-red-600' : 'bg-red-500/10 text-red-400') : (isLight ? 'bg-white text-slate-900 shadow-sm' : 'bg-[#1e2d3d] text-white')} shadow-sm`
+                                            : isLight ? 'text-slate-500 hover:text-slate-800 hover:bg-white/70' : 'text-gray-500 hover:text-gray-300 hover:bg-[#1e2d3d]/50'
                                         }`}
                                 >
                                     {tab}
@@ -303,21 +306,21 @@ export const TransactionsPage = () => {
                 <div className="overflow-x-auto min-h-[400px]">
                     <table className="w-full text-left border-collapse">
                         <thead>
-                            <tr className="border-b border-[#1E2533] bg-[#0B0E14]/50">
-                                <th className="py-3.5 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-widest w-44">Date</th>
-                                <th className="py-3.5 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-widest w-28">Type</th>
-                                <th className="py-3.5 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-widest text-right">Amount</th>
-                                <th className="py-3.5 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Asset</th>
-                                <th className="py-3.5 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Status</th>
-                                <th className="py-3.5 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-widest text-right">Reference</th>
+                            <tr className={`border-b ${isLight ? 'border-slate-200 bg-slate-50/60' : 'border-[#1E2533] bg-[#0B0E14]/50'}`}>
+                                <th className={`py-3.5 px-6 text-[10px] font-bold uppercase tracking-widest w-44 ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>Date</th>
+                                <th className={`py-3.5 px-6 text-[10px] font-bold uppercase tracking-widest w-28 ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>Type</th>
+                                <th className={`py-3.5 px-6 text-[10px] font-bold uppercase tracking-widest text-right ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>Amount</th>
+                                <th className={`py-3.5 px-6 text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>Asset</th>
+                                <th className={`py-3.5 px-6 text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>Status</th>
+                                <th className={`py-3.5 px-6 text-[10px] font-bold uppercase tracking-widest text-right ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>Reference</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-[#1E2533]/40">
+                        <tbody className={isLight ? 'divide-y divide-slate-100' : 'divide-y divide-[#1E2533]/40'}>
                             {loading ? (
                                 <tr>
                                     <td colSpan={6} className="py-24 text-center">
                                         <RefreshCw className="w-6 h-6 animate-spin mx-auto text-blue-500 mb-3" />
-                                        <p className="text-sm text-gray-500">Syncing ledger...</p>
+                                        <p className={`text-sm ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>Syncing ledger...</p>
                                     </td>
                                 </tr>
                             ) : filtered.length > 0 ? (
@@ -329,9 +332,9 @@ export const TransactionsPage = () => {
                                     const isFailed = tx.status?.toLowerCase().includes('fail') || tx.status?.toLowerCase().includes('error');
 
                                     return (
-                                        <tr key={tx.id} className="hover:bg-[#0F1520]/50 transition-colors group">
+                                        <tr key={tx.id} className={`transition-colors group ${isLight ? 'hover:bg-slate-50' : 'hover:bg-[#0F1520]/50'}`}>
                                             {/* Date */}
-                                            <td className="py-4 px-6 text-xs text-gray-400 font-mono whitespace-nowrap">
+                                            <td className={`py-4 px-6 text-xs font-mono whitespace-nowrap ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>
                                                 {formatToEAT(tx.createdAt || tx.date)}
                                             </td>
 
@@ -341,12 +344,12 @@ export const TransactionsPage = () => {
                                             </td>
 
                                             {/* Amount */}
-                                            <td className="py-4 px-6 text-sm font-bold text-white font-mono text-right">
+                                            <td className={`py-4 px-6 text-sm font-bold font-mono text-right ${isLight ? 'text-slate-900' : 'text-white'}`}>
                                                 {tx.direction === 'off' ? '-' : '+'}{tx.fromAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                             </td>
 
                                             {/* Asset Flow */}
-                                            <td className="py-4 px-6 text-xs text-gray-300 font-medium">
+                                            <td className={`py-4 px-6 text-xs font-medium ${isLight ? 'text-slate-600' : 'text-gray-300'}`}>
                                                 {assetLabel}
                                             </td>
 
@@ -370,7 +373,7 @@ export const TransactionsPage = () => {
                                             </td>
 
                                             {/* Reference ID */}
-                                            <td className="py-4 px-6 text-xs text-gray-600 font-mono text-right group-hover:text-gray-400 transition-colors">
+                                            <td className={`py-4 px-6 text-xs font-mono text-right transition-colors ${isLight ? 'text-slate-400 group-hover:text-slate-600' : 'text-gray-600 group-hover:text-gray-400'}`}>
                                                 {tx.id?.slice(0, 16)}...
                                             </td>
                                         </tr>
@@ -379,11 +382,11 @@ export const TransactionsPage = () => {
                             ) : (
                                 <tr>
                                     <td colSpan={6} className="py-24 text-center">
-                                        <div className="w-16 h-16 bg-[#0F1520] rounded-full flex items-center justify-center mx-auto mb-4 border border-[#1E2533]">
-                                            <Search className="w-7 h-7 text-gray-600" />
+                                        <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 border ${isLight ? 'bg-slate-100 border-slate-200' : 'bg-[#0F1520] border-[#1E2533]'}`}>
+                                            <Search className={`w-7 h-7 ${isLight ? 'text-slate-400' : 'text-gray-600'}`} />
                                         </div>
-                                        <p className="text-sm font-medium text-gray-400 mb-1">No transactions found.</p>
-                                        <p className="text-xs text-gray-600">Try adjusting your search or filter criteria.</p>
+                                        <p className={`text-sm font-medium mb-1 ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>No transactions found.</p>
+                                        <p className={`text-xs ${isLight ? 'text-slate-400' : 'text-gray-600'}`}>Try adjusting your search or filter criteria.</p>
                                     </td>
                                 </tr>
                             )}
@@ -392,21 +395,21 @@ export const TransactionsPage = () => {
                 </div>
 
                 {filtered.length > PAGE_SIZE && (
-                    <div className="px-6 py-3.5 border-t border-[#1E2533] bg-[#0B0E14]/30 flex items-center justify-between">
+                    <div className={`px-6 py-3.5 border-t flex items-center justify-between ${isLight ? 'border-slate-200 bg-slate-50/60' : 'border-[#1E2533] bg-[#0B0E14]/30'}`}>
                         <button
                             onClick={() => setPage(p => Math.max(0, p - 1))}
                             disabled={page === 0}
-                            className="text-xs font-bold text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5"
+                            className={`text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed transition-colors px-3 py-1.5 rounded-lg ${isLight ? 'text-slate-500 hover:text-slate-900 hover:bg-slate-100' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
                         >
                             Previous
                         </button>
-                        <span className="text-[11px] text-gray-500 font-mono">
+                        <span className={`text-[11px] font-mono ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>
                             Page {page + 1} of {totalPages} · {filtered.length} records
                         </span>
                         <button
                             onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
                             disabled={page >= totalPages - 1}
-                            className="text-xs font-bold text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5"
+                            className={`text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed transition-colors px-3 py-1.5 rounded-lg ${isLight ? 'text-slate-500 hover:text-slate-900 hover:bg-slate-100' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
                         >
                             Next
                         </button>

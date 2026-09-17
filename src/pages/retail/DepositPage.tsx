@@ -20,9 +20,11 @@ import {
   activateStellarDeposit
 } from '../../api/client';
 import ExplorerModal from '../../components/ExplorerModal';
+import { getFriendlyErrorMessage } from '../../utils/errorMessages';
 import CrossBorderMomoGrid from '../../components/CrossBorderMomoGrid';
 import QRCode from 'react-qr-code';
 import useWebsocket from '../../hooks/useWebsocket';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const EXPLORER_URLS: Record<string, { address: string, tx: string, name: string }> = {
   stellar: { address: 'https://stellar.expert/explorer/public/account/', tx: 'https://stellar.expert/explorer/public/tx/', name: 'Stellar.expert' },
@@ -134,6 +136,8 @@ const ASSET_NETWORKS: Record<string, any[]> = {
 type DepositPhase = 'idle' | 'listening' | 'detected' | 'confirming' | 'credited' | 'failed';
 
 export default function DepositPage() {
+  const { theme } = useTheme();
+  const isLight = theme === 'light';
   const [step, setStep] = useState<'select' | 'form'>('select');
   const [channel, setChannel] = useState('Mobile Money');
   const [momoProvider, setMomoProvider] = useState<'MPESA' | 'AIRTEL' | 'CROSS_BORDER'>('AIRTEL');
@@ -260,7 +264,7 @@ export default function DepositPage() {
       setStellarProvisioned(true);
       setDepositPhase('listening');
     } catch (err: any) {
-      setToastError(err.response?.data?.detail || err.message || 'Could not activate this address. Please try again.');
+      setToastError(getFriendlyErrorMessage(err, { fallback: 'Could not activate this address. Please try again.' }));
     } finally {
       setIsActivatingStellar(false);
     }
@@ -484,7 +488,7 @@ export default function DepositPage() {
       setDepositPhase('listening');
 
     } catch (err: any) {
-      setToastError(err.response?.data?.detail || err.message || "Failed to start deposit listener.");
+      setToastError(getFriendlyErrorMessage(err, { fallback: 'Failed to start deposit listener.' }));
     } finally {
       setLoading(false);
     }
@@ -516,7 +520,7 @@ export default function DepositPage() {
       setDetectedTxHash(manualTxHash);
       setSuccessMsg("Transaction manually verified and credited!");
     } catch (err: any) {
-      setToastError(err.response?.data?.detail || err.message || "Verification failed.");
+      setToastError(getFriendlyErrorMessage(err, { fallback: 'Verification failed.' }));
     } finally {
       setLoading(false);
     }
@@ -561,9 +565,7 @@ export default function DepositPage() {
       setSuccessMsg(`STK request sent${recipient}.${providerRef}${ackId}${nextStep}`.replace(/\.\./g, '.'));
       setAmount(''); setCounterparty('');
     } catch (err: any) {
-      const detail = err?.response?.data?.detail;
-      const backendText = typeof detail === 'string' ? detail : detail ? JSON.stringify(detail) : '';
-      setToastError(backendText || err.message || "Transaction failed.");
+      setToastError(getFriendlyErrorMessage(err, { fallback: 'Transaction failed. Please try again.' }));
     } finally {
       setLoading(false);
     }
@@ -575,9 +577,9 @@ export default function DepositPage() {
         {step === 'select' ? <span className="w-5 h-5 rounded-full bg-emerald-500 text-black flex items-center justify-center text-[10px]">1</span> : <CheckCircle2 className="w-4 h-4" />}
         Channel
       </div>
-      <div className={`w-8 h-px ${step === 'form' ? 'bg-emerald-500/50' : 'bg-[#1E2533]'}`} />
-      <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all duration-300 ${step === 'form' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-[#111827] text-gray-600 border border-[#1E2533]'}`}>
-        <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${step === 'form' ? 'bg-emerald-500 text-black' : 'bg-[#1E2533] text-gray-500'}`}>2</span>
+      <div className={`w-8 h-px ${step === 'form' ? 'bg-emerald-500/50' : isLight ? 'bg-slate-200' : 'bg-[#1E2533]'}`} />
+      <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all duration-300 ${step === 'form' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : isLight ? 'bg-white text-slate-400 border border-slate-200' : 'bg-[#111827] text-gray-600 border border-[#1E2533]'}`}>
+        <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${step === 'form' ? 'bg-emerald-500 text-black' : isLight ? 'bg-slate-200 text-slate-500' : 'bg-[#1E2533] text-gray-500'}`}>2</span>
         Details
       </div>
     </div>
@@ -600,14 +602,14 @@ export default function DepositPage() {
           const is_active = currentIdx === i && depositPhase !== 'credited';
 
           return (
-            <div key={step.id} className={`flex items-center gap-3 p-3 rounded-xl border transition-all duration-500 ${is_active ? 'bg-[#0F1520] border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.05)]' :
+            <div key={step.id} className={`flex items-center gap-3 p-3 rounded-xl border transition-all duration-500 ${is_active ? (isLight ? 'bg-emerald-50 border-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.08)]' : 'bg-[#0F1520] border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.05)]') :
               isCompleted ? 'bg-transparent border-emerald-500/10' :
-                'border-[#1E2533]/30 opacity-40'
+                isLight ? 'border-slate-200/60 opacity-60' : 'border-[#1E2533]/30 opacity-40'
               }`}>
-              <div className={`p-1.5 rounded-lg ${is_active ? 'bg-[#111827]' : isCompleted ? 'bg-emerald-500/5' : 'bg-[#1E2533]'}`}>
-                <step.Icon className={`w-4 h-4 ${is_active ? 'text-emerald-400 animate-pulse' : isCompleted ? 'text-emerald-500/50' : 'text-gray-600'} ${is_active && step.id === 'confirming' ? 'animate-spin' : ''}`} />
+              <div className={`p-1.5 rounded-lg ${is_active ? (isLight ? 'bg-white' : 'bg-[#111827]') : isCompleted ? 'bg-emerald-500/5' : isLight ? 'bg-slate-100' : 'bg-[#1E2533]'}`}>
+                <step.Icon className={`w-4 h-4 ${is_active ? 'text-emerald-400 animate-pulse' : isCompleted ? 'text-emerald-500/50' : isLight ? 'text-slate-400' : 'text-gray-600'} ${is_active && step.id === 'confirming' ? 'animate-spin' : ''}`} />
               </div>
-              <span className={`text-sm font-medium flex-1 ${is_active ? 'text-white' : isCompleted ? 'text-emerald-500/50' : 'text-gray-500'}`}>
+              <span className={`text-sm font-medium flex-1 ${is_active ? (isLight ? 'text-slate-900' : 'text-white') : isCompleted ? 'text-emerald-500/50' : isLight ? 'text-slate-400' : 'text-gray-500'}`}>
                 {step.label}
               </span>
 
@@ -634,28 +636,28 @@ export default function DepositPage() {
       <div className="max-w-[1200px] mx-auto space-y-8 animate-in fade-in zoom-in-95 duration-300 pt-4 px-4 md:px-0">
         <StepIndicator />
         <div className="mb-6">
-          <h2 className="text-3xl font-bold text-white flex items-center gap-3 tracking-tight">
-            <div className="p-3 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 border border-emerald-500/20">
+          <h2 className={`text-3xl font-bold flex items-center gap-3 tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
+            <div className={`p-3 rounded-2xl bg-gradient-to-br border ${isLight ? 'from-emerald-100 to-emerald-50 border-emerald-200' : 'from-emerald-500/20 to-emerald-500/5 border-emerald-500/20'}`}>
               <ArrowDown className="w-7 h-7 text-emerald-500" />
             </div>
             Deposit Funds
           </h2>
-          <p className="text-gray-400 mt-3 text-[15px]">Choose how you'd like to fund your account</p>
+          <p className={`mt-3 text-[15px] ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>Choose how you'd like to fund your account</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {CHANNELS.map((c, index) => (
             <button type="button" key={c.id} disabled={!c.active} onClick={() => handleChannelSelect(c.id)}
-              className={`group relative p-6 rounded-2xl border transition-all duration-300 flex flex-col items-start gap-4 text-left overflow-hidden ${!c.active ? 'bg-[#0B0E14]/30 border-[#1E2533]/30 text-gray-600 cursor-not-allowed opacity-60 hover:opacity-70' : 'bg-[#111827] border-[#1E2533] hover:border-emerald-500/30 hover:shadow-lg hover:-translate-y-0.5'}`}
+              className={`group relative p-6 rounded-2xl border transition-all duration-300 flex flex-col items-start gap-4 text-left overflow-hidden ${!c.active ? (isLight ? 'bg-slate-50/60 border-slate-200/60 text-slate-400 cursor-not-allowed opacity-70 hover:opacity-80' : 'bg-[#0B0E14]/30 border-[#1E2533]/30 text-gray-600 cursor-not-allowed opacity-60 hover:opacity-70') : (isLight ? 'bg-white border-slate-200 shadow-sm hover:border-emerald-300 hover:shadow-lg hover:-translate-y-0.5' : 'bg-[#111827] border-[#1E2533] hover:border-emerald-500/30 hover:shadow-lg hover:-translate-y-0.5')}`}
               style={{ animationDelay: `${index * 50}ms` }}>
               <div className="flex items-start justify-between w-full relative z-10">
-                <div className={`p-3 rounded-xl border transition-colors ${c.active ? 'bg-white/5 border-white/10' : 'bg-[#1e2d3d]'}`}><c.icon className={`w-6 h-6 ${c.active ? c.color : 'text-gray-500'}`} /></div>
-                {c.active && <ChevronRight className="w-5 h-5 text-gray-600 group-hover:text-gray-400 group-hover:translate-x-1 transition-all" />}
+                <div className={`p-3 rounded-xl border transition-colors ${c.active ? (isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10') : (isLight ? 'bg-slate-100 border-slate-200' : 'bg-[#1e2d3d]')}`}><c.icon className={`w-6 h-6 ${c.active ? c.color : isLight ? 'text-slate-400' : 'text-gray-500'}`} /></div>
+                {c.active && <ChevronRight className={`w-5 h-5 transition-all group-hover:translate-x-1 ${isLight ? 'text-slate-400 group-hover:text-slate-600' : 'text-gray-600 group-hover:text-gray-400'}`} />}
               </div>
               <div className="relative z-10 mt-1">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className={`text-lg font-bold ${c.active ? 'text-white' : 'text-gray-500'}`}>{c.name}</span>
+                  <span className={`text-lg font-bold ${c.active ? (isLight ? 'text-slate-900' : 'text-white') : isLight ? 'text-slate-400' : 'text-gray-500'}`}>{c.name}</span>
                 </div>
-                <span className="text-xs text-gray-500 leading-relaxed">{c.description}</span>
+                <span className={`text-xs leading-relaxed ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>{c.description}</span>
               </div>
               {!c.active && (
                 <span className="absolute top-4 right-4 text-[9px] bg-cyan-500/10 text-cyan-400 px-2.5 py-1 rounded-lg font-bold tracking-wider flex items-center gap-1.5 border border-cyan-500/20">
@@ -674,12 +676,12 @@ export default function DepositPage() {
       <StepIndicator />
       <div className="mb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <button onClick={() => setStep('select')} className="p-2.5 bg-[#111827] border border-[#1E2533] rounded-xl hover:bg-[#1a2638] hover:text-white hover:border-gray-500 transition-all text-gray-400 group">
+          <button onClick={() => setStep('select')} className={`p-2.5 border rounded-xl transition-all group ${isLight ? 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300 shadow-sm' : 'bg-[#111827] border-[#1E2533] hover:bg-[#1a2638] hover:text-white hover:border-gray-500 text-gray-400'}`}>
             <ArrowLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
           </button>
           <div>
-            <h2 className="text-2xl font-bold text-white tracking-tight">Deposit via {CHANNELS.find(c => c.id === channel)?.name}</h2>
-            <p className="text-xs text-gray-500 mt-0.5">{CHANNELS.find(c => c.id === channel)?.description}</p>
+            <h2 className={`text-2xl font-bold tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>Deposit via {CHANNELS.find(c => c.id === channel)?.name}</h2>
+            <p className={`text-xs mt-0.5 ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>{CHANNELS.find(c => c.id === channel)?.description}</p>
           </div>
         </div>
       </div>
@@ -704,19 +706,19 @@ export default function DepositPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
 
         {/* LEFT COLUMN */}
-        <div className="lg:col-span-7 bg-[#0b0f17] border border-[#1E2533] rounded-3xl p-6 md:p-8 shadow-xl relative overflow-hidden h-fit">
+        <div className={`lg:col-span-7 border rounded-3xl p-6 md:p-8 shadow-xl relative overflow-hidden h-fit ${isLight ? 'bg-white border-slate-200' : 'bg-[#0b0f17] border-[#1E2533]'}`}>
 
           {channel === 'Mobile Money' ? (
             <form onSubmit={handleMpesaDeposit} className="space-y-6">
-              <div className="space-y-3 pb-6 border-b border-[#1E2533]">
-                <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest">
+              <div className={`space-y-3 pb-6 border-b ${isLight ? 'border-slate-200' : 'border-[#1E2533]'}`}>
+                <label className={`block text-[11px] font-bold uppercase tracking-widest ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>
                   Select Mobile Money Provider
                 </label>
                 <div className="grid grid-cols-3 gap-3">
                   <button
                     type="button"
                     onClick={() => setMomoProvider('MPESA')}
-                    className={`relative p-3.5 rounded-xl border font-bold text-sm flex items-center justify-center gap-2 transition-all ${momoProvider === 'MPESA' ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-[#0B0E14] border-[#1E2533] text-gray-400 hover:border-gray-500'}`}
+                    className={`relative p-3.5 rounded-xl border font-bold text-sm flex items-center justify-center gap-2 transition-all ${momoProvider === 'MPESA' ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : isLight ? 'bg-slate-50 border-slate-200 text-slate-500 hover:border-slate-300' : 'bg-[#0B0E14] border-[#1E2533] text-gray-400 hover:border-gray-500'}`}
                   >
                     <Smartphone className="w-4 h-4" /> M-Pesa
                   </button>
@@ -726,7 +728,7 @@ export default function DepositPage() {
                     className={`p-3.5 rounded-xl border font-bold text-sm flex items-center justify-center gap-2 transition-all ${
                       momoProvider === 'AIRTEL'
                         ? 'bg-rose-500/10 border-rose-500 text-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.15)]'
-                        : 'bg-[#0B0E14] border-[#1E2533] text-gray-400 hover:border-gray-500'
+                        : isLight ? 'bg-slate-50 border-slate-200 text-slate-500 hover:border-slate-300' : 'bg-[#0B0E14] border-[#1E2533] text-gray-400 hover:border-gray-500'
                     }`}
                   >
                     <Smartphone className="w-4 h-4" /> Airtel Money
@@ -737,7 +739,7 @@ export default function DepositPage() {
                     className={`p-3.5 rounded-xl border font-bold text-sm flex items-center justify-center gap-2 transition-all ${
                       isCrossBorderTab
                         ? 'bg-blue-500/10 border-blue-500 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.15)]'
-                        : 'bg-[#0B0E14] border-[#1E2533] text-gray-400 hover:border-gray-500'
+                        : isLight ? 'bg-slate-50 border-slate-200 text-slate-500 hover:border-slate-300' : 'bg-[#0B0E14] border-[#1E2533] text-gray-400 hover:border-gray-500'
                     }`}
                   >
                     <Globe2 className="w-4 h-4" /> Cross-Border
@@ -750,17 +752,17 @@ export default function DepositPage() {
               ) : (
                 <>
                   <div>
-                    <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">Amount to Deposit</label>
+                    <label className={`block text-[11px] font-bold uppercase tracking-widest mb-2 ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>Amount to Deposit</label>
                     <div className={`relative transition-all duration-200 rounded-xl ${focusedField === 'amount' ? 'ring-2 ring-emerald-500/20' : ''}`}>
-                      <input type="number" value={amount} onChange={e => setAmount(e.target.value)} onFocus={() => setFocusedField('amount')} onBlur={() => setFocusedField(null)} placeholder="0.00" className="w-full bg-[#111827] border border-[#1E2533] focus:border-emerald-500/50 outline-none rounded-xl py-4 pl-5 pr-20 text-xl font-bold text-white transition-all font-mono placeholder-gray-600" required />
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2"><span className="font-bold text-emerald-400">{activeAsset}</span></div>
+                      <input type="number" value={amount} onChange={e => setAmount(e.target.value)} onFocus={() => setFocusedField('amount')} onBlur={() => setFocusedField(null)} placeholder="0.00" className={`w-full border focus:border-emerald-500/50 outline-none rounded-xl py-4 pl-5 pr-20 text-xl font-bold transition-all font-mono ${isLight ? 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400' : 'bg-[#111827] border-[#1E2533] text-white placeholder-gray-600'}`} required />
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2"><span className="font-bold text-emerald-500">{activeAsset}</span></div>
                     </div>
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">
+                    <label className={`block text-[11px] font-bold uppercase tracking-widest mb-2 ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>
                       {momoProvider === 'MPESA' ? 'M-Pesa' : 'Airtel Money'} Phone Number
                     </label>
-                    <input type="text" value={counterparty} onChange={e => setCounterparty(e.target.value)} placeholder="07XXXXXXXX" className="w-full bg-[#111827] border border-[#1E2533] focus:border-emerald-500/50 outline-none rounded-xl py-3.5 px-5 text-sm text-white transition-all font-mono placeholder-gray-600" required />
+                    <input type="text" value={counterparty} onChange={e => setCounterparty(e.target.value)} placeholder="07XXXXXXXX" className={`w-full border focus:border-emerald-500/50 outline-none rounded-xl py-3.5 px-5 text-sm transition-all font-mono ${isLight ? 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400' : 'bg-[#111827] border-[#1E2533] text-white placeholder-gray-600'}`} required />
                   </div>
                   <button type="submit" disabled={loading || !amount || !counterparty} className="w-full py-4 px-4 rounded-xl font-extrabold text-[15px] tracking-wide transition-all duration-300 flex items-center justify-center gap-2.5 bg-[#00d282] hover:bg-[#00e68e] text-black shadow-[0_0_20px_rgba(0,210,130,0.2)] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed">
                     {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
@@ -772,9 +774,9 @@ export default function DepositPage() {
           )
           : (
             <form onSubmit={handleInitiateCryptoDeposit} className="space-y-6">
-              <div className="space-y-6 pb-6 border-b border-[#1E2533]/50">
+              <div className={`space-y-6 pb-6 border-b ${isLight ? 'border-slate-200' : 'border-[#1E2533]/50'}`}>
                 <div>
-                  <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-3">
+                  <label className={`block text-[11px] font-bold uppercase tracking-widest mb-3 ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>
                     <span className="inline-flex items-center gap-1.5"><span className="w-4 h-4 rounded-full bg-emerald-500/10 text-emerald-500 text-[9px] font-bold flex items-center justify-center border border-emerald-500/20">1</span> Select Asset</span>
                   </label>
                   <div className="flex flex-wrap gap-2">
@@ -789,7 +791,7 @@ export default function DepositPage() {
                             const defaultNet = ASSET_NETWORKS[asset].find((n: any) => n.active) || ASSET_NETWORKS[asset][0];
                             setCryptoNetwork(defaultNet.id);
                           }}
-                          className={`relative px-5 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 border ${cryptoAsset === asset ? 'bg-emerald-500/5 text-emerald-400 border-emerald-500/30' : 'bg-[#111827] text-gray-400 border-[#1E2533] hover:border-gray-500 hover:text-gray-300'} ${!hasActiveNetwork ? 'opacity-60' : ''}`}
+                          className={`relative px-5 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 border ${cryptoAsset === asset ? 'bg-emerald-500/5 text-emerald-400 border-emerald-500/30' : isLight ? 'bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300 hover:text-slate-700' : 'bg-[#111827] text-gray-400 border-[#1E2533] hover:border-gray-500 hover:text-gray-300'} ${!hasActiveNetwork ? 'opacity-60' : ''}`}
                         >
                           {asset}
                           {!hasActiveNetwork && (
@@ -804,7 +806,7 @@ export default function DepositPage() {
                 </div>
 
                 <div className="animate-in fade-in slide-in-from-top-2 duration-300">
-                  <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-3">
+                  <label className={`block text-[11px] font-bold uppercase tracking-widest mb-3 ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>
                     <span className="inline-flex items-center gap-1.5"><span className="w-4 h-4 rounded-full bg-emerald-500/10 text-emerald-500 text-[9px] font-bold flex items-center justify-center border border-emerald-500/20">2</span> Select Network</span>
                   </label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -815,7 +817,7 @@ export default function DepositPage() {
                         disabled={!net.active}
                         title={!net.active ? 'Coming soon — not available for deposits yet' : undefined}
                         onClick={() => net.active && setCryptoNetwork(net.id)}
-                        className={`relative p-4 rounded-xl text-left transition-all duration-200 border overflow-hidden ${!net.active ? 'bg-[#0B0E14]/30 border-[#1E2533]/30 opacity-50 cursor-not-allowed' : cryptoNetwork === net.id ? 'bg-blue-500/5 border-blue-500/30' : 'bg-[#111827] border-[#1E2533] hover:border-gray-500'}`}
+                        className={`relative p-4 rounded-xl text-left transition-all duration-200 border overflow-hidden ${!net.active ? (isLight ? 'bg-slate-50/60 border-slate-200/60 opacity-60 cursor-not-allowed' : 'bg-[#0B0E14]/30 border-[#1E2533]/30 opacity-50 cursor-not-allowed') : cryptoNetwork === net.id ? 'bg-blue-500/5 border-blue-500/30' : isLight ? 'bg-slate-50 border-slate-200 hover:border-slate-300' : 'bg-[#111827] border-[#1E2533] hover:border-gray-500'}`}
                       >
                         {!net.active && (
                           <span className="absolute top-2 right-2 text-[8px] bg-cyan-500/10 text-cyan-400 px-2 py-0.5 rounded-lg font-bold tracking-wider flex items-center gap-1 border border-cyan-500/20 z-10">
@@ -823,11 +825,11 @@ export default function DepositPage() {
                           </span>
                         )}
                         <div className="flex justify-between items-start mb-2 relative z-0">
-                          <span className={`text-sm font-bold ${!net.active ? 'text-gray-500' : cryptoNetwork === net.id ? 'text-white' : 'text-gray-300'}`}>{net.name}</span>
+                          <span className={`text-sm font-bold ${!net.active ? (isLight ? 'text-slate-400' : 'text-gray-500') : cryptoNetwork === net.id ? (isLight ? 'text-slate-900' : 'text-white') : isLight ? 'text-slate-600' : 'text-gray-300'}`}>{net.name}</span>
                         </div>
                         <div className="flex justify-between items-center text-xs relative z-0">
-                          <span className="text-gray-500">Est. Arrival</span>
-                          <div className="flex items-center gap-1.5 text-gray-400"><Clock className="w-3 h-3" /><span className="font-mono">{net.time}</span></div>
+                          <span className={isLight ? 'text-slate-400' : 'text-gray-500'}>Est. Arrival</span>
+                          <div className={`flex items-center gap-1.5 ${isLight ? 'text-slate-500' : 'text-gray-400'}`}><Clock className="w-3 h-3" /><span className="font-mono">{net.time}</span></div>
                         </div>
                       </button>
                     ))}
@@ -844,8 +846,8 @@ export default function DepositPage() {
                 <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-xl flex items-start gap-3">
                   <Lock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                   <div className="flex-1">
-                    <p className="text-sm text-amber-400 font-bold mb-1">Activation Needed</p>
-                    <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                    <p className="text-sm text-amber-500 font-bold mb-1">Activation Needed</p>
+                    <p className={`text-xs leading-relaxed mb-3 ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>
                       This address needs a one-time on-chain activation before it can receive USDC. Tap below to activate it — this only needs to happen once.
                     </p>
                     <button
@@ -867,8 +869,8 @@ export default function DepositPage() {
                 <div className="p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-xl flex items-start gap-3">
                   <Radio className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5 animate-pulse" />
                   <div>
-                    <p className="text-sm text-emerald-400 font-bold mb-1">Always Watching This Address</p>
-                    <p className="text-xs text-gray-400 leading-relaxed">
+                    <p className="text-sm text-emerald-500 font-bold mb-1">Always Watching This Address</p>
+                    <p className={`text-xs leading-relaxed ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>
                       This address is permanently yours — send any amount of {cryptoAsset} to it anytime and it's credited automatically within {cryptoNetwork === 'cardano' ? 'under a minute of' : 'seconds of'} on-chain confirmation. No need to enter an amount first.
                     </p>
                   </div>
@@ -876,10 +878,10 @@ export default function DepositPage() {
               ) : (
                 <>
                   <div>
-                    <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">Amount to Deposit</label>
+                    <label className={`block text-[11px] font-bold uppercase tracking-widest mb-2 ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>Amount to Deposit</label>
                     <div className={`relative transition-all duration-200 rounded-xl ${focusedField === 'amount' ? 'ring-2 ring-emerald-500/20' : ''}`}>
-                      <input type="number" value={amount} onChange={e => setAmount(e.target.value)} onFocus={() => setFocusedField('amount')} onBlur={() => setFocusedField(null)} placeholder="0.00" className="w-full bg-[#0a0d14] border border-[#1E2533] focus:border-emerald-500/50 outline-none rounded-xl py-4 pl-5 pr-20 text-xl font-bold text-white transition-all font-mono placeholder-gray-600 shadow-inner" required />
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2"><span className="font-bold text-emerald-400">{activeAsset}</span></div>
+                      <input type="number" value={amount} onChange={e => setAmount(e.target.value)} onFocus={() => setFocusedField('amount')} onBlur={() => setFocusedField(null)} placeholder="0.00" className={`w-full border focus:border-emerald-500/50 outline-none rounded-xl py-4 pl-5 pr-20 text-xl font-bold transition-all font-mono shadow-inner ${isLight ? 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400' : 'bg-[#0a0d14] border-[#1E2533] text-white placeholder-gray-600'}`} required />
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2"><span className="font-bold text-emerald-500">{activeAsset}</span></div>
                     </div>
                   </div>
 
@@ -891,8 +893,8 @@ export default function DepositPage() {
               )}
 
               {cryptoNetwork === 'celo' && (
-                <div className="border-t border-[#1E2533]/50 pt-4">
-                  <button type="button" onClick={() => setShowWalletPicker(!showWalletPicker)} className="w-full flex items-center justify-between text-xs text-gray-500 hover:text-gray-300 transition-colors py-2">
+                <div className={`border-t pt-4 ${isLight ? 'border-slate-200' : 'border-[#1E2533]/50'}`}>
+                  <button type="button" onClick={() => setShowWalletPicker(!showWalletPicker)} className={`w-full flex items-center justify-between text-xs transition-colors py-2 ${isLight ? 'text-slate-500 hover:text-slate-800' : 'text-gray-500 hover:text-gray-300'}`}>
                     <span className="flex items-center gap-1.5"><Wallet className="w-3.5 h-3.5" /> Connect an External Wallet</span>
                     <ChevronDown className={`w-4 h-4 transition-transform ${showWalletPicker ? 'rotate-180' : ''}`} />
                   </button>
@@ -915,7 +917,7 @@ export default function DepositPage() {
                                 if (option.kind === 'connect') { handleConnectMetaMask(); return; }
                                 handleWalletShortcut(option);
                               }}
-                              className={`relative px-3 py-2.5 rounded-lg text-xs font-bold border transition-all ${isLocked ? 'bg-[#0B0E14]/30 border-[#1E2533]/30 text-gray-600 cursor-not-allowed opacity-60' : isConnectedHere ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400' : 'bg-[#111827] border-[#1E2533] text-gray-300 hover:border-gray-500'} ${isConnectingHere ? 'opacity-60 cursor-wait' : ''}`}
+                              className={`relative px-3 py-2.5 rounded-lg text-xs font-bold border transition-all ${isLocked ? (isLight ? 'bg-slate-50/60 border-slate-200/60 text-slate-400 cursor-not-allowed opacity-70' : 'bg-[#0B0E14]/30 border-[#1E2533]/30 text-gray-600 cursor-not-allowed opacity-60') : isConnectedHere ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400' : isLight ? 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300' : 'bg-[#111827] border-[#1E2533] text-gray-300 hover:border-gray-500'} ${isConnectingHere ? 'opacity-60 cursor-wait' : ''}`}
                             >
                               {isConnectingHere ? 'Connecting...' : option.name}
                               {isLocked && (
@@ -934,7 +936,7 @@ export default function DepositPage() {
                       </div>
 
                       {['binance', 'coinstore'].some(id => copiedShortcut === id) && (
-                        <p className="text-[11px] text-gray-500 leading-relaxed">Address copied. Open the app, choose Withdraw, paste this address, and select the Celo network.</p>
+                        <p className={`text-[11px] leading-relaxed ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>Address copied. Open the app, choose Withdraw, paste this address, and select the Celo network.</p>
                       )}
 
                       {walletSendError && (
@@ -942,13 +944,13 @@ export default function DepositPage() {
                       )}
 
                       {connectedWallet && (walletSendStatus === 'ready' || walletSendStatus === 'sending' || walletSendStatus === 'sent') && (
-                        <div className="p-3 bg-[#0a0d14] border border-[#1E2533] rounded-xl space-y-2">
-                          <p className="text-[11px] text-gray-400">
-                            Connected: <span className="text-white font-mono">{connectedWallet.address.slice(0, 6)}...{connectedWallet.address.slice(-4)}</span> ({connectedWallet.provider})
+                        <div className={`p-3 border rounded-xl space-y-2 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#0a0d14] border-[#1E2533]'}`}>
+                          <p className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>
+                            Connected: <span className={`font-mono ${isLight ? 'text-slate-900' : 'text-white'}`}>{connectedWallet.address.slice(0, 6)}...{connectedWallet.address.slice(-4)}</span> ({connectedWallet.provider})
                           </p>
                           <div className="relative">
-                            <input type="number" value={walletSendAmount} onChange={e => setWalletSendAmount(e.target.value)} placeholder="0.00" className="w-full bg-[#111827] border border-[#1E2533] focus:border-emerald-500/50 outline-none rounded-lg py-2.5 pl-3 pr-16 text-sm text-white font-mono placeholder-gray-600" />
-                            <div className="absolute right-3 top-1/2 -translate-y-1/2"><span className="font-bold text-emerald-400 text-xs">{cryptoAsset}</span></div>
+                            <input type="number" value={walletSendAmount} onChange={e => setWalletSendAmount(e.target.value)} placeholder="0.00" className={`w-full border focus:border-emerald-500/50 outline-none rounded-lg py-2.5 pl-3 pr-16 text-sm font-mono ${isLight ? 'bg-white border-slate-200 text-slate-900 placeholder-slate-400' : 'bg-[#111827] border-[#1E2533] text-white placeholder-gray-600'}`} />
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2"><span className="font-bold text-emerald-500 text-xs">{cryptoAsset}</span></div>
                           </div>
                           <button
                             type="button"
@@ -967,8 +969,8 @@ export default function DepositPage() {
               )}
 
               {['cardano', 'celo'].includes(cryptoNetwork) && (
-                <div className="border-t border-[#1E2533]/50 pt-4">
-                  <button type="button" onClick={() => setShowManualFallback(!showManualFallback)} className="w-full flex items-center justify-between text-xs text-gray-500 hover:text-gray-300 transition-colors py-2">
+                <div className={`border-t pt-4 ${isLight ? 'border-slate-200' : 'border-[#1E2533]/50'}`}>
+                  <button type="button" onClick={() => setShowManualFallback(!showManualFallback)} className={`w-full flex items-center justify-between text-xs transition-colors py-2 ${isLight ? 'text-slate-500 hover:text-slate-800' : 'text-gray-500 hover:text-gray-300'}`}>
                     <span>Having issues? Verify with Tx Hash manually</span>
                     <ChevronDown className={`w-4 h-4 transition-transform ${showManualFallback ? 'rotate-180' : ''}`} />
                   </button>
@@ -977,12 +979,12 @@ export default function DepositPage() {
                     <div className="mt-3 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
                       {['celo', 'cardano'].includes(cryptoNetwork) && (
                         <div className="relative">
-                          <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="Amount sent" className="w-full bg-[#0a0d14] border border-[#1E2533] focus:border-blue-500/50 outline-none rounded-xl py-3 pl-5 pr-16 text-sm text-white transition-all font-mono placeholder-gray-600 shadow-inner" required />
-                          <div className="absolute right-4 top-1/2 -translate-y-1/2"><span className="font-bold text-gray-500 text-xs">{cryptoAsset}</span></div>
+                          <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="Amount sent" className={`w-full border focus:border-blue-500/50 outline-none rounded-xl py-3 pl-5 pr-16 text-sm transition-all font-mono shadow-inner ${isLight ? 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400' : 'bg-[#0a0d14] border-[#1E2533] text-white placeholder-gray-600'}`} required />
+                          <div className="absolute right-4 top-1/2 -translate-y-1/2"><span className={`font-bold text-xs ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>{cryptoAsset}</span></div>
                         </div>
                       )}
                       <div className="relative">
-                        <input type="text" value={manualTxHash} onChange={e => setManualTxHash(e.target.value)} placeholder="Paste TxHash from your wallet here..." className="w-full bg-[#0a0d14] border border-[#1E2533] focus:border-blue-500/50 outline-none rounded-xl py-3.5 pl-5 pr-12 text-sm text-white transition-all font-mono placeholder-gray-600 shadow-inner" required />
+                        <input type="text" value={manualTxHash} onChange={e => setManualTxHash(e.target.value)} placeholder="Paste TxHash from your wallet here..." className={`w-full border focus:border-blue-500/50 outline-none rounded-xl py-3.5 pl-5 pr-12 text-sm transition-all font-mono shadow-inner ${isLight ? 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400' : 'bg-[#0a0d14] border-[#1E2533] text-white placeholder-gray-600'}`} required />
                       </div>
                       <button type="button" onClick={handleManualVerify} disabled={loading || !manualTxHash} className="w-full py-3 px-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 border border-blue-500/30 text-blue-400 hover:bg-blue-500/10 disabled:opacity-40 disabled:cursor-not-allowed">
                         {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
@@ -999,9 +1001,9 @@ export default function DepositPage() {
         { }
         <div className="lg:col-span-5 space-y-5">
           {channel === 'Crypto Wallet' && (
-            <div className="bg-[#0b0f17] border border-[#1E2533] rounded-2xl overflow-hidden shadow-xl">
-              <div className="px-5 py-3 border-b border-[#1E2533] flex items-center justify-between">
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+            <div className={`border rounded-2xl overflow-hidden shadow-xl ${isLight ? 'bg-white border-slate-200' : 'bg-[#0b0f17] border-[#1E2533]'}`}>
+              <div className={`px-5 py-3 border-b flex items-center justify-between ${isLight ? 'border-slate-200' : 'border-[#1E2533]'}`}>
+                <h3 className={`text-xs font-bold uppercase tracking-widest flex items-center gap-2 ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>
                   <Info className="w-3.5 h-3.5" /> Deposit Details
                 </h3>
               </div>
@@ -1009,10 +1011,10 @@ export default function DepositPage() {
               <div className="p-5 space-y-5">
                 {!selectedNetworkDetails?.active ? (
                   <div className="p-4 bg-cyan-500/5 border border-cyan-500/20 rounded-xl flex items-start gap-3">
-                    <Lock className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                    <Lock className="w-4 h-4 text-cyan-500 shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-sm text-cyan-400 font-bold mb-1">Coming Soon</p>
-                      <p className="text-xs text-gray-400 leading-relaxed">
+                      <p className="text-sm text-cyan-500 font-bold mb-1">Coming Soon</p>
+                      <p className={`text-xs leading-relaxed ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>
                         Deposits over the {selectedNetworkDetails?.name || cryptoNetwork} network aren't live yet — we're still building real-time deposit detection for it. Use Celo, Stellar, or Cardano in the meantime.
                       </p>
                     </div>
@@ -1021,8 +1023,8 @@ export default function DepositPage() {
                 <>
                 {depositPhase === 'listening' && paymentUri && (
                   <div className="p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-xl animate-in fade-in duration-300 space-y-4">
-                    <p className="text-sm text-emerald-400 font-bold flex items-center gap-2"><Wallet className="w-4 h-4" /> Pay From Your Wallet</p>
-                    <p className="text-xs text-gray-400 leading-relaxed">Use the button to open your wallet app, or scan the QR code. The system is now listening for your deposit.</p>
+                    <p className="text-sm text-emerald-500 font-bold flex items-center gap-2"><Wallet className="w-4 h-4" /> Pay From Your Wallet</p>
+                    <p className={`text-xs leading-relaxed ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>Use the button to open your wallet app, or scan the QR code. The system is now listening for your deposit.</p>
                     <div className="flex gap-3">
                       <a
                         href={paymentUri}
@@ -1057,21 +1059,21 @@ export default function DepositPage() {
 
                 {cryptoNetwork === 'celo' && (
                   <div className="p-4 bg-blue-500/5 border border-blue-500/20 rounded-xl">
-                    <p className="text-sm text-blue-400 font-bold mb-1 flex items-center gap-2"><Smartphone className="w-4 h-4" /> Best Experience: Use Valora</p>
-                    <p className="text-xs text-gray-400 mb-3 leading-relaxed">For instant, low-fee transfers.</p>
-                    <a href="https://valoraapp.com/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 font-bold transition-colors bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20">Download Valora <ExternalLink className="w-3 h-3" /></a>
+                    <p className="text-sm text-blue-500 font-bold mb-1 flex items-center gap-2"><Smartphone className="w-4 h-4" /> Best Experience: Use Valora</p>
+                    <p className={`text-xs mb-3 leading-relaxed ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>For instant, low-fee transfers.</p>
+                    <a href="https://valoraapp.com/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs text-emerald-500 hover:text-emerald-400 font-bold transition-colors bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20">Download Valora <ExternalLink className="w-3 h-3" /></a>
                   </div>
                 )}
 
                 {(depositPhase !== 'listening' || ['celo', 'cardano', 'stellar'].includes(cryptoNetwork)) && <div className="space-y-3">
-                  <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">Send {activeAsset} to this address:</p>
+                  <p className="text-[10px] text-emerald-500 font-bold uppercase tracking-wider">Send {activeAsset} to this address:</p>
                   <div className="flex gap-2">
                     {isFetchingAddress ? (
-                      <div className="flex-1 bg-[#111827] border border-[#1E2533] rounded-lg py-3 px-3 flex items-center justify-center"><Loader2 className="w-5 h-5 text-emerald-500 animate-spin" /></div>
+                      <div className={`flex-1 border rounded-lg py-3 px-3 flex items-center justify-center ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#111827] border-[#1E2533]'}`}><Loader2 className="w-5 h-5 text-emerald-500 animate-spin" /></div>
                     ) : (
                       <>
-                        <input readOnly value={dynamicAddress || ''} className="flex-1 bg-[#111827] border border-[#1E2533] rounded-lg py-3 px-3 text-gray-400 text-xs font-mono outline-none shadow-inner" />
-                        <button type="button" onClick={() => handleCopy(dynamicAddress, 'address')} className={`px-4 rounded-lg transition-all border border-[#1E2533] ${copied === 'address' ? 'bg-[#00d282] text-black border-[#00d282]' : 'bg-[#111827] hover:bg-gray-700 text-gray-300'}`}>
+                        <input readOnly value={dynamicAddress || ''} className={`flex-1 border rounded-lg py-3 px-3 text-xs font-mono outline-none shadow-inner ${isLight ? 'bg-slate-50 border-slate-200 text-slate-500' : 'bg-[#111827] border-[#1E2533] text-gray-400'}`} />
+                        <button type="button" onClick={() => handleCopy(dynamicAddress, 'address')} className={`px-4 rounded-lg transition-all border ${copied === 'address' ? 'bg-[#00d282] text-black border-[#00d282]' : isLight ? 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600' : 'bg-[#111827] border-[#1E2533] hover:bg-gray-700 text-gray-300'}`}>
                           {copied === 'address' ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                         </button>
                       </>
@@ -1080,9 +1082,9 @@ export default function DepositPage() {
                 </div>}
 
                 <div className="p-3 bg-red-500/5 border border-red-500/10 rounded-lg">
-                  <p className="text-xs text-red-400/80 flex items-start gap-2">
+                  <p className="text-xs text-red-400/90 flex items-start gap-2">
                     <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                    <span>Only send <strong className="text-white">{activeAsset}</strong> over the <strong className="text-white">{selectedNetworkDetails?.name}</strong> network.</span>
+                    <span>Only send <strong className={isLight ? 'text-slate-900' : 'text-white'}>{activeAsset}</strong> over the <strong className={isLight ? 'text-slate-900' : 'text-white'}>{selectedNetworkDetails?.name}</strong> network.</span>
                   </p>
                 </div>
 
@@ -1107,15 +1109,15 @@ export default function DepositPage() {
           )}
 
           {channel === 'Mobile Money' && !isCrossBorderTab && (
-            <div className="bg-[#111827] border border-[#1E2533] rounded-2xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-[#1E2533] bg-[#0B0E14]/50">
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2"><Shield className="w-3.5 h-3.5 text-emerald-500" /> {momoProvider === 'MPESA' ? 'M-Pesa' : 'Airtel Money'} Procedure</h3>
+            <div className={`border rounded-2xl overflow-hidden ${isLight ? 'bg-white border-slate-200' : 'bg-[#111827] border-[#1E2533]'}`}>
+              <div className={`px-5 py-3 border-b ${isLight ? 'border-slate-200 bg-slate-50' : 'border-[#1E2533] bg-[#0B0E14]/50'}`}>
+                <h3 className={`text-xs font-bold uppercase tracking-widest flex items-center gap-2 ${isLight ? 'text-slate-500' : 'text-gray-400'}`}><Shield className="w-3.5 h-3.5 text-emerald-500" /> {momoProvider === 'MPESA' ? 'M-Pesa' : 'Airtel Money'} Procedure</h3>
               </div>
               <div className="p-5">
                 <ul className="space-y-3">
-                  <li className="flex items-start gap-2.5 text-xs text-gray-400"><CheckCircle2 className="w-4 h-4 text-emerald-500/50 shrink-0 mt-0.5" /><span>Use an active {momoProvider === 'MPESA' ? 'Safaricom M-Pesa' : 'Airtel Money'} line on this phone.</span></li>
-                  <li className="flex items-start gap-2.5 text-xs text-gray-400"><CheckCircle2 className="w-4 h-4 text-emerald-500/50 shrink-0 mt-0.5" /><span>Deposits reflect within <strong className="text-white">seconds</strong> of entering your PIN.</span></li>
-                  <li className="flex items-start gap-2.5 text-xs text-gray-400"><AlertCircle className="w-4 h-4 text-amber-500/50 shrink-0 mt-0.5" /><span>If STK Push fails, ensure you aren't blocking promotional messages.</span></li>
+                  <li className={`flex items-start gap-2.5 text-xs ${isLight ? 'text-slate-500' : 'text-gray-400'}`}><CheckCircle2 className="w-4 h-4 text-emerald-500/50 shrink-0 mt-0.5" /><span>Use an active {momoProvider === 'MPESA' ? 'Safaricom M-Pesa' : 'Airtel Money'} line on this phone.</span></li>
+                  <li className={`flex items-start gap-2.5 text-xs ${isLight ? 'text-slate-500' : 'text-gray-400'}`}><CheckCircle2 className="w-4 h-4 text-emerald-500/50 shrink-0 mt-0.5" /><span>Deposits reflect within <strong className={isLight ? 'text-slate-900' : 'text-white'}>seconds</strong> of entering your PIN.</span></li>
+                  <li className={`flex items-start gap-2.5 text-xs ${isLight ? 'text-slate-500' : 'text-gray-400'}`}><AlertCircle className="w-4 h-4 text-amber-500/50 shrink-0 mt-0.5" /><span>If STK Push fails, ensure you aren't blocking promotional messages.</span></li>
                 </ul>
               </div>
             </div>

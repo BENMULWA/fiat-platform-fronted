@@ -1,13 +1,13 @@
 
 //@ts-nocheck
 import React, { useEffect, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Eye, EyeOff, Loader2, Shield, AlertCircle } from 'lucide-react';
 import logo from '../pages/assets/jasiri-icon.png';
+import { getFriendlyErrorMessage } from '../utils/errorMessages';
 
 export default function Login() {
-    const navigate = useNavigate();
     const { requestLoginOtp, verifyLoginOtp, resendLoginOtp } = useAuth();
 
     const [email, setEmail] = useState('');
@@ -50,17 +50,18 @@ export default function Login() {
                     return;
                 }
                 await verifyLoginOtp(otpSessionId, otpCode.trim());
-
-                const cached = localStorage.getItem('meshex_user');
-                const parsed = cached ? JSON.parse(cached) : null;
-                if (parsed && parsed.role && parsed.role !== 'retail' && parsed.role !== 'trader') {
-                    navigate('/admin/dashboard');
-                } else {
-                    navigate('/dashboard');
-                }
+                // No explicit navigate() here -- this used to hardcode a
+                // retail/trader-vs-everything-else check duplicating (and,
+                // for institutional accounts, contradicting) App.tsx's
+                // defaultRouteFor(). The wrapping <Route path="/login"> in
+                // App.tsx already redirects to the right destination
+                // (/dashboard, /admin/dashboard, or /otc/overview) the
+                // instant `user` updates from applyAuthenticatedSession
+                // above -- one source of truth for "where does this role go"
+                // instead of two that can drift apart.
             }
         } catch (err: any) {
-            setError(err.response?.data?.detail || err.message || 'Login failed. Please verify your credentials.');
+            setError(getFriendlyErrorMessage(err, { fallback: 'Login failed. Please verify your credentials.' }));
         } finally {
             setLoading(false);
         }
@@ -76,7 +77,7 @@ export default function Login() {
             setResendCooldown(result.cooldownSeconds || 30);
             setSuccessMessage(`A new OTP was sent to ${email}. It expires in ${result.expiresInMinutes} minutes.`);
         } catch (err: any) {
-            setError(err.response?.data?.detail || err.message || 'Failed to resend OTP.');
+            setError(getFriendlyErrorMessage(err, { fallback: 'Failed to resend OTP.' }));
         } finally {
             setLoading(false);
         }
@@ -208,6 +209,12 @@ export default function Login() {
                         Don't have an account?{' '}
                         <Link to="/signup" className="text-emerald-400 hover:text-emerald-300 font-bold transition-colors">
                             Create one now
+                        </Link>
+                    </p>
+                    <p className="text-xs text-gray-500 mt-2">
+                        Signing in as a business for OTC settlement?{' '}
+                        <Link to="/otc/signup" className="text-emerald-400 hover:text-emerald-300 font-semibold transition-colors">
+                            Open an institutional account
                         </Link>
                     </p>
                 </div>

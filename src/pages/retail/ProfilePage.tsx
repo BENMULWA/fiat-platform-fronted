@@ -2,10 +2,12 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle2, Smartphone, Globe, Link, AlertCircle, Clock, Lock, Copy, Check, Camera, KeyRound, Monitor, LogOut } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import {
     updateProfile, getKycStatus, getDepositDetails, getTwoFactorStatus, setupTotp, verifyTotpSetup, disableTotp,
     getAntiPhishingCode, setAntiPhishingCode, uploadAvatar, deleteAvatar, listSessions, revokeSession, revokeOtherSessions,
 } from '../../api/client';
+import { getFriendlyErrorMessage } from '../../utils/errorMessages';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 // One row per chain this platform actually derives a permanent per-user
@@ -21,6 +23,8 @@ const DEPOSIT_NETWORKS = [
 
 export const ProfilePage = () => {
     const { user, updateUser } = useAuth();
+    const { theme } = useTheme();
+    const isLight = theme === 'light';
     const navigate = useNavigate();
 
     // Local state for the editable fields
@@ -90,7 +94,7 @@ export const ProfilePage = () => {
                 setAvatarUrl(dataUrl);
                 updateUser({ avatarUrl: dataUrl });
             } catch (err: any) {
-                setAvatarError(err.response?.data?.detail || 'Failed to upload avatar.');
+                setAvatarError(getFriendlyErrorMessage(err, { fallback: 'Failed to upload avatar.' }));
             } finally {
                 setAvatarUploading(false);
                 e.target.value = '';
@@ -107,7 +111,7 @@ export const ProfilePage = () => {
             setAvatarUrl('');
             updateUser({ avatarUrl: '' });
         } catch (err: any) {
-            setAvatarError(err.response?.data?.detail || 'Failed to remove avatar.');
+            setAvatarError(getFriendlyErrorMessage(err, { fallback: 'Failed to remove avatar.' }));
         } finally {
             setAvatarUploading(false);
         }
@@ -123,7 +127,7 @@ export const ProfilePage = () => {
             setAntiPhishingSaved(true);
             setTimeout(() => setAntiPhishingSaved(false), 3000);
         } catch (err: any) {
-            setAntiPhishingError(err.response?.data?.detail || 'Failed to save code.');
+            setAntiPhishingError(getFriendlyErrorMessage(err, { fallback: 'Failed to save code.' }));
         } finally {
             setAntiPhishingSaving(false);
         }
@@ -233,7 +237,7 @@ export const ProfilePage = () => {
             setTotpMode('setup');
             setTotpPanelOpen(true);
         } catch (err: any) {
-            setTotpError(err.response?.data?.detail || 'Failed to start authenticator setup.');
+            setTotpError(getFriendlyErrorMessage(err, { fallback: 'Failed to start authenticator setup.' }));
         } finally {
             setTotpBusy(false);
         }
@@ -248,7 +252,7 @@ export const ProfilePage = () => {
             setTotpPanelOpen(false);
             setTotpMode(null);
         } catch (err: any) {
-            setTotpError(err.response?.data?.detail || 'Invalid code. Please try again.');
+            setTotpError(getFriendlyErrorMessage(err, { fallback: 'Invalid code. Please try again.' }));
         } finally {
             setTotpBusy(false);
         }
@@ -269,7 +273,7 @@ export const ProfilePage = () => {
             setTotpPanelOpen(false);
             setTotpMode(null);
         } catch (err: any) {
-            setTotpError(err.response?.data?.detail || 'Invalid code. Please try again.');
+            setTotpError(getFriendlyErrorMessage(err, { fallback: 'Invalid code. Please try again.' }));
         } finally {
             setTotpBusy(false);
         }
@@ -318,12 +322,12 @@ export const ProfilePage = () => {
     };
 
     return (
-        <div className="max-w-6xl mx-auto animate-in fade-in duration-500 text-gray-200 p-4 md:p-6">
+        <div className={`max-w-6xl mx-auto animate-in fade-in duration-500 p-4 md:p-6 ${isLight ? 'text-slate-700' : 'text-gray-200'}`}>
 
             { }
             <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-3">
-                    <h1 className="text-2xl font-bold text-white tracking-tight">Profile</h1>
+                    <h1 className={`text-2xl font-bold tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>Profile</h1>
                     <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
                         Retail
                     </span>
@@ -347,36 +351,36 @@ export const ProfilePage = () => {
 
                 { }
                 <div className="space-y-6">
-                    <div className="bg-[#0F1520] border border-[#1E2533] rounded-2xl p-6 shadow-lg">
+                    <div className={`border rounded-2xl p-6 shadow-lg ${isLight ? 'bg-white border-slate-200' : 'bg-[#0F1520] border-[#1E2533]'}`}>
                         <div className="flex items-center justify-between mb-6">
-                            <h2 className="text-sm font-bold text-white tracking-wide">Personal Information</h2>
+                            <h2 className={`text-sm font-bold tracking-wide ${isLight ? 'text-slate-900' : 'text-white'}`}>Personal Information</h2>
                             {kycStatus === 'verified' && (
-                                <span className="flex items-center gap-1 text-[10px] text-gray-500 uppercase tracking-wider font-bold">
+                                <span className={`flex items-center gap-1 text-[10px] uppercase tracking-wider font-bold ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>
                                     <Lock className="w-3 h-3" /> Identity Locked
                                 </span>
                             )}
                         </div>
 
                         {/* Avatar */}
-                        <div className="flex items-center gap-4 mb-6 pb-6 border-b border-[#1E2533]">
+                        <div className={`flex items-center gap-4 mb-6 pb-6 border-b ${isLight ? 'border-slate-200' : 'border-[#1E2533]'}`}>
                             <div className="relative shrink-0">
                                 {avatarUrl ? (
-                                    <img src={avatarUrl} alt="" className="w-16 h-16 rounded-full object-cover border border-[#1E2533]" />
+                                    <img src={avatarUrl} alt="" className={`w-16 h-16 rounded-full object-cover border ${isLight ? 'border-slate-200' : 'border-[#1E2533]'}`} />
                                 ) : (
                                     <div className="w-16 h-16 rounded-full bg-[#00d282] text-[#06090F] flex items-center justify-center font-bold text-xl uppercase">
                                         {fullName?.[0] || 'U'}
                                     </div>
                                 )}
-                                <label className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-[#111827] border border-[#1E2533] flex items-center justify-center cursor-pointer hover:bg-[#1E2533] transition-colors">
-                                    <Camera className="w-3 h-3 text-gray-300" />
+                                <label className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full border flex items-center justify-center cursor-pointer transition-colors ${isLight ? 'bg-slate-100 border-slate-200 hover:bg-slate-200' : 'bg-[#111827] border-[#1E2533] hover:bg-[#1E2533]'}`}>
+                                    <Camera className={`w-3 h-3 ${isLight ? 'text-slate-500' : 'text-gray-300'}`} />
                                     <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={handleAvatarSelect} disabled={avatarUploading} />
                                 </label>
                             </div>
                             <div className="min-w-0">
-                                <p className="text-sm font-bold text-white">Profile photo</p>
-                                <p className="text-xs text-gray-500 mt-0.5">PNG, JPEG, WEBP, or GIF — max 1.5MB</p>
+                                <p className={`text-sm font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>Profile photo</p>
+                                <p className={`text-xs mt-0.5 ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>PNG, JPEG, WEBP, or GIF — max 1.5MB</p>
                                 <div className="flex items-center gap-3 mt-1.5">
-                                    {avatarUploading && <span className="text-xs text-gray-500">Uploading...</span>}
+                                    {avatarUploading && <span className={`text-xs ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>Uploading...</span>}
                                     {avatarUrl && !avatarUploading && (
                                         <button type="button" onClick={handleAvatarRemove} className="text-xs font-bold text-red-400 hover:text-red-300">Remove photo</button>
                                     )}
@@ -387,7 +391,7 @@ export const ProfilePage = () => {
 
                         <form onSubmit={handleSave} className="space-y-5">
                             <div>
-                                <label className="block text-[10px] font-bold text-gray-500 mb-2 uppercase tracking-wider">
+                                <label className={`block text-[10px] font-bold mb-2 uppercase tracking-wider ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>
                                     {kycStatus === 'verified' ? 'Full Name (Legal)' : 'Full Name'}
                                 </label>
                                 <div className="relative">
@@ -396,37 +400,37 @@ export const ProfilePage = () => {
                                         value={fullName}
                                         onChange={(e) => setFullName(e.target.value)}
                                         disabled={kycStatus === 'verified'}
-                                        className="w-full bg-[#0B0E14] border border-[#1E2533] focus:border-emerald-500 focus:outline-none rounded-xl py-3 px-4 text-sm font-semibold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className={`w-full border focus:border-emerald-500 focus:outline-none rounded-xl py-3 px-4 text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${isLight ? 'bg-slate-50 border-slate-200 text-slate-900' : 'bg-[#0B0E14] border-[#1E2533] text-white'}`}
                                     />
-                                    {kycStatus === 'verified' && <Lock className="absolute right-4 top-3.5 w-4 h-4 text-gray-600" />}
+                                    {kycStatus === 'verified' && <Lock className={`absolute right-4 top-3.5 w-4 h-4 ${isLight ? 'text-slate-300' : 'text-gray-600'}`} />}
                                 </div>
                             </div>
 
                             <div>
-                                <label className="block text-[10px] font-bold text-gray-500 mb-2 uppercase tracking-wider">Email</label>
+                                <label className={`block text-[10px] font-bold mb-2 uppercase tracking-wider ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>Email</label>
                                 <div className="relative">
                                     <input
                                         type="email"
                                         value={email}
                                         disabled
                                         readOnly
-                                        className="w-full bg-[#0B0E14] border border-[#1E2533] rounded-xl py-3 px-4 text-sm font-semibold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className={`w-full border rounded-xl py-3 px-4 text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${isLight ? 'bg-slate-50 border-slate-200 text-slate-900' : 'bg-[#0B0E14] border-[#1E2533] text-white'}`}
                                     />
-                                    <Lock className="absolute right-4 top-3.5 w-4 h-4 text-gray-600" />
+                                    <Lock className={`absolute right-4 top-3.5 w-4 h-4 ${isLight ? 'text-slate-300' : 'text-gray-600'}`} />
                                 </div>
                                 {/* Login here is email/OTP-based, and changing it requires the
                                     admin-only recovery flow (collision check + re-verification) —
                                     a plain self-service field can't safely repoint it. */}
-                                <p className="text-[11px] text-gray-600 mt-1.5">This is your login email. Contact support to change it.</p>
+                                <p className={`text-[11px] mt-1.5 ${isLight ? 'text-slate-400' : 'text-gray-600'}`}>This is your login email. Contact support to change it.</p>
                             </div>
 
                             <div>
-                                <label className="block text-[10px] font-bold text-gray-500 mb-2 uppercase tracking-wider">Phone</label>
+                                <label className={`block text-[10px] font-bold mb-2 uppercase tracking-wider ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>Phone</label>
                                 <input
                                     type="text"
                                     value={phone}
                                     onChange={(e) => setPhone(e.target.value)}
-                                    className="w-full bg-[#0B0E14] border border-[#1E2533] focus:border-emerald-500 focus:outline-none rounded-xl py-3 px-4 text-sm font-semibold text-white transition-colors font-mono"
+                                    className={`w-full border focus:border-emerald-500 focus:outline-none rounded-xl py-3 px-4 text-sm font-semibold transition-colors font-mono ${isLight ? 'bg-slate-50 border-slate-200 text-slate-900' : 'bg-[#0B0E14] border-[#1E2533] text-white'}`}
                                 />
                             </div>
 
@@ -447,16 +451,16 @@ export const ProfilePage = () => {
                 <div className="space-y-6">
 
                     {/* DYNAMIC KYC Box */}
-                    <div className="bg-[#0F1520] border border-[#1E2533] rounded-2xl p-6 shadow-lg">
-                        <h2 className="text-sm font-bold text-white tracking-wide mb-4">KYC Status</h2>
+                    <div className={`border rounded-2xl p-6 shadow-lg ${isLight ? 'bg-white border-slate-200' : 'bg-[#0F1520] border-[#1E2533]'}`}>
+                        <h2 className={`text-sm font-bold tracking-wide mb-4 ${isLight ? 'text-slate-900' : 'text-white'}`}>KYC Status</h2>
                         <div className="flex items-center gap-3">
                             {kycStatus === 'verified' ? (
                                 <>
                                     <span className="flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded text-xs font-bold">
                                         <CheckCircle2 className="w-3.5 h-3.5" /> Verified
                                     </span>
-                                    <span className="text-xs text-gray-400 font-medium">
-                                        Identity linked to: <span className="text-white font-bold">{user?.name || 'Account'}</span>
+                                    <span className={`text-xs font-medium ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>
+                                        Identity linked to: <span className={`font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>{user?.name || 'Account'}</span>
                                     </span>
                                 </>
                             ) : kycStatus === 'pending' ? (
@@ -464,7 +468,7 @@ export const ProfilePage = () => {
                                     <span className="flex items-center gap-1.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded text-xs font-bold">
                                         <Clock className="w-3.5 h-3.5" /> Pending
                                     </span>
-                                    <span className="text-xs text-gray-400 font-medium">Documents under review</span>
+                                    <span className={`text-xs font-medium ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>Documents under review</span>
                                 </>
                             ) : (
                                 <>
@@ -485,13 +489,13 @@ export const ProfilePage = () => {
                         code (see backend/two_factor.py). Login Notifications sends
                         an email on every successful login (auth.py's
                         send_login_notification_email), unconditionally on. */}
-                    <div className="bg-[#0F1520] border border-[#1E2533] rounded-2xl p-6 shadow-lg">
-                        <h2 className="text-sm font-bold text-white tracking-wide mb-4">Security</h2>
+                    <div className={`border rounded-2xl p-6 shadow-lg ${isLight ? 'bg-white border-slate-200' : 'bg-[#0F1520] border-[#1E2533]'}`}>
+                        <h2 className={`text-sm font-bold tracking-wide mb-4 ${isLight ? 'text-slate-900' : 'text-white'}`}>Security</h2>
                         <div className="space-y-4">
-                            <div className="flex items-center justify-between py-2 border-b border-[#1E2533]/50">
+                            <div className={`flex items-center justify-between py-2 border-b ${isLight ? 'border-slate-100' : 'border-[#1E2533]/50'}`}>
                                 <div>
-                                    <span className="text-xs text-gray-300 font-medium block">Two-Factor Auth</span>
-                                    <span className="text-[10px] text-gray-600">Required on withdrawals when enabled</span>
+                                    <span className={`text-xs font-medium block ${isLight ? 'text-slate-600' : 'text-gray-300'}`}>Two-Factor Auth</span>
+                                    <span className={`text-[10px] ${isLight ? 'text-slate-400' : 'text-gray-600'}`}>Required on withdrawals when enabled</span>
                                 </div>
                                 {totpEnabled ? (
                                     <div className="flex items-center gap-2">
@@ -515,8 +519,8 @@ export const ProfilePage = () => {
                                     )
                                 )}
                             </div>
-                            <div className="flex items-center justify-between py-2 border-b border-[#1E2533]/50">
-                                <span className="text-xs text-gray-300 font-medium">Login Notifications</span>
+                            <div className={`flex items-center justify-between py-2 border-b ${isLight ? 'border-slate-100' : 'border-[#1E2533]/50'}`}>
+                                <span className={`text-xs font-medium ${isLight ? 'text-slate-600' : 'text-gray-300'}`}>Login Notifications</span>
                                 <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">Enabled</span>
                             </div>
 
@@ -525,13 +529,13 @@ export const ProfilePage = () => {
                                 which won't know it, is detectable at a glance. */}
                             <div className="py-2">
                                 <div className="flex items-center gap-2 mb-2">
-                                    <KeyRound className="w-3.5 h-3.5 text-gray-500" />
-                                    <span className="text-xs text-gray-300 font-medium">Anti-Phishing Code</span>
+                                    <KeyRound className={`w-3.5 h-3.5 ${isLight ? 'text-slate-400' : 'text-gray-500'}`} />
+                                    <span className={`text-xs font-medium ${isLight ? 'text-slate-600' : 'text-gray-300'}`}>Anti-Phishing Code</span>
                                     {antiPhishingCode && (
                                         <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded ml-auto">Set</span>
                                     )}
                                 </div>
-                                <p className="text-[10px] text-gray-600 mb-2">Shown in every real Jasiri security email — verify it matches before trusting one.</p>
+                                <p className={`text-[10px] mb-2 ${isLight ? 'text-slate-400' : 'text-gray-600'}`}>Shown in every real Jasiri security email — verify it matches before trusting one.</p>
                                 <div className="flex gap-2">
                                     <input
                                         type="text"
@@ -539,7 +543,7 @@ export const ProfilePage = () => {
                                         onChange={(e) => setAntiPhishingInput(e.target.value)}
                                         placeholder="e.g. BlueTiger42"
                                         maxLength={20}
-                                        className="flex-1 bg-[#0B0E14] border border-[#1E2533] focus:border-emerald-500 focus:outline-none rounded-lg py-2 px-3 text-xs text-white font-mono"
+                                        className={`flex-1 border focus:border-emerald-500 focus:outline-none rounded-lg py-2 px-3 text-xs font-mono ${isLight ? 'bg-slate-50 border-slate-200 text-slate-900' : 'bg-[#0B0E14] border-[#1E2533] text-white'}`}
                                     />
                                     <button
                                         onClick={handleSaveAntiPhishingCode}
@@ -554,19 +558,19 @@ export const ProfilePage = () => {
                         </div>
 
                         {totpPanelOpen && (
-                            <div className="mt-5 pt-5 border-t border-[#1E2533] space-y-4">
+                            <div className={`mt-5 pt-5 border-t space-y-4 ${isLight ? 'border-slate-200' : 'border-[#1E2533]'}`}>
                                 {totpMode === 'setup' ? (
                                     <>
-                                        <p className="text-xs text-gray-400">Scan this QR code with Google Authenticator, Authy, or any TOTP app, then enter the 6-digit code it shows.</p>
+                                        <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>Scan this QR code with Google Authenticator, Authy, or any TOTP app, then enter the 6-digit code it shows.</p>
                                         {totpQrCode && (
-                                            <img src={totpQrCode} alt="Authenticator QR code" className="w-40 h-40 rounded-xl border border-[#1E2533] mx-auto bg-white p-2" />
+                                            <img src={totpQrCode} alt="Authenticator QR code" className={`w-40 h-40 rounded-xl border mx-auto bg-white p-2 ${isLight ? 'border-slate-200' : 'border-[#1E2533]'}`} />
                                         )}
                                         {totpSecret && (
-                                            <p className="text-[10px] text-gray-500 text-center font-mono break-all">Can't scan? Enter manually: {totpSecret}</p>
+                                            <p className={`text-[10px] text-center font-mono break-all ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>Can't scan? Enter manually: {totpSecret}</p>
                                         )}
                                     </>
                                 ) : (
-                                    <p className="text-xs text-gray-400">Enter your current authenticator app code to disable Two-Factor Auth.</p>
+                                    <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>Enter your current authenticator app code to disable Two-Factor Auth.</p>
                                 )}
 
                                 <input
@@ -575,7 +579,7 @@ export const ProfilePage = () => {
                                     value={totpCode}
                                     onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
                                     placeholder="6-digit code"
-                                    className="w-full bg-[#0B0E14] border border-[#1E2533] focus:border-emerald-500 focus:outline-none rounded-xl py-3 px-4 text-lg tracking-widest text-white font-mono text-center"
+                                    className={`w-full border focus:border-emerald-500 focus:outline-none rounded-xl py-3 px-4 text-lg tracking-widest font-mono text-center ${isLight ? 'bg-slate-50 border-slate-200 text-slate-900' : 'bg-[#0B0E14] border-[#1E2533] text-white'}`}
                                 />
 
                                 {totpError && (
@@ -585,7 +589,7 @@ export const ProfilePage = () => {
                                 <div className="flex gap-2">
                                     <button
                                         onClick={() => { setTotpPanelOpen(false); setTotpMode(null); setTotpError(''); }}
-                                        className="flex-1 py-2.5 rounded-lg border border-[#1E2533] text-gray-400 text-xs font-bold hover:bg-[#1E2533] transition-colors"
+                                        className={`flex-1 py-2.5 rounded-lg border text-xs font-bold transition-colors ${isLight ? 'border-slate-200 text-slate-500 hover:bg-slate-100' : 'border-[#1E2533] text-gray-400 hover:bg-[#1E2533]'}`}
                                     >
                                         Cancel
                                     </button>
@@ -604,9 +608,9 @@ export const ProfilePage = () => {
                     {/* Active Sessions Box — previously impossible: JWT auth was fully
                         stateless with no server-side record of who was logged in where.
                         See backend/routes/auth.py create_session/_check_session_not_revoked. */}
-                    <div className="bg-[#0F1520] border border-[#1E2533] rounded-2xl p-6 shadow-lg">
+                    <div className={`border rounded-2xl p-6 shadow-lg ${isLight ? 'bg-white border-slate-200' : 'bg-[#0F1520] border-[#1E2533]'}`}>
                         <div className="flex items-center justify-between mb-4">
-                            <h2 className="text-sm font-bold text-white tracking-wide">Active Sessions</h2>
+                            <h2 className={`text-sm font-bold tracking-wide ${isLight ? 'text-slate-900' : 'text-white'}`}>Active Sessions</h2>
                             {sessions.length > 1 && (
                                 <button
                                     onClick={handleRevokeOthers}
@@ -619,27 +623,27 @@ export const ProfilePage = () => {
                         </div>
 
                         {sessionsLoading ? (
-                            <p className="text-xs text-gray-500">Loading sessions...</p>
+                            <p className={`text-xs ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>Loading sessions...</p>
                         ) : sessions.length === 0 ? (
-                            <p className="text-xs text-gray-500">No active sessions found.</p>
+                            <p className={`text-xs ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>No active sessions found.</p>
                         ) : (
                             <div className="space-y-2">
                                 {sessions.map((s) => (
-                                    <div key={s.id} className="flex items-center justify-between py-2.5 border-b border-[#1E2533]/50 last:border-b-0 gap-3">
+                                    <div key={s.id} className={`flex items-center justify-between py-2.5 border-b last:border-b-0 gap-3 ${isLight ? 'border-slate-100' : 'border-[#1E2533]/50'}`}>
                                         <div className="flex items-center gap-3 min-w-0">
-                                            <Monitor className="w-4 h-4 text-gray-500 shrink-0" />
+                                            <Monitor className={`w-4 h-4 shrink-0 ${isLight ? 'text-slate-400' : 'text-gray-500'}`} />
                                             <div className="min-w-0">
-                                                <p className="text-xs font-medium text-gray-300 flex items-center gap-1.5">
+                                                <p className={`text-xs font-medium flex items-center gap-1.5 ${isLight ? 'text-slate-600' : 'text-gray-300'}`}>
                                                     {describeSession(s.userAgent)}
                                                     {s.current && <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">This device</span>}
                                                 </p>
-                                                <p className="text-[10px] text-gray-600 truncate">{s.ip || 'Unknown IP'} · Last active {s.lastSeenAt ? new Date(s.lastSeenAt).toLocaleString() : 'unknown'}</p>
+                                                <p className={`text-[10px] truncate ${isLight ? 'text-slate-400' : 'text-gray-600'}`}>{s.ip || 'Unknown IP'} · Last active {s.lastSeenAt ? new Date(s.lastSeenAt).toLocaleString() : 'unknown'}</p>
                                             </div>
                                         </div>
                                         <button
                                             onClick={() => handleRevokeSession(s.id, s.current)}
                                             disabled={revokingId === s.id}
-                                            className="shrink-0 p-1.5 rounded-lg bg-[#0B0E14] border border-[#1E2533] text-gray-400 hover:text-red-400 hover:border-red-500/30 transition-colors disabled:opacity-50"
+                                            className={`shrink-0 p-1.5 rounded-lg border transition-colors disabled:opacity-50 ${isLight ? 'bg-slate-50 border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-300' : 'bg-[#0B0E14] border-[#1E2533] text-gray-400 hover:text-red-400 hover:border-red-500/30'}`}
                                             title={s.current ? 'Sign out this device' : 'Revoke this session'}
                                         >
                                             <LogOut className="w-3.5 h-3.5" />
@@ -656,38 +660,38 @@ export const ProfilePage = () => {
                         linked-account concepts here. What IS real: this platform derives
                         a permanent, unique deposit address per user on Celo, Cardano and
                         Stellar (see treasury.py's get_deposit_info) — shown below instead. */}
-                    <div className="bg-[#0F1520] border border-[#1E2533] rounded-2xl p-6 shadow-lg">
-                        <h2 className="text-sm font-bold text-white tracking-wide mb-4">Deposit Addresses</h2>
+                    <div className={`border rounded-2xl p-6 shadow-lg ${isLight ? 'bg-white border-slate-200' : 'bg-[#0F1520] border-[#1E2533]'}`}>
+                        <h2 className={`text-sm font-bold tracking-wide mb-4 ${isLight ? 'text-slate-900' : 'text-white'}`}>Deposit Addresses</h2>
                         {kycStatus !== 'verified' ? (
-                            <p className="text-xs text-gray-500">
+                            <p className={`text-xs ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>
                                 Complete KYC to generate your deposit addresses.{' '}
                                 <button onClick={() => navigate('/kyc')} className="text-blue-400 hover:text-blue-300 underline font-medium">
                                     Complete KYC
                                 </button>
                             </p>
                         ) : addressesLoading ? (
-                            <p className="text-xs text-gray-500">Loading addresses...</p>
+                            <p className={`text-xs ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>Loading addresses...</p>
                         ) : (
                             <div className="space-y-2">
                                 {DEPOSIT_NETWORKS.map(({ network, label, icon: Icon, color }) => {
                                     const address = depositAddresses[network];
                                     return (
-                                        <div key={network} className="flex items-center justify-between py-3 border-b border-[#1E2533]/50 last:border-b-0 gap-3">
+                                        <div key={network} className={`flex items-center justify-between py-3 border-b last:border-b-0 gap-3 ${isLight ? 'border-slate-100' : 'border-[#1E2533]/50'}`}>
                                             <div className="flex items-center gap-3 min-w-0">
                                                 <Icon className={`w-4 h-4 shrink-0 ${color}`} />
                                                 <div className="min-w-0">
-                                                    <span className="text-xs text-gray-300 font-medium block">{label}</span>
+                                                    <span className={`text-xs font-medium block ${isLight ? 'text-slate-600' : 'text-gray-300'}`}>{label}</span>
                                                     {address ? (
-                                                        <span className="text-[10px] text-gray-500 font-mono truncate block max-w-[160px]">{address}</span>
+                                                        <span className={`text-[10px] font-mono truncate block max-w-[160px] ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>{address}</span>
                                                     ) : (
-                                                        <span className="text-[10px] text-gray-600">Unavailable</span>
+                                                        <span className={`text-[10px] ${isLight ? 'text-slate-300' : 'text-gray-600'}`}>Unavailable</span>
                                                     )}
                                                 </div>
                                             </div>
                                             {address && (
                                                 <button
                                                     onClick={() => copyAddress(network, address)}
-                                                    className="shrink-0 p-1.5 rounded-lg bg-[#0B0E14] border border-[#1E2533] text-gray-400 hover:text-white hover:border-gray-500 transition-colors"
+                                                    className={`shrink-0 p-1.5 rounded-lg border transition-colors ${isLight ? 'bg-slate-50 border-slate-200 text-slate-400 hover:text-slate-900 hover:border-slate-300' : 'bg-[#0B0E14] border-[#1E2533] text-gray-400 hover:text-white hover:border-gray-500'}`}
                                                     title="Copy address"
                                                 >
                                                     {copiedNetwork === network ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}

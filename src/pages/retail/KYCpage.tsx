@@ -2,11 +2,15 @@
 import React, { useEffect, useState } from 'react';
 import { CheckCircle2, ShieldCheck, Upload, Loader2, AlertCircle, Lock, X, ArrowRight, Clock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import { getKycStatus, submitKyc } from '../../api/client';
+import { getFriendlyErrorMessage } from '../../utils/errorMessages';
 import { useNavigate } from 'react-router-dom';
 
 export default function KYCpage() {
   const { user, updateUser } = useAuth();
+  const { theme } = useTheme();
+  const isLight = theme === 'light';
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
@@ -149,7 +153,7 @@ export default function KYCpage() {
       setToast({ type: 'success', message: 'KYC submitted successfully. Awaiting admin approval.' });
 
     } catch (err: any) {
-      setToast({ type: 'error', message: err.response?.data?.detail || 'KYC submission failed.' });
+      setToast({ type: 'error', message: getFriendlyErrorMessage(err, { fallback: 'KYC submission failed.' }) });
       setTimeout(() => setToast(null), 5000);
     } finally {
       setLoading(false);
@@ -160,12 +164,12 @@ export default function KYCpage() {
   if (status === 'verified') {
     return (
       <div className="max-w-2xl mx-auto p-4 md:p-6 mt-10 animate-in fade-in zoom-in duration-500">
-        <div className="bg-[#0B0E14] border border-emerald-500/30 rounded-2xl p-10 shadow-2xl shadow-emerald-900/10 text-center flex flex-col items-center">
+        <div className={`border rounded-2xl p-10 shadow-2xl shadow-emerald-900/10 text-center flex flex-col items-center ${isLight ? 'bg-gradient-to-br from-emerald-50 via-white to-white border-emerald-200' : 'bg-[#0B0E14] border-emerald-500/30'}`}>
           <div className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center mb-6">
-            <CheckCircle2 className="w-10 h-10 text-emerald-400" />
+            <CheckCircle2 className={isLight ? 'w-10 h-10 text-emerald-600' : 'w-10 h-10 text-emerald-400'} />
           </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight mb-3">Identity Verified</h1>
-          <p className="text-gray-400 mb-8 max-w-sm mx-auto">
+          <h1 className={`text-3xl font-bold tracking-tight mb-3 ${isLight ? 'text-slate-900' : 'text-white'}`}>Identity Verified</h1>
+          <p className={`mb-8 max-w-sm mx-auto ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>
             Your identity has been successfully linked to your account. You now have full access to deposits, withdrawals, and trading.
           </p>
           <button onClick={() => navigate('/dashboard')} className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold px-8 py-3.5 rounded-xl transition-all shadow-lg shadow-emerald-500/20 active:scale-95">
@@ -179,15 +183,15 @@ export default function KYCpage() {
   if (status === 'pending') {
     return (
       <div className="max-w-2xl mx-auto p-4 md:p-6 mt-10 animate-in fade-in zoom-in duration-500">
-        <div className="bg-[#0B0E14] border border-amber-500/30 rounded-2xl p-10 shadow-2xl shadow-amber-900/10 text-center flex flex-col items-center">
+        <div className={`border rounded-2xl p-10 shadow-2xl shadow-amber-900/10 text-center flex flex-col items-center ${isLight ? 'bg-gradient-to-br from-amber-50 via-white to-white border-amber-200' : 'bg-[#0B0E14] border-amber-500/30'}`}>
           <div className="w-20 h-20 bg-amber-500/10 rounded-full flex items-center justify-center mb-6">
-            <Clock className="w-10 h-10 text-amber-400" />
+            <Clock className={isLight ? 'w-10 h-10 text-amber-600' : 'w-10 h-10 text-amber-400'} />
           </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight mb-3">KYC Under Review</h1>
-          <p className="text-gray-400 mb-3 max-w-sm mx-auto">
+          <h1 className={`text-3xl font-bold tracking-tight mb-3 ${isLight ? 'text-slate-900' : 'text-white'}`}>KYC Under Review</h1>
+          <p className={`mb-3 max-w-sm mx-auto ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>
             Your identity documents were submitted successfully and are now waiting for admin approval.
           </p>
-          <p className="text-xs text-gray-500 mb-8">
+          <p className={`text-xs mb-8 ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>
             Submitted: {submittedAt ? new Date(submittedAt).toLocaleString() : 'Just now'}
           </p>
           <button onClick={() => navigate('/dashboard')} className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-black font-bold px-8 py-3.5 rounded-xl transition-all shadow-lg shadow-amber-500/20 active:scale-95">
@@ -210,65 +214,65 @@ export default function KYCpage() {
         </div>
       )}
 
-      <div className="bg-[#0B0E14] border border-[#1E2533] rounded-2xl p-6 md:p-8 shadow-xl">
+      <div className={`border rounded-2xl p-6 md:p-8 shadow-xl ${isLight ? 'bg-white border-slate-200' : 'bg-[#0B0E14] border-[#1E2533]'}`}>
         <div className="flex items-center gap-3 mb-6">
           <div className="w-10 h-10 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center">
-            <ShieldCheck className="w-5 h-5 text-orange-400" />
+            <ShieldCheck className={isLight ? 'w-5 h-5 text-orange-600' : 'w-5 h-5 text-orange-400'} />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">KYC Verification</h1>
-            <p className="text-sm text-gray-400">Verify your identity before using deposits, withdrawals, or swaps.</p>
+            <h1 className={`text-2xl font-bold tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>KYC Verification</h1>
+            <p className={`text-sm ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>Verify your identity before using deposits, withdrawals, or swaps.</p>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="grid gap-5 md:grid-cols-2">
           <div className="md:col-span-2">
-            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Full name (As it appears on ID)</label>
+            <label className={`block text-xs font-semibold uppercase tracking-wide mb-2 ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>Full name (As it appears on ID)</label>
             <input
               value={form.fullName}
               onChange={(e) => setForm({ ...form, fullName: e.target.value })}
-              className="w-full rounded-xl border border-[#1E2533] bg-[#0F1520] px-4 py-3 text-sm text-white focus:border-emerald-500 outline-none transition-colors"
+              className={`w-full rounded-xl border px-4 py-3 text-sm focus:border-emerald-500 outline-none transition-colors ${isLight ? 'border-slate-200 bg-slate-50 text-slate-900' : 'border-[#1E2533] bg-[#0F1520] text-white'}`}
               required
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">ID / Passport number</label>
+            <label className={`block text-xs font-semibold uppercase tracking-wide mb-2 ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>ID / Passport number</label>
             <input
               value={form.idNumber}
               onChange={(e) => setForm({ ...form, idNumber: e.target.value })}
-              className="w-full rounded-xl border border-[#1E2533] bg-[#0F1520] px-4 py-3 text-sm text-white focus:border-emerald-500 outline-none transition-colors"
+              className={`w-full rounded-xl border px-4 py-3 text-sm focus:border-emerald-500 outline-none transition-colors ${isLight ? 'border-slate-200 bg-slate-50 text-slate-900' : 'border-[#1E2533] bg-[#0F1520] text-white'}`}
               required
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Email address</label>
+            <label className={`block text-xs font-semibold uppercase tracking-wide mb-2 ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>Email address</label>
             <input
               type="email"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
-              className="w-full rounded-xl border border-[#1E2533] bg-[#0F1520] px-4 py-3 text-sm text-white focus:border-emerald-500 outline-none transition-colors"
+              className={`w-full rounded-xl border px-4 py-3 text-sm focus:border-emerald-500 outline-none transition-colors ${isLight ? 'border-slate-200 bg-slate-50 text-slate-900' : 'border-[#1E2533] bg-[#0F1520] text-white'}`}
               required
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Phone number</label>
+            <label className={`block text-xs font-semibold uppercase tracking-wide mb-2 ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>Phone number</label>
             <input
               value={form.phone}
               onChange={(e) => setForm({ ...form, phone: e.target.value })}
               placeholder="e.g. 0712345678"
-              className="w-full rounded-xl border border-[#1E2533] bg-[#0F1520] px-4 py-3 text-sm text-white focus:border-emerald-500 outline-none transition-colors font-mono"
+              className={`w-full rounded-xl border px-4 py-3 text-sm focus:border-emerald-500 outline-none transition-colors font-mono ${isLight ? 'border-slate-200 bg-slate-50 text-slate-900' : 'border-[#1E2533] bg-[#0F1520] text-white'}`}
               required
             />
           </div>
 
           <div className="md:col-span-2">
-            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Upload ID document (PDF, JPG, PNG)</label>
-            <label className="flex cursor-pointer items-center justify-between rounded-xl border border-dashed border-[#2A3A4F] bg-[#0F1520] px-4 py-4 text-sm text-gray-400 transition-colors hover:border-emerald-500/50">
+            <label className={`block text-xs font-semibold uppercase tracking-wide mb-2 ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>Upload ID document (PDF, JPG, PNG)</label>
+            <label className={`flex cursor-pointer items-center justify-between rounded-xl border border-dashed px-4 py-4 text-sm transition-colors hover:border-emerald-500/50 ${isLight ? 'border-slate-300 bg-slate-50 text-slate-500' : 'border-[#2A3A4F] bg-[#0F1520] text-gray-400'}`}>
               <span>{form.fileName || 'Click to select a valid document'}</span>
-              <span className="inline-flex items-center gap-2 rounded-lg px-3 py-2 font-bold bg-[#122033] text-emerald-400">
+              <span className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 font-bold ${isLight ? 'bg-emerald-50 text-emerald-600' : 'bg-[#122033] text-emerald-400'}`}>
                 <Upload className="w-4 h-4" /> Upload
               </span>
               <input
@@ -284,7 +288,7 @@ export default function KYCpage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3.5 font-bold text-black transition hover:bg-emerald-400 disabled:bg-[#1E2533] disabled:text-gray-500 disabled:cursor-not-allowed shadow-lg shadow-emerald-900/20"
+              className={`w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3.5 font-bold text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed shadow-lg shadow-emerald-900/20 ${isLight ? 'disabled:bg-slate-200 disabled:text-slate-400' : 'disabled:bg-[#1E2533] disabled:text-gray-500'}`}
             >
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
               {loading ? 'Submitting Documents...' : 'Submit KYC & Unlock Account'}

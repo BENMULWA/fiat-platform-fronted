@@ -1,10 +1,10 @@
 //@ts-nocheck
 import React, { useState, useEffect } from 'react';
 import { RefreshCw, CheckCircle2, XCircle, AlertTriangle, ShieldCheck, Clock, Eye, ArrowUpRight } from 'lucide-react';
-import { getAdminKycQueue, approveAdminKyc, rejectAdminKyc, getAdminKycDetail, getAdminComplianceMonitoring, updateAdminRiskAlertStatus } from '../../api/client';
+import { getAdminKycQueue, approveAdminKyc, rejectAdminKyc, getAdminKycDetail, getAdminComplianceMonitoring, updateAdminRiskAlertStatus, releaseRampComplianceHold, releaseDealerRfqComplianceHold, getInstitutionalOnboardingQueue, getInstitutionalOnboardingDetail, approveInstitutionalOnboarding, rejectInstitutionalOnboarding } from '../../api/client';
 
 export default function KycRiskPage() {
-    const [activeTab, setActiveTab] = useState<'kyc' | 'aml' | 'alerts'>('kyc');
+    const [activeTab, setActiveTab] = useState<'kyc' | 'aml' | 'alerts' | 'zigram' | 'institutional'>('kyc');
     const [data, setData] = useState<any>({ kpis: {}, queue: [] });
     const [isLoading, setIsLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -12,10 +12,16 @@ export default function KycRiskPage() {
     const [selectedKyc, setSelectedKyc] = useState<any | null>(null);
     const [previousPendingCount, setPreviousPendingCount] = useState<number>(0);
     const [hasNewKyc, setHasNewKyc] = useState(false);
-    const [monitoring, setMonitoring] = useState<any>({ kpis: {}, amlFlags: [], riskAlerts: [] });
+    const [monitoring, setMonitoring] = useState<any>({ kpis: {}, amlFlags: [], riskAlerts: [], zigramHolds: [] });
+    const [releaseLoadingId, setReleaseLoadingId] = useState<string | null>(null);
+    const [institutionalQueue, setInstitutionalQueue] = useState<any[]>([]);
+    const [institutionalActionLoading, setInstitutionalActionLoading] = useState<string | null>(null);
+    const [selectedInstitutional, setSelectedInstitutional] = useState<any | null>(null);
+    const [institutionalDetailLoading, setInstitutionalDetailLoading] = useState(false);
 
     const amlFlags = monitoring.amlFlags || [];
     const riskAlerts = monitoring.riskAlerts || [];
+    const zigramHolds = monitoring.zigramHolds || [];
 
     const fetchKycQueue = async () => {
         try {
@@ -36,16 +42,25 @@ export default function KycRiskPage() {
     const fetchMonitoring = async () => {
         try {
             const res = await getAdminComplianceMonitoring();
-            setMonitoring(res.data || { kpis: {}, amlFlags: [], riskAlerts: [] });
+            setMonitoring(res.data || { kpis: {}, amlFlags: [], riskAlerts: [], zigramHolds: [] });
         } catch (err) {
             console.error("Failed to load compliance monitoring", err);
+        }
+    };
+
+    const fetchInstitutionalQueue = async () => {
+        try {
+            const res = await getInstitutionalOnboardingQueue();
+            setInstitutionalQueue(res.data?.queue || []);
+        } catch (err) {
+            console.error("Failed to load institutional onboarding queue", err);
         }
     };
 
     const fetchComplianceData = async () => {
         setIsLoading(true);
         try {
-            await Promise.all([fetchKycQueue(), fetchMonitoring()]);
+            await Promise.all([fetchKycQueue(), fetchMonitoring(), fetchInstitutionalQueue()]);
         } finally {
             setIsLoading(false);
         }
@@ -74,6 +89,63 @@ export default function KycRiskPage() {
         } catch (err) {
             alert(`Failed to update alert status to ${status}`);
         }
+    };
+
+    const handleReleaseHold = async (hold: any) => {
+        const confirmMsg = hold.type === 'dealer_rfq'
+            ? `Release compliance hold on RFQ ${hold.id}? This resets it to "quote ready" -- a fresh quote must be pulled before it can be accepted again.`
+            : `Release compliance hold on ${hold.id}? This does NOT move funds automatically -- the customer must retry the same transaction from the app, and their next attempt will skip screening once.`;
+        if (!window.confirm(confirmMsg)) return;
+
+        setReleaseLoadingId(hold.id);
+        try {
+            if (hold.type === 'dealer_rfq') {
+                await releaseDealerRfqComplianceHold(hold.id);
+            } else {
+                await releaseRampComplianceHold(hold.id);
+            }
+            fetchMonitoring();
+        } catch (err) {
+            alert('Failed to release compliance hold');
+        } finally {
+            setReleaseLoadingId(null);
+        }
+    };
+
+    const handleViewInstitutional = async (userId: string) => {
+        setInstitutionalDetailLoading(true);
+        try {
+            const res = await getInstitutionalOnboardingDetail(userId);
+            setSelectedInstitutional(res.data?.profile || null);
+        } catch (err) {
+            alert('Failed to load onboarding details');
+        } finally {
+            setInstitutionalDetailLoading(false);
+        }
+    };
+
+    const closeInstitutionalModal = () => setSelectedInstitutional(null);
+
+    const handleInstitutionalAction = async (userId: string, action: 'approve' | 'reject') => {
+        if (action === 'reject') {
+            const reason = window.prompt('Reason for rejection (shown to the merchant):');
+            if (reason === null) return;
+            setInstitutionalActionLoading(userId);
+            try {
+                await rejectInstitutionalOnboarding(userId, reason || undefined);
+                closeInstitutionalModal();
+                fetchInstitutionalQueue();
+            } catch (err) { alert('Failed to reject onboarding'); }
+            finally { setInstitutionalActionLoading(null); }
+            return;
+        }
+        setInstitutionalActionLoading(userId);
+        try {
+            await approveInstitutionalOnboarding(userId);
+            closeInstitutionalModal();
+            fetchInstitutionalQueue();
+        } catch (err) { alert('Failed to approve onboarding'); }
+        finally { setInstitutionalActionLoading(null); }
     };
 
     const handleViewKyc = async (id: string) => {
@@ -139,7 +211,15 @@ export default function KycRiskPage() {
             </div>
 
             {/* KPIs Row - Exact Match to Screenshot */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+            <div className="grid grid-cols-2 md:grid-cols-7 gap-4 mb-8">
+                <button type="button" onClick={() => setActiveTab('institutional')} className="text-left bg-[#111827] border border-[#1e2d3d] rounded-xl p-5 hover:border-cyan-500/40 transition-colors cursor-pointer">
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">INSTITUTIONAL</p>
+                    <h3 className="text-3xl font-bold text-cyan-400 font-mono">{institutionalQueue.length}</h3>
+                </button>
+                <button type="button" onClick={() => setActiveTab('zigram')} className="text-left bg-[#111827] border border-[#1e2d3d] rounded-xl p-5 hover:border-purple-500/40 transition-colors cursor-pointer">
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">ZIGRAM HOLDS</p>
+                    <h3 className="text-3xl font-bold text-purple-400 font-mono">{zigramHolds.length}</h3>
+                </button>
                 <button type="button" onClick={() => setActiveTab('kyc')} className="text-left bg-[#111827] border border-[#1e2d3d] rounded-xl p-5 hover:border-amber-500/40 transition-colors cursor-pointer">
                     <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">PENDING KYC</p>
                     <h3 className="text-3xl font-bold text-amber-500 font-mono">{data.kpis?.pendingKyc || 0}</h3>
@@ -167,7 +247,9 @@ export default function KycRiskPage() {
                 {[
                     { id: 'kyc', label: 'KYC Queue' },
                     { id: 'aml', label: 'AML Flags' },
-                    { id: 'alerts', label: 'Risk Alerts' }
+                    { id: 'alerts', label: 'Risk Alerts' },
+                    { id: 'zigram', label: 'ZIGRAM Holds' },
+                    { id: 'institutional', label: 'Institutional Onboarding' }
                 ].map(tab => (
                     <button
                         key={tab.id}
@@ -177,6 +259,8 @@ export default function KycRiskPage() {
                         {tab.label}
                         {tab.id === 'aml' && <span className="ml-2 bg-red-500/20 text-red-400 text-[10px] px-1.5 py-0.5 rounded-md">{amlFlags.length}</span>}
                         {tab.id === 'alerts' && <span className="ml-2 bg-amber-500/20 text-amber-400 text-[10px] px-1.5 py-0.5 rounded-md">{riskAlerts.length}</span>}
+                        {tab.id === 'zigram' && <span className="ml-2 bg-purple-500/20 text-purple-400 text-[10px] px-1.5 py-0.5 rounded-md">{zigramHolds.length}</span>}
+                        {tab.id === 'institutional' && <span className="ml-2 bg-cyan-500/20 text-cyan-400 text-[10px] px-1.5 py-0.5 rounded-md">{institutionalQueue.length}</span>}
                     </button>
                 ))}
             </div>
@@ -317,7 +401,101 @@ export default function KycRiskPage() {
                         )}
                     </div>
                 )}
-                
+
+                {/* TAB 4: ZIGRAM COMPLIANCE HOLDS */}
+                {activeTab === 'zigram' && (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead>
+                                <tr className="bg-[#0a0e17] border-b border-[#1e2d3d] text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                                    <th className="py-4 px-6">Type</th>
+                                    <th className="py-4 px-6">Reference</th>
+                                    <th className="py-4 px-6">Customer</th>
+                                    <th className="py-4 px-6">Amount</th>
+                                    <th className="py-4 px-6">Held Since</th>
+                                    <th className="py-4 px-6 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[#1e2d3d]/50">
+                                {zigramHolds.length > 0 ? zigramHolds.map((hold: any) => (
+                                    <tr key={hold.id} className="hover:bg-[#1a2a40]/30 transition-colors">
+                                        <td className="py-4 px-6">
+                                            <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                                                {hold.type === 'dealer_rfq' ? 'OTC / Dealer' : hold.type === 'swap' ? 'Swap' : 'Ramp'}
+                                            </span>
+                                        </td>
+                                        <td className="py-4 px-6 text-sm font-mono text-white">{hold.id}</td>
+                                        <td className="py-4 px-6 text-sm text-gray-400">{hold.customer || hold.userId || 'N/A'}</td>
+                                        <td className="py-4 px-6 text-sm text-gray-300">{hold.amount ?? 'N/A'} {hold.fromAsset || ''}{hold.toAsset ? ` → ${hold.toAsset}` : ''}</td>
+                                        <td className="py-4 px-6 text-sm text-gray-500">{formatDateTime(hold.createdAt)}</td>
+                                        <td className="py-4 px-6 text-right">
+                                            {releaseLoadingId === hold.id ? (
+                                                <RefreshCw className="w-4 h-4 animate-spin text-purple-400 ml-auto" />
+                                            ) : (
+                                                <button onClick={() => handleReleaseHold(hold)} className="px-4 py-2 rounded-lg text-xs font-bold bg-purple-500/10 text-purple-400 border border-purple-500/30 hover:bg-purple-500 hover:text-white transition-colors">
+                                                    Release
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                )) : (
+                                    <tr>
+                                        <td colSpan={6} className="py-16 px-6 text-center text-sm text-gray-500">No transactions currently held for ZIGRAM compliance review.</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                        {monitoring.kpis?.zigramErrors24h > 0 && (
+                            <div className="px-6 py-4 bg-amber-500/5 border-t border-amber-500/20 text-xs text-amber-400">
+                                {monitoring.kpis.zigramErrors24h} ZIGRAM screening error(s) in the last 24h -- check API credentials/connectivity if this keeps growing.
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* TAB 5: INSTITUTIONAL ONBOARDING */}
+                {activeTab === 'institutional' && (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead>
+                                <tr className="bg-[#0a0e17] border-b border-[#1e2d3d] text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                                    <th className="py-4 px-6">Business</th>
+                                    <th className="py-4 px-6">Submitted</th>
+                                    <th className="py-4 px-6 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[#1e2d3d]/50">
+                                {institutionalQueue.length > 0 ? institutionalQueue.map((profile: any) => (
+                                    <tr key={profile.userId} className="hover:bg-[#1a2a40]/30 transition-colors">
+                                        <td className="py-4 px-6">
+                                            <p className="text-sm font-bold text-white">{profile.legalName || profile.businessName || 'Unknown business'}</p>
+                                            <p className="text-[11px] text-gray-500 mt-0.5">{profile.userId}</p>
+                                        </td>
+                                        <td className="py-4 px-6 text-sm text-gray-500">{formatDateTime(profile.submittedAt)}</td>
+                                        <td className="py-4 px-6 text-right">
+                                            {institutionalActionLoading === profile.userId ? (
+                                                <RefreshCw className="w-5 h-5 animate-spin text-cyan-500 ml-auto" />
+                                            ) : (
+                                                <div className="flex items-center gap-2 justify-end">
+                                                    <button onClick={() => handleViewInstitutional(profile.userId)} className="px-3 py-2 rounded-lg text-xs font-bold bg-[#1e2d3d] text-gray-300 hover:bg-[#2a3a4f] inline-flex items-center gap-1">
+                                                        <Eye className="w-3.5 h-3.5" /> Review
+                                                    </button>
+                                                    <button onClick={() => handleInstitutionalAction(profile.userId, 'approve')} className="px-4 py-2 rounded-lg text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500 hover:text-black transition-colors">Approve</button>
+                                                    <button onClick={() => handleInstitutionalAction(profile.userId, 'reject')} className="px-3 py-2 rounded-lg text-xs font-bold bg-red-500/10 text-red-500 border border-red-500/30 hover:bg-red-500 hover:text-white transition-colors">Reject</button>
+                                                </div>
+                                            )}
+                                        </td>
+                                    </tr>
+                                )) : (
+                                    <tr>
+                                        <td colSpan={3} className="py-16 px-6 text-center text-sm text-gray-500">No institutional onboarding submissions awaiting review.</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
             </div>
             <div>
                 <p className="text-md text-white mt-4"> @ 2026 All Rights Reserved</p>
@@ -363,6 +541,103 @@ export default function KycRiskPage() {
                                 ) : (
                                     <div className="p-4 rounded-xl bg-[#111827] border border-[#1e2d3d] text-sm text-gray-400">No uploaded ID document data available.</div>
                                 )}
+                            </div>
+                        ) : null}
+                    </div>
+                </div>
+            )}
+
+            {(selectedInstitutional || institutionalDetailLoading) && (
+                <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-[#0f1724] border border-[#1e2d3d] rounded-2xl p-6 shadow-2xl">
+                        <div className="flex items-center justify-between mb-5">
+                            <h3 className="text-xl font-bold text-white">Institutional Onboarding Review</h3>
+                            <button onClick={closeInstitutionalModal} className="px-3 py-1.5 rounded-lg bg-[#1e2d3d] text-gray-300 hover:bg-[#2a3a4f]">Close</button>
+                        </div>
+
+                        {institutionalDetailLoading ? (
+                            <div className="py-12 flex items-center justify-center">
+                                <RefreshCw className="w-7 h-7 animate-spin text-cyan-500" />
+                            </div>
+                        ) : selectedInstitutional ? (
+                            <div className="space-y-5">
+                                <div>
+                                    <p className="text-xs text-gray-500 uppercase font-bold tracking-wide mb-2">Business Overview</p>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        {[
+                                            ['Legal name', selectedInstitutional.legalName || selectedInstitutional.businessName],
+                                            ['Company type', selectedInstitutional.companyType],
+                                            ['Business model', selectedInstitutional.businessModel],
+                                            ['Incorporation number', selectedInstitutional.incorporationNumber],
+                                            ['Date of incorporation', selectedInstitutional.dateOfIncorporation],
+                                            ['Country of incorporation', selectedInstitutional.countryOfIncorporation],
+                                            ['Tax number', selectedInstitutional.taxNumber],
+                                            ['Website', selectedInstitutional.companyWebsite],
+                                            ['Address', selectedInstitutional.companyAddress],
+                                        ].map(([label, value]) => (
+                                            <div key={label} className="p-3 rounded-lg bg-[#111827] border border-[#1e2d3d]">
+                                                <p className="text-xs text-gray-500 uppercase">{label}</p>
+                                                <p className="text-sm font-semibold text-white">{value || 'N/A'}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    {selectedInstitutional.businessDescription && (
+                                        <p className="text-sm text-gray-400 mt-3">{selectedInstitutional.businessDescription}</p>
+                                    )}
+                                </div>
+
+                                {[
+                                    ['Directors', selectedInstitutional.directors],
+                                    ['Shareholders', selectedInstitutional.shareholders],
+                                    ['Politically Exposed Persons', selectedInstitutional.peps],
+                                ].map(([label, list]: [string, any[]]) => (
+                                    <div key={label}>
+                                        <p className="text-xs text-gray-500 uppercase font-bold tracking-wide mb-2">{label} ({(list || []).length})</p>
+                                        {(list || []).length > 0 ? (
+                                            <div className="space-y-2">
+                                                {list.map((p: any, i: number) => (
+                                                    <div key={i} className="p-3 rounded-lg bg-[#111827] border border-[#1e2d3d] flex flex-wrap gap-x-6 gap-y-1 text-sm">
+                                                        <span className="text-white font-semibold">{p.name || 'Unnamed'}</span>
+                                                        <span className="text-gray-400">{p.nationality || 'N/A'}</span>
+                                                        <span className="text-gray-500 font-mono text-xs">{p.idNumber || 'No ID on file'}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : <p className="text-sm text-gray-500">None listed.</p>}
+                                    </div>
+                                ))}
+
+                                <div>
+                                    <p className="text-xs text-gray-500 uppercase font-bold tracking-wide mb-2">Documents ({(selectedInstitutional.documents || []).length})</p>
+                                    {(selectedInstitutional.documents || []).length > 0 ? (
+                                        <div className="space-y-2">
+                                            {selectedInstitutional.documents.map((d: any, i: number) => (
+                                                <div key={i} className="p-3 rounded-lg bg-[#111827] border border-[#1e2d3d] flex flex-wrap gap-x-6 gap-y-1 text-sm">
+                                                    <span className="text-white font-semibold">{d.name || 'Unnamed document'}</span>
+                                                    <span className="text-gray-400">{d.type || 'N/A'}</span>
+                                                    {d.reference && <a href={d.reference} target="_blank" rel="noreferrer" className="text-emerald-400 hover:text-emerald-300 text-xs">View</a>}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : <p className="text-sm text-gray-500">No documents submitted.</p>}
+                                </div>
+
+                                <div className="flex items-center gap-3 pt-2 border-t border-[#1e2d3d]">
+                                    <button
+                                        onClick={() => handleInstitutionalAction(selectedInstitutional.userId, 'approve')}
+                                        disabled={institutionalActionLoading === selectedInstitutional.userId}
+                                        className="flex-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500 hover:text-black px-4 py-2.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+                                    >
+                                        Approve
+                                    </button>
+                                    <button
+                                        onClick={() => handleInstitutionalAction(selectedInstitutional.userId, 'reject')}
+                                        disabled={institutionalActionLoading === selectedInstitutional.userId}
+                                        className="flex-1 bg-red-500/10 text-red-500 border border-red-500/30 hover:bg-red-500 hover:text-white px-4 py-2.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+                                    >
+                                        Reject
+                                    </button>
+                                </div>
                             </div>
                         ) : null}
                     </div>

@@ -26,9 +26,11 @@ export default function AdminRoute({ children, requiredPermissions }: AdminRoute
 
     // Safe role check using optional chaining and type assertion
     const userRole = (user as any).role?.toString().toLowerCase() || '';
-    // Match the server-side role policy. UI checks improve navigation safety;
-    // every privileged API must still enforce its own role dependency.
-    const isAdmin = !['', 'retail', 'trader', 'user'].includes(userRole);
+    // Match the server-side role policy (routes/auth.py::is_admin_role) --
+    // keep this denylist in sync with the backend's. UI checks improve
+    // navigation safety; every privileged API must still enforce its own
+    // role dependency regardless of what this returns.
+    const isAdmin = !['', 'retail', 'trader', 'user', 'institutional', 'merchant'].includes(userRole);
 
     if (!isAdmin) {
         return (

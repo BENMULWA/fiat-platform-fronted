@@ -108,6 +108,17 @@ export const verifyTotpSetup = (code: string) => api.post('/api/auth/2fa/totp/ve
 export const disableTotp = (code: string) => api.post('/api/auth/2fa/totp/disable', { code });
 
 // ==========================================
+// JASIRI-TO-JASIRI TRANSFER (internal, zero-fee, same email OTP + TOTP gate
+// as a withdrawal — see backend/routes/retail.py)
+// ==========================================
+
+export const lookupTransferRecipient = (email: string) =>
+  api.get('/api/retail/transfer/lookup', { params: { email } });
+export const transferToUser = (data: { recipient_email: string; asset: string; amount: number; otp_session_id: string; otp_code: string; totp_code: string; note?: string }) =>
+  api.post('/api/retail/transfer', data);
+export const getInternalTransferHistory = () => api.get('/api/retail/transfers');
+
+// ==========================================
 // PROFILE SECURITY EXTRAS: anti-phishing code, avatar, active sessions
 // ==========================================
 
@@ -193,6 +204,7 @@ export const getMasterWalletBalance = () => api.get('/api/cardano/master-wallet/
 
 export const getTreasuryDashboard = () => api.get('/api/treasury/dashboard');
 export const getTreasuryPositions = () => api.get('/api/treasury/positions');
+export const getImmNodeHealth = () => api.get('/api/imm/health');
 export const simulateTreasurySwap = (data: any) => api.post('/api/treasury/simulate-swap', data);
 export const resetTreasurySandbox = () => api.post('/api/treasury/reset-sandbox');
 export const getTreasuryRateBook = () => api.get('/api/treasury/rate-book');
@@ -203,6 +215,8 @@ export const getTreasurySwapQuote = (params: { from_asset: string; to_asset: str
 export const getMarketMakerOpportunities = () => api.get('/api/market-maker/opportunities');
 export const getSpreadConfig = () => api.get('/api/market-maker/spread');
 export const updateSpreadConfig = (data: any) => api.post('/api/market-maker/spread', data);
+export const getCometSpread = (base = 'KES', quote = 'IMC', amount_in = 1) =>
+  api.get('/api/market-maker/spread/comet', { params: { base, quote, amount_in } });
 
 // ==========================================
 // HFT CORRIDOR APIS
@@ -303,6 +317,13 @@ export const getAdminComplianceMonitoring = () => api.get('/api/admin/compliance
 export const getAdminNotifications = () => api.get('/api/admin/compliance/notifications');
 export const markAllAdminNotificationsRead = () => api.post('/api/admin/compliance/notifications/mark-all-read');
 export const updateAdminRiskAlertStatus = (alertId: string, status: string) => api.post(`/api/admin/compliance/risk-alerts/${alertId}/status`, { status });
+
+// ZIGRAM compliance holds -- see routes/ramp.py::release_held_transaction and
+// routes/otc_admin.py::release_dealer_rfq_compliance_hold. Releasing a ramp/swap
+// hold does not move funds itself (see that endpoint's docstring); releasing a
+// dealer RFQ hold resets it to quote_ready so a fresh quote + accept can proceed.
+export const releaseRampComplianceHold = (tradeId: string) => api.post(`/api/ramp/admin/release/${tradeId}`);
+export const releaseDealerRfqComplianceHold = (rfqId: string) => api.post(`/api/admin/dealer/rfqs/${rfqId}/release`);
 export const getRetailNotifications = () => api.get('/api/retail/notifications');
 export const markAllRetailNotificationsRead = () => api.post('/api/retail/notifications/mark-all-read');
 export const approveAdminKyc = (id: string) =>
@@ -368,5 +389,36 @@ export const forgotPassword = (data: { email: string }) => api.post('/api/auth/f
 export const resetPassword = (data: { token: string; new_password: string }) => api.post('/api/auth/reset-password', data);
 export const getMe = () => api.get('/api/auth/me');
 export const logoutUser = () => api.post('/api/auth/logout');
+
+// ==========================================
+// OTC MERCHANT PORTAL (routes/otc_merchant.py)
+// ==========================================
+
+export const getOtcOnboarding = () => api.get('/api/otc/onboarding');
+export const updateOtcBusinessOverview = (data: Record<string, unknown>) => api.put('/api/otc/onboarding/business-overview', data);
+export const updateOtcDirectors = (directors: unknown[]) => api.put('/api/otc/onboarding/directors', { directors });
+export const updateOtcShareholders = (shareholders: unknown[]) => api.put('/api/otc/onboarding/shareholders', { shareholders });
+export const updateOtcPeps = (peps: unknown[]) => api.put('/api/otc/onboarding/peps', { peps });
+export const updateOtcDocuments = (documents: unknown[]) => api.put('/api/otc/onboarding/documents', { documents });
+export const submitOtcOnboarding = () => api.post('/api/otc/onboarding/submit');
+
+export const getOtcWallet = () => api.get('/api/otc/wallet');
+
+export const createOtcRfq = (data: { customer_id?: string; from_asset: string; to_asset: string; side: string; amount: number; settlement_channel?: string; collection_phone?: string; destination_wallet?: string; network?: string }) =>
+  api.post('/api/otc/rfqs', data);
+export const listOtcRfqs = () => api.get('/api/otc/rfqs');
+export const getOtcRfq = (id: string) => api.get(`/api/otc/rfqs/${id}`);
+export const acceptOtcRfq = (id: string) => api.post(`/api/otc/rfqs/${id}/accept`);
+
+export const getOtcRfqMessages = (id: string) => api.get(`/api/otc/rfqs/${id}/messages`);
+export const postOtcRfqMessage = (id: string, text: string) => api.post(`/api/otc/rfqs/${id}/messages`, { text });
+
+// Admin-side institutional onboarding review + deposit confirmation
+export const getInstitutionalOnboardingQueue = () => api.get('/api/admin/compliance/institutional-onboarding');
+export const getInstitutionalOnboardingDetail = (userId: string) => api.get(`/api/admin/compliance/institutional-onboarding/${userId}`);
+export const approveInstitutionalOnboarding = (userId: string) => api.post(`/api/admin/compliance/institutional-onboarding/${userId}/approve`);
+export const rejectInstitutionalOnboarding = (userId: string, reason?: string) => api.post(`/api/admin/compliance/institutional-onboarding/${userId}/reject`, { reason });
+export const creditInstitutionalWallet = (userId: string, data: { asset: string; amount: number; reference?: string }) =>
+  api.post(`/api/admin/institutional-wallets/${userId}/credit`, data);
 
 export default api;

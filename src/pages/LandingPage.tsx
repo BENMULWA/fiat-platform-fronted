@@ -577,7 +577,7 @@ export default function LandingPage() {
                 <p className={`text-[11px] leading-relaxed mb-4 ${current.textMuted}`}>{publicRateMeta.disclaimer}</p>
 
                 <button onClick={handleSwapAction} className="w-full block text-center bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-4 rounded-xl transition-colors">
-                  {user ? 'Swap Now' : 'Sign up to swap'}
+                  {user ? 'Swap Now' : 'Sign up to swap'}  
                 </button>
               </div>
             </div>
@@ -824,10 +824,15 @@ export default function LandingPage() {
               </div>
               <div className="flex lg:justify-end">
                 <Link
-                  to={user ? '/admin/dealer-workspace' : '/login'}
+                  to={
+                    !user ? '/otc/signup'
+                    : user.role === 'institutional' ? '/otc/overview'
+                    : viewAsAdmin ? '/admin/dealer-workspace'
+                    : '/otc/signup'
+                  }
                   className="inline-flex items-center justify-center font-bold px-6 py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-colors"
                 >
-                  Talk to our OTC desk <ArrowRight className="w-4 h-4 ml-2" />
+                  Open an OTC account <ArrowRight className="w-4 h-4 ml-2" />
                 </Link>
               </div>
             </div>

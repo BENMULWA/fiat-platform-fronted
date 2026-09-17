@@ -6,6 +6,8 @@ import {
 } from 'lucide-react'
 import { executeRamp, getRampHistory, getRetailWallet, getTreasurySwapQuote } from '../../api/client'
 import AssetIcon from '../../components/AssetIcon'
+import { getFriendlyErrorMessage } from '../../utils/errorMessages'
+import { useTheme } from '../../contexts/ThemeContext'
 
 // `active: false` assets have no real settlement path anywhere in the platform
 // yet — no deposit channel to legitimately acquire them, no withdrawal channel
@@ -52,15 +54,17 @@ const QUOTE_REFRESH_SECONDS = 15;
 // token, group active vs. "coming soon" assets clearly, and supports typing
 // to filter, none of which a native <select> can do.
 const TokenButton = ({ value, onOpen }: { value: string, onOpen: () => void }) => {
+    const { theme } = useTheme()
+    const isLight = theme === 'light'
     return (
         <button
             type="button"
             onClick={onOpen}
-            className="bg-[#0B0E14] border border-[#1E2533] rounded-xl h-[50px] flex items-center px-3 gap-2 min-w-[140px] hover:border-gray-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-500 focus-visible:outline-offset-2 transition-colors"
+            className={`rounded-xl h-[50px] flex items-center px-3 gap-2 min-w-[140px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-500 focus-visible:outline-offset-2 transition-colors border ${isLight ? 'bg-white border-slate-200 hover:border-slate-400' : 'bg-[#0B0E14] border-[#1E2533] hover:border-gray-500'}`}
         >
             <AssetIcon asset={value} size="md" />
-            <span className="text-white font-bold text-sm flex-1 text-left">{value}</span>
-            <ChevronsUpDown className="w-4 h-4 text-gray-500" />
+            <span className={`font-bold text-sm flex-1 text-left ${isLight ? 'text-slate-900' : 'text-white'}`}>{value}</span>
+            <ChevronsUpDown className={`w-4 h-4 ${isLight ? 'text-slate-400' : 'text-gray-500'}`} />
         </button>
     )
 }
@@ -74,6 +78,8 @@ const TokenSelectModal = ({
     balances: Record<string, number>
     excludeId?: string
 }) => {
+    const { theme } = useTheme()
+    const isLight = theme === 'light'
     const [query, setQuery] = useState('')
     const inputRef = useRef<HTMLInputElement>(null)
 
@@ -110,18 +116,18 @@ const TokenSelectModal = ({
                 disabled={!a.active}
                 onClick={() => { if (a.active) { onSelect(a.id); onClose(); } }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors text-left ${
-                    a.active ? 'hover:bg-white/5 cursor-pointer' : 'opacity-40 cursor-not-allowed'
+                    a.active ? (isLight ? 'hover:bg-slate-100 cursor-pointer' : 'hover:bg-white/5 cursor-pointer') : 'opacity-40 cursor-not-allowed'
                 }`}
             >
                 <AssetIcon asset={a.id} size="md" />
                 <div className="flex-1 min-w-0">
-                    <p className="text-white font-bold text-sm">{a.id}</p>
-                    <p className="text-gray-500 text-xs truncate">{a.name}</p>
+                    <p className={`font-bold text-sm ${isLight ? 'text-slate-900' : 'text-white'}`}>{a.id}</p>
+                    <p className={`text-xs truncate ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>{a.name}</p>
                 </div>
                 {!a.active ? (
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 bg-white/5 px-2 py-1 rounded-md shrink-0">Coming soon</span>
+                    <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-md shrink-0 ${isLight ? 'text-slate-500 bg-slate-100' : 'text-gray-500 bg-white/5'}`}>Coming soon</span>
                 ) : typeof balance === 'number' ? (
-                    <span className="text-gray-400 text-xs font-mono shrink-0">{balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>
+                    <span className={`text-xs font-mono shrink-0 ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>{balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>
                 ) : null}
             </button>
         )
@@ -130,41 +136,41 @@ const TokenSelectModal = ({
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4 animate-in fade-in duration-150" onClick={onClose}>
             <div
-                className="bg-[#111827] border border-[#1E2533] rounded-3xl w-full max-w-sm max-h-[80vh] flex flex-col shadow-2xl animate-in zoom-in-95 fade-in duration-150"
+                className={`rounded-3xl w-full max-w-sm max-h-[80vh] flex flex-col shadow-2xl animate-in zoom-in-95 fade-in duration-150 border ${isLight ? 'bg-white border-slate-200' : 'bg-[#111827] border-[#1E2533]'}`}
                 onClick={(e) => e.stopPropagation()}
                 role="dialog"
                 aria-modal="true"
                 aria-label="Select an asset"
             >
                 <div className="flex items-center justify-between px-5 pt-5 pb-3">
-                    <h3 className="text-white font-bold text-base">Select an asset</h3>
-                    <button onClick={onClose} className="text-gray-500 hover:text-gray-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-500 rounded" aria-label="Close">
+                    <h3 className={`font-bold text-base ${isLight ? 'text-slate-900' : 'text-white'}`}>Select an asset</h3>
+                    <button onClick={onClose} className={`focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-500 rounded ${isLight ? 'text-slate-400 hover:text-slate-700' : 'text-gray-500 hover:text-gray-300'}`} aria-label="Close">
                         <X className="w-5 h-5" />
                     </button>
                 </div>
                 <div className="px-5 pb-3">
-                    <div className="flex items-center gap-2 bg-[#0B0E14] border border-[#1E2533] rounded-xl px-3 py-2.5 focus-within:border-purple-500/50">
-                        <Search className="w-4 h-4 text-gray-500 shrink-0" />
+                    <div className={`flex items-center gap-2 rounded-xl px-3 py-2.5 focus-within:border-purple-500/50 border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#0B0E14] border-[#1E2533]'}`}>
+                        <Search className={`w-4 h-4 shrink-0 ${isLight ? 'text-slate-400' : 'text-gray-500'}`} />
                         <input
                             ref={inputRef}
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                             placeholder="Search name or symbol"
-                            className="bg-transparent text-sm text-white placeholder-gray-600 outline-none w-full"
+                            className={`bg-transparent text-sm outline-none w-full ${isLight ? 'text-slate-900 placeholder-slate-400' : 'text-white placeholder-gray-600'}`}
                         />
                     </div>
                 </div>
                 <div className="overflow-y-auto custom-scrollbar px-2 pb-4 flex-1">
                     {activeAssets.length > 0 && (
-                        <div className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-gray-500">Available now</div>
+                        <div className={`px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>Available now</div>
                     )}
                     {activeAssets.map(renderRow)}
                     {comingSoon.length > 0 && (
-                        <div className="px-3 pt-4 pb-1 text-[10px] font-bold uppercase tracking-widest text-gray-500">Coming soon</div>
+                        <div className={`px-3 pt-4 pb-1 text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>Coming soon</div>
                     )}
                     {comingSoon.map(renderRow)}
                     {filtered.length === 0 && (
-                        <p className="text-center text-gray-500 text-sm py-10">No assets match "{query}"</p>
+                        <p className={`text-center text-sm py-10 ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>No assets match "{query}"</p>
                     )}
                 </div>
             </div>
@@ -173,6 +179,8 @@ const TokenSelectModal = ({
 }
 
 export default function TradePage() {
+    const { theme } = useTheme()
+    const isLight = theme === 'light'
     const [from, setFrom] = useState('KES')
     const [to, setTo] = useState('USDT')
     const [amount, setAmount] = useState('')
@@ -308,7 +316,7 @@ export default function TradePage() {
             })
             setShowSuccessModal(true); setAmount(''); loadHistory(); loadWallet()
         } catch (error: any) {
-            setToastError(error.response?.data?.detail || 'Swap failed. Insufficient balance or market halted.')
+            setToastError(getFriendlyErrorMessage(error, { fallback: 'Swap failed. Insufficient balance or market halted.' }))
         } finally {
             setSubmitting(false)
             setTimeout(() => setToastError(''), 6000)
@@ -338,17 +346,17 @@ export default function TradePage() {
     const buttonDisabled = submitting || parsedAmount <= 0 || from === to || hasInsufficientBalance || !quote.active || !isAssetActive(from) || !isAssetActive(to)
 
     return (
-        <div className="max-w-[1200px] mx-auto animate-in fade-in zoom-in-95 duration-300 pt-4 px-4 md:px-0 text-gray-200">
+        <div className={`max-w-[1200px] mx-auto animate-in fade-in zoom-in-95 duration-300 pt-4 px-4 md:px-0 ${isLight ? 'text-slate-700' : 'text-gray-200'}`}>
 
             {/* Header */}
             <div className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-2xl bg-gradient-to-br from-purple-500/20 to-blue-500/10 border border-purple-500/20">
-                        <ArrowRightLeft className="w-7 h-7 text-purple-400" />
+                    <div className={`p-3 rounded-2xl bg-gradient-to-br border ${isLight ? 'from-purple-100 to-blue-50 border-purple-200' : 'from-purple-500/20 to-blue-500/10 border-purple-500/20'}`}>
+                        <ArrowRightLeft className={`w-7 h-7 ${isLight ? 'text-purple-600' : 'text-purple-400'}`} />
                     </div>
                     <div>
-                        <h2 className="text-3xl font-bold text-white tracking-tight">Instant Swap</h2>
-                        <p className="text-gray-400 mt-1 text-[15px]">Trade assets internally with zero gas fees and tight spreads.</p>
+                        <h2 className={`text-3xl font-bold tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>Instant Swap</h2>
+                        <p className={`mt-1 text-[15px] ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>Trade assets internally with zero gas fees and tight spreads.</p>
                     </div>
                 </div>
             </div>
@@ -368,30 +376,30 @@ export default function TradePage() {
                 <div className="lg:col-span-5 space-y-4">
 
                     {/* Main Swap Card */}
-                    <div className="bg-[#111827] border border-[#1E2533] rounded-2xl p-6 relative overflow-hidden shadow-xl">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none" />
+                    <div className={`rounded-2xl p-6 relative overflow-hidden shadow-xl border ${isLight ? 'bg-white border-slate-200' : 'bg-[#111827] border-[#1E2533]'}`}>
+                        <div className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none ${isLight ? 'bg-purple-200/40' : 'bg-purple-500/5'}`} />
 
                         {/* From Section */}
                         <div className="relative z-10">
                             <div className="flex justify-between items-center mb-2">
-                                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">You Pay</span>
-                                <span className={`text-[10px] font-mono ${hasInsufficientBalance ? 'text-red-400' : 'text-gray-400'}`}>
+                                <span className={`text-[11px] font-bold uppercase tracking-widest ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>You Pay</span>
+                                <span className={`text-[10px] font-mono ${hasInsufficientBalance ? 'text-red-400' : isLight ? 'text-slate-500' : 'text-gray-400'}`}>
                                     Balance: {availableBalance.toLocaleString(undefined, { maximumFractionDigits: 4 })} {from}
                                 </span>
                             </div>
-                            <div className="flex items-center gap-3 bg-[#0B0E14] border border-[#1E2533] rounded-xl p-1 focus-within:border-purple-500/50 transition-all">
+                            <div className={`flex items-center gap-3 rounded-xl p-1 focus-within:border-purple-500/50 transition-all border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#0B0E14] border-[#1E2533]'}`}>
                                 <input
                                     type="number"
                                     value={amount}
                                     onChange={(e) => setAmount(e.target.value)}
                                     placeholder="0.00"
-                                    className="bg-transparent text-3xl font-bold w-full outline-none text-white placeholder-gray-700 p-3 pl-4"
+                                    className={`bg-transparent text-3xl font-bold w-full outline-none p-3 pl-4 ${isLight ? 'text-slate-900 placeholder-slate-300' : 'text-white placeholder-gray-700'}`}
                                 />
                                 {availableBalance > 0 && (
                                     <button
                                         type="button"
                                         onClick={() => setAmount(String(availableBalance))}
-                                        className="text-[10px] font-bold text-purple-400 hover:text-purple-300 bg-purple-500/10 hover:bg-purple-500/20 px-2 py-1 rounded-md shrink-0 transition-colors"
+                                        className={`text-[10px] font-bold px-2 py-1 rounded-md shrink-0 transition-colors ${isLight ? 'text-purple-600 hover:text-purple-700 bg-purple-100 hover:bg-purple-200' : 'text-purple-400 hover:text-purple-300 bg-purple-500/10 hover:bg-purple-500/20'}`}
                                     >
                                         MAX
                                     </button>
@@ -404,27 +412,27 @@ export default function TradePage() {
                         <div className="flex justify-center -my-5 relative z-20">
                             <button
                                 onClick={handleFlip}
-                                className="bg-[#0F1520] border-4 border-[#111827] p-2.5 rounded-xl hover:bg-purple-500/10 hover:border-purple-500/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-500 transition-all shadow-lg group"
+                                className={`p-2.5 rounded-xl hover:bg-purple-500/10 hover:border-purple-500/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-500 transition-all shadow-lg group border-4 ${isLight ? 'bg-white border-white' : 'bg-[#0F1520] border-[#111827]'}`}
                                 aria-label="Swap direction"
                             >
-                                <ArrowUpDown className="w-5 h-5 text-purple-400 group-hover:rotate-180 transition-transform duration-300" />
+                                <ArrowUpDown className={`w-5 h-5 group-hover:rotate-180 transition-transform duration-300 ${isLight ? 'text-purple-600' : 'text-purple-400'}`} />
                             </button>
                         </div>
 
                         {/* To Section */}
                         <div className="relative z-10">
                             <div className="flex justify-between items-center mb-2">
-                                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">You Receive</span>
-                                <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                                <span className={`text-[11px] font-bold uppercase tracking-widest ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>You Receive</span>
+                                <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${isLight ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'}`}>
                                     Rate: {rate < 1 ? rate.toFixed(4) : rate.toFixed(2)}
                                 </span>
                             </div>
-                            <div className="flex items-center gap-3 bg-[#0B0E14] border border-[#1E2533] rounded-xl p-1">
+                            <div className={`flex items-center gap-3 rounded-xl p-1 border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#0B0E14] border-[#1E2533]'}`}>
                                 <input
                                     type="text"
                                     readOnly
                                     value={receiveAmount > 0 ? receiveAmount.toFixed(4) : '0.00'}
-                                    className="bg-transparent text-3xl font-bold w-full outline-none text-emerald-400 p-3 pl-4"
+                                    className={`bg-transparent text-3xl font-bold w-full outline-none p-3 pl-4 ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}
                                 />
                                 <TokenButton value={to} onOpen={() => setSelectorFor('to')} />
                             </div>
@@ -432,7 +440,7 @@ export default function TradePage() {
 
                         {/* Quote refresh countdown — tells the user the rate above is about
                             to update, instead of it silently changing underneath them. */}
-                        <div className="flex items-center justify-end gap-1.5 mt-2 text-[10px] text-gray-600">
+                        <div className={`flex items-center justify-end gap-1.5 mt-2 text-[10px] ${isLight ? 'text-slate-400' : 'text-gray-600'}`}>
                             <Clock className="w-3 h-3" />
                             Rate refreshes in {secondsUntilRefresh}s
                         </div>
@@ -452,45 +460,45 @@ export default function TradePage() {
                         new user isn't shown a wall of monospace figures before they've
                         even entered an amount; the full breakdown is one tap away
                         (Uniswap's expandable swap-details row does the same). */}
-                    <div className="bg-[#111827] border border-[#1E2533] rounded-2xl overflow-hidden">
+                    <div className={`rounded-2xl overflow-hidden border ${isLight ? 'bg-white border-slate-200' : 'bg-[#111827] border-[#1E2533]'}`}>
                         <button
                             type="button"
                             onClick={() => setShowDetails((s) => !s)}
-                            className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/[0.02] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-500"
+                            className={`w-full flex items-center justify-between px-5 py-4 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-500 ${isLight ? 'hover:bg-slate-50' : 'hover:bg-white/[0.02]'}`}
                         >
-                            <span className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                            <span className={`text-xs font-bold uppercase tracking-widest flex items-center gap-2 ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>
                                 <Info className="w-3.5 h-3.5" /> Rate & fee breakdown
                             </span>
-                            <span className="flex items-center gap-2 text-xs font-mono text-gray-300">
+                            <span className={`flex items-center gap-2 text-xs font-mono ${isLight ? 'text-slate-600' : 'text-gray-300'}`}>
                                 1 {from} = {pureMarketRate < 1 ? pureMarketRate.toFixed(4) : pureMarketRate.toFixed(2)} {to}
-                                <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${showDetails ? 'rotate-180' : ''}`} />
+                                <ChevronDown className={`w-4 h-4 transition-transform ${showDetails ? 'rotate-180' : ''} ${isLight ? 'text-slate-400' : 'text-gray-500'}`} />
                             </span>
                         </button>
                         {showDetails && (
-                            <div className="px-5 pb-5 space-y-3 font-mono text-sm border-t border-[#1E2533] pt-4">
-                                <div className="flex justify-between items-center text-gray-400">
+                            <div className={`px-5 pb-5 space-y-3 font-mono text-sm border-t pt-4 ${isLight ? 'border-slate-200' : 'border-[#1E2533]'}`}>
+                                <div className={`flex justify-between items-center ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>
                                     <span>Market Rate</span>
                                     <span>{pureMarketRate === 1 ? `1 ${from} = 1 ${to}` : `1 ${from} = ${pureMarketRate < 1 ? pureMarketRate.toFixed(4) : pureMarketRate.toFixed(2)} ${to}`}</span>
                                 </div>
-                                <div className="flex justify-between items-center text-purple-400">
+                                <div className={isLight ? 'flex justify-between items-center text-purple-600' : 'flex justify-between items-center text-purple-400'}>
                                     <span className="flex items-center gap-1.5"><TrendingUp className="w-3 h-3" /> Spread ({((quote.spreadBps || 0) / 100).toFixed(2)}%)</span>
                                     <span>{parsedAmount > 0 ? `- ${feeCaptured.toFixed(4)} ${quote.feeCurrency || to}` : '—'}</span>
                                 </div>
                                 {from === 'KES' && to === 'AIRT' && feeCaptured > 0 && (
-                                    <div className="flex justify-between items-center text-gray-400">
+                                    <div className={`flex justify-between items-center ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>
                                         <span>Total debited</span>
                                         <span>{debitAmount.toFixed(4)} KES</span>
                                     </div>
                                 )}
-                                <div className="border-t border-[#1E2533] my-3 pt-3 flex justify-between items-center text-white font-bold">
+                                <div className={`border-t my-3 pt-3 flex justify-between items-center font-bold ${isLight ? 'border-slate-200 text-slate-900' : 'border-[#1E2533] text-white'}`}>
                                     <span>Your Execution Rate</span>
-                                    <span className="text-emerald-400">1 {from} = {rate < 1 ? rate.toFixed(6) : rate.toFixed(4)} {to}</span>
+                                    <span className={isLight ? 'text-emerald-600' : 'text-emerald-400'}>1 {from} = {rate < 1 ? rate.toFixed(6) : rate.toFixed(4)} {to}</span>
                                 </div>
-                                <div className="flex justify-between items-center text-gray-400 text-xs">
+                                <div className={`flex justify-between items-center text-xs ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>
                                     <span>Estimated company spread</span>
                                     <span>{parsedAmount > 0 ? `${feeCaptured.toFixed(4)} ${quote.feeCurrency || to}` : '—'}</span>
                                 </div>
-                                <div className="flex justify-between items-center text-gray-500 text-xs">
+                                <div className={`flex justify-between items-center text-xs ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>
                                     <span>Rate Source</span>
                                     <span>{quote.referenceSource || 'Treasury Desk'} · Refresh {quote.refreshIntervalHours || 3}h</span>
                                 </div>
@@ -498,48 +506,48 @@ export default function TradePage() {
                         )}
                     </div>
 
-                    <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-5">
-                        <h3 className="text-xs font-bold text-emerald-300 uppercase tracking-widest mb-3 flex items-center gap-2">
+                    <div className={`rounded-2xl p-5 border ${isLight ? 'bg-emerald-50 border-emerald-200' : 'bg-emerald-500/5 border-emerald-500/20'}`}>
+                        <h3 className={`text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2 ${isLight ? 'text-emerald-700' : 'text-emerald-300'}`}>
                             <TrendingUp className="w-3.5 h-3.5" /> Your Value Before Confirmation
                         </h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                             <div>
-                                <p className="text-gray-500 text-xs">You receive</p>
-                                <p className="text-white font-bold">{receiveAmount.toFixed(4)} {to}</p>
+                                <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>You receive</p>
+                                <p className={`font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>{receiveAmount.toFixed(4)} {to}</p>
                             </div>
                             <div>
-                                <p className="text-gray-500 text-xs">Market reference amount</p>
-                                <p className="text-gray-300 font-bold">{marketReceiveAmount.toFixed(4)} {to}</p>
+                                <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>Market reference amount</p>
+                                <p className={`font-bold ${isLight ? 'text-slate-600' : 'text-gray-300'}`}>{marketReceiveAmount.toFixed(4)} {to}</p>
                             </div>
                         </div>
-                        <p className="text-gray-400 text-xs mt-4 leading-relaxed">
+                        <p className={`text-xs mt-4 leading-relaxed ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>
                             The difference of {userValueDifference.toFixed(4)} {to} is the disclosed spread used to operate the conversion. This quote is indicative until you confirm.
                         </p>
-                        <div className="mt-4 pt-3 border-t border-emerald-500/10 flex flex-col sm:flex-row sm:justify-between gap-2 text-xs">
-                            <span className="text-gray-500">Route: <span className="text-gray-300">{routeLabel}</span></span>
-                            <span className="text-gray-500">Estimated settlement: <span className="text-gray-300">{settlementMinutes} sec </span></span>
+                        <div className={`mt-4 pt-3 border-t flex flex-col sm:flex-row sm:justify-between gap-2 text-xs ${isLight ? 'border-emerald-200' : 'border-emerald-500/10'}`}>
+                            <span className={isLight ? 'text-slate-500' : 'text-gray-500'}>Route: <span className={isLight ? 'text-slate-700' : 'text-gray-300'}>{routeLabel}</span></span>
+                            <span className={isLight ? 'text-slate-500' : 'text-gray-500'}>Estimated settlement: <span className={isLight ? 'text-slate-700' : 'text-gray-300'}>{settlementMinutes} sec </span></span>
                         </div>
                     </div>
 
                     {/* Trust Footer */}
-                    <div className="bg-[#0B0E14] border border-[#1E2533] rounded-xl p-4 flex items-center justify-between">
-                        <div className="flex items-center gap-4 text-xs text-gray-500">
+                    <div className={`rounded-xl p-4 flex items-center justify-between border ${isLight ? 'bg-white border-slate-200' : 'bg-[#0B0E14] border-[#1E2533]'}`}>
+                        <div className={`flex items-center gap-4 text-xs ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>
                             <div className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5 text-emerald-500" /> Ledger Secured</div>
                             <div className="flex items-center gap-1.5"><Wallet className="w-3.5 h-3.5 text-blue-500" /> 0 Gas Fees</div>
                         </div>
-                        <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                        <div className={`flex items-center gap-1.5 text-xs ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>
                             <Clock className="w-3.5 h-3.5" /> 1 Sec Execution
                         </div>
                     </div>
                 </div>
 
                 {/* RIGHT: HISTORY PANEL */}
-                <div className="lg:col-span-7 bg-[#0F1520] border border-[#1E2533] shadow-2xl rounded-3xl overflow-hidden flex flex-col min-h-[600px]">
-                    <div className="px-6 py-4 border-b border-[#1E2533] bg-[#0B0E14]/30 flex items-center justify-between">
-                        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                <div className={`lg:col-span-7 shadow-2xl rounded-3xl overflow-hidden flex flex-col min-h-[600px] border ${isLight ? 'bg-white border-slate-200' : 'bg-[#0F1520] border-[#1E2533]'}`}>
+                    <div className={`px-6 py-4 border-b flex items-center justify-between ${isLight ? 'border-slate-200 bg-slate-50' : 'border-[#1E2533] bg-[#0B0E14]/30'}`}>
+                        <h3 className={`text-xs font-bold uppercase tracking-widest flex items-center gap-2 ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>
                             <Clock className="w-3.5 h-3.5" /> Trade History
                         </h3>
-                        <span className="text-[10px] text-gray-500 font-mono">{history.length} records</span>
+                        <span className={`text-[10px] font-mono ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>{history.length} records</span>
                     </div>
 
                     <div className="p-5 space-y-3 overflow-y-auto custom-scrollbar flex-1">
@@ -555,28 +563,28 @@ export default function TradePage() {
                                 ? r.rate
                                 : (fromAmt > 0 ? toAmt / fromAmt : null);
                             return (
-                                <div key={r.id} className="bg-[#111827] border border-[#1E2533] rounded-xl p-4 hover:border-gray-600/50 transition-all group">
+                                <div key={r.id} className={`rounded-xl p-4 transition-all group border ${isLight ? 'bg-white border-slate-200 hover:border-slate-300 shadow-sm' : 'bg-[#111827] border-[#1E2533] hover:border-gray-600/50'}`}>
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-4">
-                                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center border shrink-0 transition-colors ${isSuccess ? 'bg-purple-500/10 border-purple-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
-                                                <ArrowRightLeft className={`w-5 h-5 ${isSuccess ? 'text-purple-400' : 'text-red-400'}`} />
+                                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center border shrink-0 transition-colors ${isSuccess ? (isLight ? 'bg-purple-50 border-purple-200' : 'bg-purple-500/10 border-purple-500/20') : (isLight ? 'bg-red-50 border-red-200' : 'bg-red-500/10 border-red-500/20')}`}>
+                                                <ArrowRightLeft className={`w-5 h-5 ${isSuccess ? (isLight ? 'text-purple-600' : 'text-purple-400') : (isLight ? 'text-red-600' : 'text-red-400')}`} />
                                             </div>
                                             <div>
-                                                <p className="text-white font-bold text-sm font-mono flex items-center gap-2">
+                                                <p className={`font-bold text-sm font-mono flex items-center gap-2 ${isLight ? 'text-slate-900' : 'text-white'}`}>
                                                     <AssetIcon asset={r.fromAsset} size="sm" /> {fromAmt.toFixed(2)} {r.fromAsset}
-                                                    <span className="text-gray-600 mx-1">→</span>
+                                                    <span className={isLight ? 'text-slate-400 mx-1' : 'text-gray-600 mx-1'}>→</span>
                                                     <AssetIcon asset={r.toAsset} size="sm" /> {toAmt.toFixed(2)} {r.toAsset}
                                                 </p>
-                                                <p className="text-xs text-gray-500 mt-0.5 font-sans flex items-center gap-2">
+                                                <p className={`text-xs mt-0.5 font-sans flex items-center gap-2 ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>
                                                     <Clock className="w-3 h-3" />
                                                     {r.date || r.createdAt ? new Date(r.date || r.createdAt).toLocaleDateString() : 'Today'}
-                                                    <span className="text-gray-700">•</span>
+                                                    <span className={isLight ? 'text-slate-300' : 'text-gray-700'}>•</span>
                                                     Rate: {displayRate !== null ? displayRate.toFixed(4) : 'N/A'}
                                                 </p>
                                             </div>
                                         </div>
                                         <div className="text-right">
-                                            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${isSuccess ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}>
+                                            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${isSuccess ? (isLight ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20') : (isLight ? 'bg-red-50 text-red-700 border-red-200' : 'bg-red-500/10 text-red-400 border-red-500/20')}`}>
                                                 {isSuccess ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
                                                 {r.status || 'Completed'}
                                             </span>
@@ -587,30 +595,30 @@ export default function TradePage() {
                         })}
 
                         {history.length === 0 && (
-                            <div className="flex flex-col items-center justify-center h-full text-center py-20 border-2 border-dashed border-[#1E2533] rounded-2xl">
-                                <ArrowRightLeft className="w-10 h-10 text-gray-600 mb-4" />
-                                <p className="text-gray-400 text-sm font-medium mb-1">No swap history yet</p>
-                                <p className="text-xs text-gray-600">Completed trades will appear here instantly.</p>
+                            <div className={`flex flex-col items-center justify-center h-full text-center py-20 border-2 border-dashed rounded-2xl ${isLight ? 'border-slate-200' : 'border-[#1E2533]'}`}>
+                                <ArrowRightLeft className={`w-10 h-10 mb-4 ${isLight ? 'text-slate-300' : 'text-gray-600'}`} />
+                                <p className={`text-sm font-medium mb-1 ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>No swap history yet</p>
+                                <p className={`text-xs ${isLight ? 'text-slate-400' : 'text-gray-600'}`}>Completed trades will appear here instantly.</p>
                             </div>
                         )}
                     </div>
 
                     {history.length > HISTORY_PAGE_SIZE && (
-                        <div className="px-6 py-3 border-t border-[#1E2533] bg-[#0B0E14]/30 flex items-center justify-between">
+                        <div className={`px-6 py-3 border-t flex items-center justify-between ${isLight ? 'border-slate-200 bg-slate-50' : 'border-[#1E2533] bg-[#0B0E14]/30'}`}>
                             <button
                                 onClick={() => setHistoryPage(p => Math.max(0, p - 1))}
                                 disabled={historyPage === 0}
-                                className="text-xs font-bold text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5"
+                                className={`text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed transition-colors px-3 py-1.5 rounded-lg ${isLight ? 'text-slate-500 hover:text-slate-900 hover:bg-slate-100' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
                             >
                                 Previous
                             </button>
-                            <span className="text-[11px] text-gray-500 font-mono">
+                            <span className={`text-[11px] font-mono ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>
                                 Page {historyPage + 1} of {historyTotalPages}
                             </span>
                             <button
                                 onClick={() => setHistoryPage(p => Math.min(historyTotalPages - 1, p + 1))}
                                 disabled={historyPage >= historyTotalPages - 1}
-                                className="text-xs font-bold text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5"
+                                className={`text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed transition-colors px-3 py-1.5 rounded-lg ${isLight ? 'text-slate-500 hover:text-slate-900 hover:bg-slate-100' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
                             >
                                 Next
                             </button>
@@ -632,18 +640,18 @@ export default function TradePage() {
             {/* Success Modal */}
             {showSuccessModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4 animate-in fade-in duration-200">
-                    <div className="bg-[#111827] border border-[#1E2533] rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95 fade-in duration-300 text-center">
-                        <div className="w-20 h-20 bg-emerald-500/10 border-2 border-emerald-500/30 rounded-full flex items-center justify-center mx-auto mb-6">
-                            <CheckCircle2 className="w-10 h-10 text-emerald-400" />
+                    <div className={`rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95 fade-in duration-300 text-center border ${isLight ? 'bg-white border-slate-200' : 'bg-[#111827] border-[#1E2533]'}`}>
+                        <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 border-2 ${isLight ? 'bg-emerald-50 border-emerald-300' : 'bg-emerald-500/10 border-emerald-500/30'}`}>
+                            <CheckCircle2 className={`w-10 h-10 ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`} />
                         </div>
-                        <h3 className="text-2xl font-bold text-white mb-2">Swap Executed!</h3>
-                        <p className="text-gray-400 text-sm mb-2">Assets exchanged instantly via internal ledger.</p>
+                        <h3 className={`text-2xl font-bold mb-2 ${isLight ? 'text-slate-900' : 'text-white'}`}>Swap Executed!</h3>
+                        <p className={`text-sm mb-2 ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>Assets exchanged instantly via internal ledger.</p>
 
                         {/* Mini Summary in Modal */}
-                        <div className="bg-[#0B0E14] rounded-xl p-4 mb-6 text-left text-sm space-y-2 border border-[#1E2533]">
-                            <div className="flex justify-between text-gray-400"><span>Traded</span><span className="text-white font-mono">{parsedAmount} {from}</span></div>
-                            <div className="flex justify-between text-gray-400"><span>Received</span><span className="text-emerald-400 font-mono font-bold">{receiveAmount.toFixed(4)} {to}</span></div>
-                            <div className="flex justify-between text-gray-400"><span>Fee Captured</span><span className="text-purple-400 font-mono">{feeCaptured.toFixed(4)} {to}</span></div>
+                        <div className={`rounded-xl p-4 mb-6 text-left text-sm space-y-2 border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#0B0E14] border-[#1E2533]'}`}>
+                            <div className={`flex justify-between ${isLight ? 'text-slate-500' : 'text-gray-400'}`}><span>Traded</span><span className={`font-mono ${isLight ? 'text-slate-900' : 'text-white'}`}>{parsedAmount} {from}</span></div>
+                            <div className={`flex justify-between ${isLight ? 'text-slate-500' : 'text-gray-400'}`}><span>Received</span><span className={`font-mono font-bold ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>{receiveAmount.toFixed(4)} {to}</span></div>
+                            <div className={`flex justify-between ${isLight ? 'text-slate-500' : 'text-gray-400'}`}><span>Fee Captured</span><span className={`font-mono ${isLight ? 'text-purple-600' : 'text-purple-400'}`}>{feeCaptured.toFixed(4)} {to}</span></div>
                         </div>
 
                         <button onClick={() => setShowSuccessModal(false)} className="w-full py-3.5 rounded-xl bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-400 hover:to-blue-400 text-white font-bold text-sm transition-all shadow-lg">

@@ -2,6 +2,8 @@
 import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { ThemeProvider } from './contexts/ThemeContext'
+import NotificationToastHost from './components/NotificationToastHost'
 
 // --- AUTH & PUBLIC PAGES ---
 import LandingPage from './pages/LandingPage'
@@ -12,6 +14,14 @@ import ResetPasswordPage from './pages/ResetPasswordPage'
 import FAQPage from './pages/FAQPage'
 import AppLayout from './components/Layout/AppLayout'
 import AdminRoute from './components/Guards/AdminRoute'
+import InstitutionalRoute from './components/Guards/InstitutionalRoute'
+
+// --- OTC MERCHANT PORTAL PAGES ---
+import OtcSignup from './pages/OTC Merchant/Signup'
+import OtcOnboarding from './pages/OTC Merchant/Onboarding'
+import OtcOverview from './pages/OTC Merchant/Overview'
+import OtcRequestSettlement from './pages/OTC Merchant/RequestSettlement'
+import OtcRfqDetail from './pages/OTC Merchant/RfqDetail'
 
 // --- ADMIN PAGES ---
 import DashboardPage from './pages/DashboardPage'
@@ -32,6 +42,7 @@ import CustomersPage from './pages/OTC Dashboard/Customers';
 import DealerWorkspaceWizard from './pages/OTC Dashboard/DealerWorkspaceWizard';
 import DealerWorkspaceLive from './pages/OTC Dashboard/DealerWorkspaceLive';
 import DealerQuotesPage from './pages/OTC Dashboard/DealerQuotesPage';
+import ComingSoon from './pages/OTC Dashboard/ComingSoon';
 import CompanyRevenuePage from './pages/OTC Dashboard/CompanyRevenue';
 
 // --- RETAIL PAGES ---
@@ -41,6 +52,7 @@ import TradePage from './pages/retail/TradePage'
 import KYCpage from './pages/retail/KYCpage'
 import DepositPage from './pages/retail/DepositPage'
 import WithdrawPage from './pages/retail/WithdrawPage'
+import TransferPage from './pages/retail/TransferPage'
 import { RedeemAirtimePage } from './pages/retail/RedeemAirtimePage'
 import { ImpalaCoinPage } from './pages/retail/ImpalaCoinPage'
 import { TransactionsPage } from './pages/retail/TransactionsPage'
@@ -101,6 +113,16 @@ function RoleAwareLayout() {
 // ------------------------------------------------------------------
 // ROUTER CONFIGURATION
 // ------------------------------------------------------------------
+// Where a logged-in user lands by default. Institutional accounts get their
+// own portal root, not the retail /dashboard or /admin/dashboard -- adding
+// this role here is why AuthContext.tsx's viewAsAdmin fix alone wasn't
+// enough; without this a merchant would still land on the retail dashboard.
+function defaultRouteFor(user: any, viewAsAdmin: boolean): string {
+  if (viewAsAdmin) return "/admin/dashboard"
+  if (user?.role === 'institutional' || user?.role === 'merchant') return "/otc/overview"
+  return "/dashboard"
+}
+
 function AppRoutes() {
   const { user, isLoading, viewAsAdmin } = useAuth()
 
@@ -112,15 +134,27 @@ function AppRoutes() {
     )
   }
 
+  const defaultRoute = defaultRouteFor(user, viewAsAdmin)
+
   return (
     <Routes>
       {/* PUBLIC ROUTES */}
-      <Route path="/" element={user ? <Navigate to={viewAsAdmin ? "/admin/dashboard" : "/dashboard"} replace /> : <LandingPage />} />
-      <Route path="/login" element={user ? <Navigate to={viewAsAdmin ? "/admin/dashboard" : "/dashboard"} replace /> : <Login />} />
-      <Route path="/signup" element={user ? <Navigate to={viewAsAdmin ? "/admin/dashboard" : "/dashboard"} replace /> : <Signup />} />
-      <Route path="/forgot-password" element={user ? <Navigate to={viewAsAdmin ? "/admin/dashboard" : "/dashboard"} replace /> : <ForgotPasswordPage />} />
-      <Route path="/reset-password" element={user ? <Navigate to={viewAsAdmin ? "/admin/dashboard" : "/dashboard"} replace /> : <ResetPasswordPage />} />
+      <Route path="/" element={user ? <Navigate to={defaultRoute} replace /> : <LandingPage />} />
+      <Route path="/login" element={user ? <Navigate to={defaultRoute} replace /> : <Login />} />
+      <Route path="/signup" element={user ? <Navigate to={defaultRoute} replace /> : <Signup />} />
+      <Route path="/forgot-password" element={user ? <Navigate to={defaultRoute} replace /> : <ForgotPasswordPage />} />
+      <Route path="/reset-password" element={user ? <Navigate to={defaultRoute} replace /> : <ResetPasswordPage />} />
       <Route path="/faq" element={<FAQPage />} />
+
+      {/* OTC MERCHANT PORTAL -- own layout (no admin/retail Sidebar+AppLayout
+          shell), each page below handles its own auth via InstitutionalRoute
+          (or is public, for signup). See routes/otc_merchant.py for the
+          backend these call. */}
+      <Route path="/otc/signup" element={user ? <Navigate to={defaultRoute} replace /> : <OtcSignup />} />
+      <Route path="/otc/onboarding" element={<InstitutionalRoute requireApproved={false}><OtcOnboarding /></InstitutionalRoute>} />
+      <Route path="/otc/overview" element={<InstitutionalRoute><OtcOverview /></InstitutionalRoute>} />
+      <Route path="/otc/request" element={<InstitutionalRoute><OtcRequestSettlement /></InstitutionalRoute>} />
+      <Route path="/otc/rfqs/:rfqId" element={<InstitutionalRoute><OtcRfqDetail /></InstitutionalRoute>} />
 
       {/* PROTECTED LAYOUT */}
       <Route path="/" element={<ProtectedRoute><RoleAwareLayout /></ProtectedRoute>}>
@@ -131,6 +165,7 @@ function AppRoutes() {
         <Route path="transactions" element={<KycProtectedRoute><TransactionsPage /></KycProtectedRoute>} />
         <Route path="deposit" element={<KycProtectedRoute><DepositPage /></KycProtectedRoute>} />
         <Route path="withdraw" element={<KycProtectedRoute><WithdrawPage /></KycProtectedRoute>} />
+        <Route path="transfer" element={<KycProtectedRoute><TransferPage /></KycProtectedRoute>} />
         <Route path="swap" element={<KycProtectedRoute><TradePage /></KycProtectedRoute>} />
         <Route path="redeem-airtime" element={<KycProtectedRoute><RedeemAirtimePage /></KycProtectedRoute>} />
         <Route path="impala-coin" element={<KycProtectedRoute><ImpalaCoinPage /></KycProtectedRoute>} />
@@ -156,15 +191,27 @@ function AppRoutes() {
         <Route path="admin/exposure" element={<TreasuryPage />} />
         <Route path="admin/pnl" element={<CompanyRevenuePage />} />
         <Route path="admin/dealer-workspace" element={<DealerWorkspaceWizard />} />
-        <Route path="admin/institutional-settlements" element={<DealerWorkspaceWizard mode="settlements" />} />
+        {/*
+          These sidebar entries used to all open the same generic
+          DealerWorkspaceWizard (RFQ creation modal) with a `mode` prop the
+          component doesn't accept and silently ignored -- 6 different menu
+          items all opening an identical "New RFQ" form regardless of label.
+          Routed each to whichever real page its label actually describes:
+          settlement-related labels -> the Treasury Settlement Queue
+          (TreasurySettlementsPage, same as admin/settlements); trade/queue
+          labels -> the live RFQ queue (DealerWorkspaceLive). Only the two
+          entries that are genuinely about starting a new RFQ still open the
+          wizard.
+        */}
+        <Route path="admin/institutional-settlements" element={<TreasurySettlementsPage />} />
         <Route path="admin/institutional-rfqs" element={<DealerWorkspaceLive />} />
         <Route path="admin/institutional-rfqs/new" element={<DealerWorkspaceWizard initialOpen />} />
-        <Route path="admin/otc-crypto" element={<DealerWorkspaceWizard mode="otc-crypto" />} />
+        <Route path="admin/otc-crypto" element={<ComingSoon title="OTC Crypto" />} />
         <Route path="admin/quotes" element={<DealerQuotesPage />} />
-        <Route path="admin/trades" element={<DealerWorkspaceWizard mode="trades" />} />
+        <Route path="admin/trades" element={<ComingSoon title="Trades" />} />
         <Route path="admin/bank-transfers" element={<PaymentsPage />} />
-        <Route path="admin/wallet-transfers" element={<DealerWorkspaceWizard mode="settlements" />} />
-        <Route path="admin/blockchain" element={<DealerWorkspaceWizard mode="settlements" />} />
+        <Route path="admin/wallet-transfers" element={<TreasurySettlementsPage />} />
+        <Route path="admin/blockchain" element={<TreasurySettlementsPage />} />
         <Route path="admin/settlement-exceptions" element={<PaymentsPage />} />
         <Route path="admin/markets/fx" element={<RatesInventoryPage />} />
         <Route path="admin/markets/crypto" element={<RatesInventoryPage />} />
@@ -180,7 +227,7 @@ function AppRoutes() {
         <Route path="admin/compliance/screening" element={<KycAmlPage />} />
         <Route path="admin/compliance/risks" element={<KycAmlPage />} />
         <Route path="admin/reports/treasury" element={<CompanyRevenuePage />} />
-        <Route path="admin/reports/trading" element={<DealerWorkspaceWizard mode="quotes" />} />
+        <Route path="admin/reports/trading" element={<DealerWorkspaceLive />} />
         <Route path="admin/reports/operations" element={<PaymentsPage />} />
         <Route path="admin/reports/compliance" element={<KycAmlPage />} />
         <Route path="admin/reports/management" element={<DashboardOverview />} />
@@ -189,7 +236,7 @@ function AppRoutes() {
 
       </Route>
 
-      <Route path="*" element={<Navigate to={viewAsAdmin ? "/admin/dashboard" : "/dashboard"} replace />} />
+      <Route path="*" element={<Navigate to={defaultRoute} replace />} />
     </Routes>
   )
 }
@@ -197,9 +244,12 @@ function AppRoutes() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <AppRoutes />
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <AppRoutes />
+          <NotificationToastHost />
+        </AuthProvider>
+      </ThemeProvider>
     </BrowserRouter>
   )
 }

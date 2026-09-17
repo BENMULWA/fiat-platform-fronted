@@ -6,12 +6,16 @@ import {
     Shield, Fingerprint, BadgeCheck, Zap, X, Info
 } from 'lucide-react';
 import { redeemAirt, getAirtimeHistory, getRetailWallet } from '../../api/client';
+import { getFriendlyErrorMessage } from '../../utils/errorMessages';
+import { useTheme } from '../../contexts/ThemeContext';
 
 // Used to sanity-check the `network` field on history rows before displaying
 // it — see the comment at the render site below for why this exists.
 const TELCO_NETWORKS = ['Safaricom', 'Airtel', 'Telkom', 'MTN', 'Equitel'];
 
 export const RedeemAirtimePage = () => {
+    const { theme } = useTheme();
+    const isLight = theme === 'light';
     const [selectedCountry, setSelectedCountry] = useState('KE');
     const [selectedNetwork, setSelectedNetwork] = useState('Airtel');
     const [phone, setPhone] = useState('');
@@ -127,7 +131,9 @@ export const RedeemAirtimePage = () => {
             await fetchData();
             setTimeout(() => { setToastSuccess(''); setAmount(''); setPhone(''); }, 5000);
         } catch (err: any) {
-            const errorDetail = err.response?.data?.detail || err.response?.data?.message || "Transaction failed at the telecom level.";
+            const errorDetail = getFriendlyErrorMessage(err, {
+                fallback: "We couldn't deliver that airtime right now. Please try again in a few minutes.",
+            });
             setToastError(errorDetail);
             setHistory(prev => [{ id: `TXN_FAIL_${Date.now()}`, amount: numericAmount, network: selectedNetwork, time: 'Just now', status: 'Failed' }, ...prev]);
         } finally {
@@ -136,26 +142,26 @@ export const RedeemAirtimePage = () => {
     };
 
     return (
-        <div className="max-w-[1200px] mx-auto animate-in fade-in zoom-in-95 duration-300 pt-4 px-4 md:px-0 text-gray-200">
+        <div className={`max-w-[1200px] mx-auto animate-in fade-in zoom-in-95 duration-300 pt-4 px-4 md:px-0 ${isLight ? 'text-slate-700' : 'text-gray-200'}`}>
 
             {/* Header Section */}
             <div className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-2xl bg-gradient-to-br from-blue-500/20 to-blue-500/5 border border-blue-500/20">
+                    <div className={`p-3 rounded-2xl border ${isLight ? 'bg-gradient-to-br from-blue-50 to-blue-50/40 border-blue-200' : 'bg-gradient-to-br from-blue-500/20 to-blue-500/5 border-blue-500/20'}`}>
                         <Zap className="w-7 h-7 text-blue-500" />
                     </div>
                     <div>
-                        <h2 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
+                        <h2 className={`text-3xl font-bold tracking-tight flex items-center gap-3 ${isLight ? 'text-slate-900' : 'text-white'}`}>
                             Airtime Redemption
                         </h2>
-                        <p className="text-gray-400 mt-1 text-[15px]">Redeem your tokenized airtime balance to any supported phone.</p>
+                        <p className={`mt-1 text-[15px] ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>Redeem your tokenized airtime balance to any supported phone.</p>
                     </div>
                 </div>
 
                 {/* Live Float Pill */}
-                <div className="flex items-center gap-3 bg-[#111827] border border-[#1E2533] rounded-full px-5 py-2.5">
-                    <span className="text-xs text-gray-500">AIRT balance</span>
-                    <span className="text-sm font-bold text-blue-400">{airtBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })} AIRT</span>
+                <div className={`flex items-center gap-3 border rounded-full px-5 py-2.5 ${isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#111827] border-[#1E2533]'}`}>
+                    <span className={`text-xs ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>AIRT balance</span>
+                    <span className="text-sm font-bold text-blue-500">{airtBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })} AIRT</span>
                 </div>
             </div>
 
@@ -177,20 +183,20 @@ export const RedeemAirtimePage = () => {
                 )}
             </div>
 
-            <div className="bg-[#0F1520] border border-[#1E2533] shadow-2xl rounded-3xl overflow-hidden">
+            <div className={`shadow-2xl rounded-3xl overflow-hidden border ${isLight ? 'bg-white border-slate-200' : 'bg-[#0F1520] border-[#1E2533]'}`}>
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-0">
 
                     {/* LEFT: FORM ENGINE — broken into numbered steps with real dividers
                         between them, instead of identically-styled sections stacked
                         back to back with no visual break. */}
-                    <div className="lg:col-span-7 bg-[#111827] border-r border-[#1E2533] p-6 md:p-8">
+                    <div className={`lg:col-span-7 p-6 md:p-8 border-r ${isLight ? 'bg-slate-50/60 border-slate-200' : 'bg-[#111827] border-[#1E2533]'}`}>
                         <form onSubmit={handleExecute} className="space-y-7">
 
                             {/* Step 1: Amount */}
                             <div>
                                 <div className="flex items-center gap-2 mb-3">
-                                    <span className="w-5 h-5 rounded-full bg-blue-500/15 text-blue-400 text-[11px] font-bold flex items-center justify-center shrink-0">1</span>
-                                    <label className="text-sm font-bold text-gray-300">How much airtime?</label>
+                                    <span className={`w-5 h-5 rounded-full text-[11px] font-bold flex items-center justify-center shrink-0 ${isLight ? 'bg-blue-100 text-blue-600' : 'bg-blue-500/15 text-blue-400'}`}>1</span>
+                                    <label className={`text-sm font-bold ${isLight ? 'text-slate-700' : 'text-gray-300'}`}>How much airtime?</label>
                                 </div>
                                 <div className={`relative transition-all duration-200 rounded-xl ${focusedField === 'amount' ? 'ring-2 ring-blue-500/20' : ''}`}>
                                     <input
@@ -200,17 +206,17 @@ export const RedeemAirtimePage = () => {
                                         onFocus={() => setFocusedField('amount')}
                                         onBlur={() => setFocusedField(null)}
                                         placeholder="0.00"
-                                        className="w-full bg-[#0B0E14] border border-[#1E2533] focus:border-blue-500/50 outline-none rounded-xl py-4 pl-5 pr-20 text-xl font-bold text-white transition-all font-mono placeholder-gray-600"
+                                        className={`w-full outline-none rounded-xl py-4 pl-5 pr-20 text-xl font-bold transition-all font-mono border ${isLight ? 'bg-white border-slate-200 focus:border-blue-400 text-slate-900 placeholder-slate-400' : 'bg-[#0B0E14] border-[#1E2533] focus:border-blue-500/50 text-white placeholder-gray-600'}`}
                                         required
                                     />
                                     <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                                        <span className="font-bold text-blue-400">KES</span>
+                                        <span className="font-bold text-blue-500">KES</span>
                                     </div>
                                 </div>
                                 {/* AIRT and KES are pegged 1:1 for this redemption, but the balance
                                     pill up top reads in AIRT while this field reads in KES — spelling
                                     out the equivalence here removes the need to do that math mentally. */}
-                                <p className="text-xs text-gray-500 mt-2 flex items-center gap-1.5">
+                                <p className={`text-xs mt-2 flex items-center gap-1.5 ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>
                                     <Info className="w-3.5 h-3.5 shrink-0" />
                                     {numericAmount > 0
                                         ? `This uses ${numericAmount.toFixed(2)} AIRT from your balance (1 AIRT = 1 KES).`
@@ -221,7 +227,7 @@ export const RedeemAirtimePage = () => {
                                         <button
                                             key={preset} type="button"
                                             onClick={() => setAmount(preset.toString())}
-                                            className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all border ${numericAmount === preset ? 'bg-blue-500/10 text-blue-400 border-blue-500/30' : 'bg-[#0B0E14] text-gray-500 border-[#1E2533] hover:border-gray-500 hover:text-gray-400'}`}
+                                            className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all border ${numericAmount === preset ? (isLight ? 'bg-blue-50 text-blue-600 border-blue-300' : 'bg-blue-500/10 text-blue-400 border-blue-500/30') : (isLight ? 'bg-white text-slate-500 border-slate-200 hover:border-slate-400 hover:text-slate-700' : 'bg-[#0B0E14] text-gray-500 border-[#1E2533] hover:border-gray-500 hover:text-gray-400')}`}
                                         >
                                             {preset}
                                         </button>
@@ -229,16 +235,16 @@ export const RedeemAirtimePage = () => {
                                 </div>
                             </div>
 
-                            <div className="border-t border-[#1E2533]" />
+                            <div className={`border-t ${isLight ? 'border-slate-200' : 'border-[#1E2533]'}`} />
 
                             {/* Step 2: Network. Country is folded in here as a plain statement,
                                 not a picker — see showCountryPicker above for why. */}
                             <div>
                                 <div className="flex items-center gap-2 mb-3">
-                                    <span className="w-5 h-5 rounded-full bg-blue-500/15 text-blue-400 text-[11px] font-bold flex items-center justify-center shrink-0">2</span>
-                                    <label className="text-sm font-bold text-gray-300">Which network?</label>
+                                    <span className={`w-5 h-5 rounded-full text-[11px] font-bold flex items-center justify-center shrink-0 ${isLight ? 'bg-blue-100 text-blue-600' : 'bg-blue-500/15 text-blue-400'}`}>2</span>
+                                    <label className={`text-sm font-bold ${isLight ? 'text-slate-700' : 'text-gray-300'}`}>Which network?</label>
                                     {!showCountryPicker && (
-                                        <span className="text-xs text-gray-500">— for phones in {activeCountries[0]?.name || 'Kenya'}</span>
+                                        <span className={`text-xs ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>— for phones in {activeCountries[0]?.name || 'Kenya'}</span>
                                     )}
                                 </div>
 
@@ -246,11 +252,11 @@ export const RedeemAirtimePage = () => {
                                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
                                         {countries.map((c) => (
                                             <button key={c.code} type="button" disabled={!c.active} onClick={() => setSelectedCountry(c.code)}
-                                                className={`p-3 rounded-xl border text-sm font-medium transition-all relative ${!c.active ? 'bg-[#0B0E14]/30 border-[#1E2533]/30 text-gray-600 cursor-not-allowed opacity-60' : selectedCountry === c.code ? 'bg-blue-500/10 text-blue-400 border-blue-500/40 shadow-md' : 'bg-[#0B0E14] text-gray-400 border-[#1E2533] hover:border-gray-500'}`}
+                                                className={`p-3 rounded-xl border text-sm font-medium transition-all relative ${!c.active ? (isLight ? 'bg-slate-100/60 border-slate-200/60 text-slate-400 cursor-not-allowed opacity-60' : 'bg-[#0B0E14]/30 border-[#1E2533]/30 text-gray-600 cursor-not-allowed opacity-60') : selectedCountry === c.code ? (isLight ? 'bg-blue-50 text-blue-600 border-blue-300 shadow-sm' : 'bg-blue-500/10 text-blue-400 border-blue-500/40 shadow-md') : (isLight ? 'bg-white text-slate-500 border-slate-200 hover:border-slate-400' : 'bg-[#0B0E14] text-gray-400 border-[#1E2533] hover:border-gray-500')}`}
                                             >
                                                 {c.name}
                                                 {!c.active && (
-                                                    <span className="absolute -top-1.5 -right-1.5 text-[8px] bg-cyan-500/10 text-cyan-400 px-1.5 py-0.5 rounded font-bold tracking-wider border border-cyan-500/20">SOON</span>
+                                                    <span className={`absolute -top-1.5 -right-1.5 text-[8px] px-1.5 py-0.5 rounded font-bold tracking-wider border ${isLight ? 'bg-cyan-50 text-cyan-600 border-cyan-200' : 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'}`}>SOON</span>
                                                 )}
                                             </button>
                                         ))}
@@ -260,48 +266,48 @@ export const RedeemAirtimePage = () => {
                                 <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                                     {networks.map((net) => (
                                         <button key={net.id} type="button" disabled={!net.active} onClick={() => setSelectedNetwork(net.id)}
-                                            className={`p-3 rounded-xl border text-xs font-bold transition-all relative ${!net.active ? 'bg-[#0B0E14]/30 border-[#1E2533]/30 text-gray-600 cursor-not-allowed opacity-60' : selectedNetwork === net.id ? 'bg-blue-500/10 text-blue-400 border-blue-500/40 shadow-md' : 'bg-[#0B0E14] text-gray-400 border-[#1E2533] hover:border-gray-500'}`}
+                                            className={`p-3 rounded-xl border text-xs font-bold transition-all relative ${!net.active ? (isLight ? 'bg-slate-100/60 border-slate-200/60 text-slate-400 cursor-not-allowed opacity-60' : 'bg-[#0B0E14]/30 border-[#1E2533]/30 text-gray-600 cursor-not-allowed opacity-60') : selectedNetwork === net.id ? (isLight ? 'bg-blue-50 text-blue-600 border-blue-300 shadow-sm' : 'bg-blue-500/10 text-blue-400 border-blue-500/40 shadow-md') : (isLight ? 'bg-white text-slate-500 border-slate-200 hover:border-slate-400' : 'bg-[#0B0E14] text-gray-400 border-[#1E2533] hover:border-gray-500')}`}
                                         >
                                             {net.name}
                                             {net.status === 'paused' && (
-                                                <span className="absolute -top-1.5 -right-1.5 text-[8px] bg-amber-500/10 text-amber-400 px-1.5 py-0.5 rounded font-bold tracking-wider border border-amber-500/20">PAUSED</span>
+                                                <span className={`absolute -top-1.5 -right-1.5 text-[8px] px-1.5 py-0.5 rounded font-bold tracking-wider border ${isLight ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'}`}>PAUSED</span>
                                             )}
                                             {net.status === 'comingSoon' && (
-                                                <span className="absolute -top-1.5 -right-1.5 text-[8px] bg-cyan-500/10 text-cyan-400 px-1.5 py-0.5 rounded font-bold tracking-wider border border-cyan-500/20">SOON</span>
+                                                <span className={`absolute -top-1.5 -right-1.5 text-[8px] px-1.5 py-0.5 rounded font-bold tracking-wider border ${isLight ? 'bg-cyan-50 text-cyan-600 border-cyan-200' : 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'}`}>SOON</span>
                                             )}
                                         </button>
                                     ))}
                                 </div>
-                                <p className="text-xs text-gray-600 mt-2">
+                                <p className={`text-xs mt-2 ${isLight ? 'text-slate-400' : 'text-gray-600'}`}>
                                     Safaricom and Telkom top-ups are temporarily paused — Airtel numbers only for now.
                                 </p>
                                 {!showCountryPicker && (
-                                    <p className="text-xs text-gray-600 mt-1">More countries are on the way — Tanzania, Uganda and Rwanda aren't live yet.</p>
+                                    <p className={`text-xs mt-1 ${isLight ? 'text-slate-400' : 'text-gray-600'}`}>More countries are on the way — Tanzania, Uganda and Rwanda aren't live yet.</p>
                                 )}
                             </div>
 
-                            <div className="border-t border-[#1E2533]" />
+                            <div className={`border-t ${isLight ? 'border-slate-200' : 'border-[#1E2533]'}`} />
 
                             {/* Step 3: Phone number */}
                             <div>
                                 <div className="flex items-center gap-2 mb-3">
-                                    <span className="w-5 h-5 rounded-full bg-blue-500/15 text-blue-400 text-[11px] font-bold flex items-center justify-center shrink-0">3</span>
-                                    <label className="text-sm font-bold text-gray-300">Whose phone gets it?</label>
+                                    <span className={`w-5 h-5 rounded-full text-[11px] font-bold flex items-center justify-center shrink-0 ${isLight ? 'bg-blue-100 text-blue-600' : 'bg-blue-500/15 text-blue-400'}`}>3</span>
+                                    <label className={`text-sm font-bold ${isLight ? 'text-slate-700' : 'text-gray-300'}`}>Whose phone gets it?</label>
                                 </div>
                                 <div className={`relative transition-all duration-200 rounded-xl ${focusedField === 'phone' ? 'ring-2 ring-blue-500/20' : ''}`}>
-                                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">
+                                    <div className={`absolute left-4 top-1/2 -translate-y-1/2 ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>
                                         <Phone className="w-4 h-4" />
                                     </div>
                                     <input
                                         type="text" value={phone} onChange={(e) => setPhone(e.target.value)}
                                         onFocus={() => setFocusedField('phone')} onBlur={() => setFocusedField(null)}
                                         placeholder="e.g. 07XXXXXXXX or 2547XXXXXXXX"
-                                        className="w-full bg-[#0B0E14] border border-[#1E2533] focus:border-blue-500/50 outline-none rounded-xl py-3.5 pl-11 pr-12 text-sm text-white transition-all font-mono placeholder-gray-600"
+                                        className={`w-full outline-none rounded-xl py-3.5 pl-11 pr-12 text-sm transition-all font-mono border ${isLight ? 'bg-white border-slate-200 focus:border-blue-400 text-slate-900 placeholder-slate-400' : 'bg-[#0B0E14] border-[#1E2533] focus:border-blue-500/50 text-white placeholder-gray-600'}`}
                                         required
                                     />
-                                    {phone && <button type="button" onClick={() => setPhone('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400 transition-colors">✕</button>}
+                                    {phone && <button type="button" onClick={() => setPhone('')} className={`absolute right-3 top-1/2 -translate-y-1/2 transition-colors ${isLight ? 'text-slate-400 hover:text-slate-600' : 'text-gray-600 hover:text-gray-400'}`}>✕</button>}
                                 </div>
-                                <p className="text-xs text-gray-600 mt-2">Can be your own number or someone else's — airtime lands on whatever number you enter.</p>
+                                <p className={`text-xs mt-2 ${isLight ? 'text-slate-400' : 'text-gray-600'}`}>Can be your own number or someone else's — airtime lands on whatever number you enter.</p>
                             </div>
 
                             {/* Submit Button */}
@@ -315,10 +321,10 @@ export const RedeemAirtimePage = () => {
                     </div>
 
                     {/* RIGHT: HISTORY PANEL */}
-                    <div className="lg:col-span-5 bg-[#0F1520] p-6 md:p-8 space-y-5">
-                        <div className="bg-[#111827] border border-[#1E2533] rounded-2xl overflow-hidden flex flex-col h-full min-h-[500px]">
-                            <div className="px-5 py-3 border-b border-[#1E2533] bg-[#0B0E14]/50">
-                                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                    <div className={`lg:col-span-5 p-6 md:p-8 space-y-5 ${isLight ? 'bg-white' : 'bg-[#0F1520]'}`}>
+                        <div className={`rounded-2xl overflow-hidden flex flex-col h-full min-h-[500px] border ${isLight ? 'bg-slate-50/60 border-slate-200' : 'bg-[#111827] border-[#1E2533]'}`}>
+                            <div className={`px-5 py-3 border-b ${isLight ? 'border-slate-200 bg-slate-100/60' : 'border-[#1E2533] bg-[#0B0E14]/50'}`}>
+                                <h3 className={`text-xs font-bold uppercase tracking-widest flex items-center gap-2 ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>
                                     <ArrowUpRight className="w-3.5 h-3.5" /> Recent Redemptions
                                 </h3>
                             </div>
@@ -338,48 +344,48 @@ export const RedeemAirtimePage = () => {
                                     // real telco; otherwise fall back to a neutral label.
                                     const displayNetwork = TELCO_NETWORKS.includes(item.network) ? item.network : 'Airtime top-up';
                                     return (
-                                        <div key={item.id} className="flex items-center justify-between p-3.5 bg-[#0B0E14] border border-[#1E2533] rounded-xl hover:border-gray-600/50 transition-colors group">
+                                        <div key={item.id} className={`flex items-center justify-between p-3.5 border rounded-xl transition-colors group ${isLight ? 'bg-white border-slate-200 hover:border-slate-300' : 'bg-[#0B0E14] border-[#1E2533] hover:border-gray-600/50'}`}>
                                             <div className="flex items-center gap-3">
-                                                <div className={`w-9 h-9 rounded-lg flex items-center justify-center border shrink-0 transition-colors ${isFailed ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-blue-500/10 border-blue-500/20 text-blue-400'}`}>
+                                                <div className={`w-9 h-9 rounded-lg flex items-center justify-center border shrink-0 transition-colors ${isFailed ? (isLight ? 'bg-red-50 border-red-200 text-red-500' : 'bg-red-500/10 border-red-500/20 text-red-400') : (isLight ? 'bg-blue-50 border-blue-200 text-blue-500' : 'bg-blue-500/10 border-blue-500/20 text-blue-400')}`}>
                                                     {isFailed ? <XCircle className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
                                                 </div>
                                                 <div>
-                                                    <p className={`text-sm font-bold font-mono ${isFailed ? 'text-gray-500 line-through' : 'text-gray-200'}`}>
+                                                    <p className={`text-sm font-bold font-mono ${isFailed ? (isLight ? 'text-slate-400 line-through' : 'text-gray-500 line-through') : (isLight ? 'text-slate-800' : 'text-gray-200')}`}>
                                                         {(parseFloat(item.amount) || 0).toFixed(2)} KES
                                                     </p>
-                                                    <p className="text-[11px] text-gray-500 mt-0.5">{displayNetwork} · {item.time}</p>
+                                                    <p className={`text-[11px] mt-0.5 ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>{displayNetwork} · {item.time}</p>
                                                 </div>
                                             </div>
-                                            <span className={`text-[9px] font-bold px-2 py-1 rounded-md border uppercase tracking-wider ${isFailed ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'}`}>
+                                            <span className={`text-[9px] font-bold px-2 py-1 rounded-md border uppercase tracking-wider ${isFailed ? (isLight ? 'bg-red-50 text-red-500 border-red-200' : 'bg-red-500/10 text-red-400 border-red-500/20') : (isLight ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20')}`}>
                                                 {item.status || 'Completed'}
                                             </span>
                                         </div>
                                     );
                                 }) : (
-                                    <div className="flex flex-col items-center justify-center h-full text-center py-16 border-2 border-dashed border-[#1E2533] rounded-2xl">
-                                        <Phone className="w-8 h-8 text-gray-600 mb-3" />
-                                        <p className="text-sm text-gray-500 font-medium">No recent activity.</p>
-                                        <p className="text-xs text-gray-600 mt-1">Completed redemptions will appear here.</p>
+                                    <div className={`flex flex-col items-center justify-center h-full text-center py-16 border-2 border-dashed rounded-2xl ${isLight ? 'border-slate-300' : 'border-[#1E2533]'}`}>
+                                        <Phone className={`w-8 h-8 mb-3 ${isLight ? 'text-slate-400' : 'text-gray-600'}`} />
+                                        <p className={`text-sm font-medium ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>No recent activity.</p>
+                                        <p className={`text-xs mt-1 ${isLight ? 'text-slate-400' : 'text-gray-600'}`}>Completed redemptions will appear here.</p>
                                     </div>
                                 )}
                             </div>
 
                             {history.length > HISTORY_PAGE_SIZE && (
-                                <div className="px-5 py-3 border-t border-[#1E2533] bg-[#0B0E14]/50 flex items-center justify-between">
+                                <div className={`px-5 py-3 border-t flex items-center justify-between ${isLight ? 'border-slate-200 bg-slate-100/60' : 'border-[#1E2533] bg-[#0B0E14]/50'}`}>
                                     <button
                                         onClick={() => setHistoryPage(p => Math.max(0, p - 1))}
                                         disabled={historyPage === 0}
-                                        className="text-xs font-bold text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5"
+                                        className={`text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed transition-colors px-3 py-1.5 rounded-lg ${isLight ? 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/60' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
                                     >
                                         Previous
                                     </button>
-                                    <span className="text-[11px] text-gray-500 font-mono">
+                                    <span className={`text-[11px] font-mono ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>
                                         Page {historyPage + 1} of {Math.max(1, Math.ceil(history.length / HISTORY_PAGE_SIZE))}
                                     </span>
                                     <button
                                         onClick={() => setHistoryPage(p => Math.min(Math.ceil(history.length / HISTORY_PAGE_SIZE) - 1, p + 1))}
                                         disabled={historyPage >= Math.ceil(history.length / HISTORY_PAGE_SIZE) - 1}
-                                        className="text-xs font-bold text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5"
+                                        className={`text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed transition-colors px-3 py-1.5 rounded-lg ${isLight ? 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/60' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
                                     >
                                         Next
                                     </button>
@@ -389,11 +395,11 @@ export const RedeemAirtimePage = () => {
 
                         {/* Trust Footer */}
                         <div className="flex items-center justify-center gap-4 pt-2">
-                            <div className="flex items-center gap-1.5 text-[10px] text-gray-600"><Shield className="w-3 h-3" /> 256-bit SSL</div>
-                            <div className="w-1 h-1 rounded-full bg-gray-700" />
-                            <div className="flex items-center gap-1.5 text-[10px] text-gray-600"><Fingerprint className="w-3 h-3" /> 2FA Protected</div>
-                            <div className="w-1 h-1 rounded-full bg-gray-700" />
-                            <div className="flex items-center gap-1.5 text-[10px] text-gray-600"><BadgeCheck className="w-3 h-3" /> Telco Verified</div>
+                            <div className={`flex items-center gap-1.5 text-[10px] ${isLight ? 'text-slate-400' : 'text-gray-600'}`}><Shield className="w-3 h-3" /> 256-bit SSL</div>
+                            <div className={`w-1 h-1 rounded-full ${isLight ? 'bg-slate-300' : 'bg-gray-700'}`} />
+                            <div className={`flex items-center gap-1.5 text-[10px] ${isLight ? 'text-slate-400' : 'text-gray-600'}`}><Fingerprint className="w-3 h-3" /> 2FA Protected</div>
+                            <div className={`w-1 h-1 rounded-full ${isLight ? 'bg-slate-300' : 'bg-gray-700'}`} />
+                            <div className={`flex items-center gap-1.5 text-[10px] ${isLight ? 'text-slate-400' : 'text-gray-600'}`}><BadgeCheck className="w-3 h-3" /> Telco Verified</div>
                         </div>
                     </div>
                 </div>

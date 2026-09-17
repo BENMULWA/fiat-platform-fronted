@@ -24,7 +24,7 @@ interface AuthContextType {
   requestLoginOtp: (email: string, password: string) => Promise<{ otpSessionId: string; expiresInMinutes: number }>;
   verifyLoginOtp: (otpSessionId: string, otpCode: string) => Promise<void>;
   resendLoginOtp: (otpSessionId: string) => Promise<{ otpSessionId: string; expiresInMinutes: number; cooldownSeconds: number }>;
-  requestSignupOtp: (displayName: string, email: string, password: string) => Promise<{ otpSessionId: string; expiresInMinutes: number }>;
+  requestSignupOtp: (displayName: string, email: string, password: string, accountType?: 'retail' | 'institutional', businessName?: string) => Promise<{ otpSessionId: string; expiresInMinutes: number }>;
   verifySignupOtp: (otpSessionId: string, otpCode: string) => Promise<void>;
   resendSignupOtp: (otpSessionId: string) => Promise<{ otpSessionId: string; expiresInMinutes: number; cooldownSeconds: number }>;
   logout: () => void;
@@ -34,6 +34,13 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// Keep in sync with routes/auth.py::is_admin_role's denylist. End-user roles
+// (never admin-capable) are enumerated here; anything else is treated as
+// admin. "institutional" must be listed -- otherwise a merchant signup gets
+// routed to /admin/dashboard instead of the OTC merchant portal.
+const END_USER_ROLES = ['retail', 'trader', 'institutional', 'merchant'];
+const isEndUserRole = (role?: string) => END_USER_ROLES.includes(role || '');
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -63,11 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(mappedUser);
     localStorage.setItem('meshex_user', JSON.stringify(mappedUser));
 
-    if (mappedUser.role !== 'retail' && mappedUser.role !== 'trader') {
-      setViewAsAdmin(true);
-    } else {
-      setViewAsAdmin(false);
-    }
+    setViewAsAdmin(!isEndUserRole(mappedUser.role));
   };
 
   const checkAuth = async () => {
@@ -85,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const parsed = JSON.parse(cachedUser);
           setUser(parsed);
           // Only allow admins to be in admin view
-          if (parsed.role !== 'retail' && parsed.role !== 'trader') {
+          if (!isEndUserRole(parsed.role)) {
             setViewAsAdmin(true);
           }
         } catch (e) { /* ignore */ }
@@ -112,11 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('meshex_user', JSON.stringify(mappedUser));
 
         // Enforce role security: Only admins can view admin pages
-        if (mappedUser.role !== 'retail' && mappedUser.role !== 'trader') {
-          setViewAsAdmin(true);
-        } else {
-          setViewAsAdmin(false);
-        }
+        setViewAsAdmin(!isEndUserRole(mappedUser.role));
       }
     } catch (err) {
       // If unauthorized, clear cache
@@ -151,9 +150,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const requestSignupOtp = async (displayName: string, email: string, password: string) => {
+  const requestSignupOtp = async (displayName: string, email: string, password: string, accountType: 'retail' | 'institutional' = 'retail', businessName?: string) => {
     try {
-      const res = await api.post('/api/auth/signup/request-otp', { displayName, email, password });
+      const res = await api.post('/api/auth/signup/request-otp', {
+        displayName, email, password,
+        account_type: accountType,
+        business_name: businessName,
+      });
       return {
         otpSessionId: res.data.otp_session_id,
         expiresInMinutes: res.data.expires_in_minutes,
@@ -250,8 +253,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const toggleViewAsAdmin = () => {
-    // Ultimate security check: Prevent retail users from switching to admin view
-    if (user && (user.role === 'retail' || user.role === 'trader')) {
+    // Ultimate security check: Prevent end-user roles from switching to admin view
+    if (user && isEndUserRole(user.role)) {
       setViewAsAdmin(false);
       return;
     }

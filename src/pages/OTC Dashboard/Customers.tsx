@@ -12,13 +12,16 @@ export default function Customers() {
     const [kycFilter, setKycFilter] = useState('All');
     const [statusFilter, setStatusFilter] = useState('All');
     const [isExporting, setIsExporting] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     const fetchCustomers = async () => {
+        setLoadError(null);
         try {
             const res = await getAdminCustomers();
             setCustomers(res.data.customers || []);
-        } catch (err) {
+        } catch (err: any) {
             console.error("Failed to load customers", err);
+            setLoadError(err?.response?.data?.detail || err?.message || 'Failed to load customers.');
         } finally {
             setIsLoading(false);
         }
@@ -483,7 +486,10 @@ export default function Customers() {
                                     </td>
                                 </tr>
                             ))}
-                            {filtered.length === 0 && !isLoading && (
+                            {filtered.length === 0 && !isLoading && loadError && (
+                                <tr><td colSpan={8} className="py-16 text-center text-red-400">Could not load customers: {loadError}</td></tr>
+                            )}
+                            {filtered.length === 0 && !isLoading && !loadError && (
                                 <tr><td colSpan={8} className="py-16 text-center text-gray-500">No customers found matching your filters.</td></tr>
                             )}
                         </tbody>

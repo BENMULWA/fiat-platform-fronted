@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from 'react';
-import { ArrowRight, Check, CheckCircle2, Circle, X, Zap } from 'lucide-react';
+import { ArrowRight, Check, CheckCircle2, Circle, RefreshCw, X, Zap } from 'lucide-react';
 import { acceptDealerRfq, api, analyzeDealerRfq, createDealerRfq, executeDealerRfq, getDealerClients, getDealerSettlement, quoteDealerRfq } from '../../api/client';
 import { useSearchParams } from 'react-router-dom';
 
@@ -87,7 +87,21 @@ export default function DealerWorkspaceWizard({ initialOpen = true, rfqId }: { i
 
   const acceptQuote = async () => {
     if (!rfq) return;
-    try { const response = await acceptDealerRfq(rfq.id); setRfq(response.data.rfq); setStage(3); } catch (err) { handleError(err); }
+    try {
+      const response = await acceptDealerRfq(rfq.id);
+      if (response.data?.status === 'pending_compliance_review') {
+        // Held by ZIGRAM -- not accepted. Advancing to Execution here would
+        // show a false "accepted, ready to execute" state for a trade that
+        // actually needs a compliance officer to release it first (see
+        // KYC/AML/Risk -> ZIGRAM Holds).
+        setRfq({ ...rfq, ...response.data.rfq, status: 'pending_compliance_review' });
+        setError('This RFQ is held for compliance review. Release it from KYC/AML/Risk -> ZIGRAM Holds, then re-accept.');
+        return;
+      }
+      setError('');
+      setRfq(response.data.rfq);
+      setStage(3);
+    } catch (err) { handleError(err); }
   };
 
   const execute = async () => {
@@ -95,13 +109,32 @@ export default function DealerWorkspaceWizard({ initialOpen = true, rfqId }: { i
     try { const response = await executeDealerRfq(rfq.id); setSettlement(response.data.settlement); setStage(4); } catch (err) { handleError(err); }
   };
 
+  const [isReverifying, setIsReverifying] = useState(false);
+
+  useEffect(() => {
+    // Execution claims "nothing is assumed from before" -- make that true by
+    // actually re-running the real AnalysisEngine checks when this stage
+    // opens, instead of the static "everything verified" checklist this used
+    // to render regardless of backend state.
+    if (stage !== 3 || !rfq?.id) return;
+    setIsReverifying(true);
+    analyzeDealerRfq(rfq.id)
+      .then(response => { setAnalysis(response.data.analysis); setRfq((prev: RfqRecord | null) => prev ? { ...prev, ...response.data.rfq } : prev); })
+      .catch(err => handleError(err))
+      .finally(() => setIsReverifying(false));
+  }, [stage, rfq?.id]);
+
   const refreshSettlement = async () => {
     if (!settlement?.id) return;
     try { const response = await getDealerSettlement(settlement.id); setSettlement(response.data.settlement); } catch (err) { handleError(err); }
   };
 
   useEffect(() => {
-    if (stage !== 4 || !settlement?.id || ['completed', 'failed'].includes(settlement.status)) return;
+    // Terminal statuses from the backend's settlement action state machine
+    // (routes/otc_admin.py::_SETTLEMENT_TRANSITIONS) -- "completed" was the
+    // old fake-simulation status and is never emitted anymore, so checking
+    // only for it here polled forever.
+    if (stage !== 4 || !settlement?.id || ['reconciled', 'failed', 'reservation_released'].includes(settlement.status)) return;
     const timer = window.setInterval(refreshSettlement, 5000);
     return () => window.clearInterval(timer);
   }, [stage, settlement?.id, settlement?.status]);
@@ -152,7 +185,7 @@ export default function DealerWorkspaceWizard({ initialOpen = true, rfqId }: { i
             {stage === 0 && <NewRfq form={form} setForm={setForm} clients={clients} onSubmit={create} />}
             {stage === 1 && rfq && <Analysis rfq={rfq} analysis={analysis} onRefresh={refreshAnalysis} onNext={createQuote} />}
             {stage === 2 && rfq && <Quote rfq={rfq} spread={spread} setSpread={setSpread} onBack={() => setStage(1)} onSend={sendQuote} onNext={acceptQuote} />}
-            {stage === 3 && rfq && <Execution onExecute={execute} />}
+            {stage === 3 && rfq && <Execution analysis={analysis} isReverifying={isReverifying} onExecute={execute} />}
             {stage === 4 && rfq && <Settlement settlement={settlement} onRefresh={refreshSettlement} onNext={() => setStage(5)} />}
             {stage === 5 && rfq && <Completed rfq={rfq} settlement={settlement} onNew={() => { setStage(0); setForm(EMPTY_FORM); setRfq(null); setAnalysis(null); setSettlement(null); }} onClose={() => setOpen(false)} />}
           </div>
@@ -425,7 +458,7 @@ function Quote({ rfq, spread, setSpread, onBack, onSend, onNext }: { rfq: RfqRec
 
       <div className="flex justify-end gap-4 mt-2 items-center">
         <button className="text-gray-400 font-bold text-sm hover:text-white px-4" onClick={onBack}>Cancel quote</button>
-        {!isSent ? <button className={`${btnPrimary} bg-blue-600 border-blue-600 hover:bg-blue-500`} onClick={onSend} disabled={!rfq.quote}><ArrowRight size={16} /> Send Quote</button> : <button className={`${btnPrimary} bg-emerald-600 border-emerald-600 hover:bg-emerald-500`} onClick={onNext} disabled={quoteExpired}><Check size={16} /> {quoteExpired ? 'Quote expired' : 'Simulate: Customer Accepts'}</button>}
+        {!isSent ? <button className={`${btnPrimary} bg-blue-600 border-blue-600 hover:bg-blue-500`} onClick={onSend} disabled={!rfq.quote}><ArrowRight size={16} /> Send Quote</button> : <button className={`${btnPrimary} bg-emerald-600 border-emerald-600 hover:bg-emerald-500`} onClick={onNext} disabled={quoteExpired}><Check size={16} /> {quoteExpired ? 'Quote expired' : 'Accept (customer agreed)'}</button>}
       </div>
     </div>
   );
@@ -434,35 +467,62 @@ function Quote({ rfq, spread, setSpread, onBack, onSend, onNext }: { rfq: RfqRec
 // --------------------------------------------------------------------------------------
 // STAGE 3: EXECUTION
 // --------------------------------------------------------------------------------------
-function Execution({ onExecute }: any) {
-  const checks = [
-    'Quote still valid',
-    'Liquidity still available',
-    'Customer limit still available',
-    'Compliance still clear',
-    'Wallet still valid',
-    'Treasury limit still okay'
+function Execution({ analysis, isReverifying, onExecute }: { analysis: any; isReverifying: boolean; onExecute: () => void }) {
+  // Real re-check, not a static "everything verified" list -- see the
+  // useEffect in the parent that calls analyzeDealerRfq(rfq.id) the instant
+  // this stage opens. Same check groups the Analysis stage (stage 1) shows,
+  // because it's the same backend AnalysisEngine, run again.
+  const groups: [string, any[]][] = [
+    ['Customer', analysis?.customer || []],
+    ['Treasury', analysis?.treasury || []],
+    ['Compliance', analysis?.compliance || []],
   ];
+  const allChecks = groups.flatMap(([, checks]) => checks);
+  const allPassed = Boolean(analysis?.passed) && allChecks.length > 0;
 
   return (
     <div className="max-w-4xl mx-auto flex flex-col gap-6 mt-4">
       <div>
         <h2 className="text-[22px] font-bold text-white mb-1">Execution</h2>
-        <p className="text-gray-400 text-sm">Every check is re-verified at the moment of execution — nothing is assumed from 15 seconds ago.</p>
+        <p className="text-gray-400 text-sm">Every check is re-verified at the moment of execution — nothing is assumed from before.</p>
       </div>
 
-      <div className="border border-[#232D39] bg-[#121822] rounded-xl overflow-hidden shadow-sm">
-        {checks.map((item, i, arr) => (
-          <div key={item} className={`flex items-center gap-3 px-5 py-4 text-[13px] ${i !== arr.length - 1 ? 'border-b border-[#232D39]' : ''}`}>
-            <CheckCircle2 size={18} className="text-emerald-500 flex-shrink-0" />
-            <span className="text-gray-300 font-medium">{item}</span>
-            <b className="ml-auto text-emerald-500 text-[10px] font-mono tracking-wide uppercase">verified</b>
-          </div>
-        ))}
-      </div>
+      {isReverifying ? (
+        <div className="border border-[#232D39] bg-[#121822] rounded-xl p-8 flex items-center justify-center gap-3 text-gray-400 text-sm">
+          <RefreshCw size={16} className="animate-spin" /> Re-running customer, treasury and compliance checks...
+        </div>
+      ) : (
+        <div className="border border-[#232D39] bg-[#121822] rounded-xl overflow-hidden shadow-sm">
+          {allChecks.length === 0 ? (
+            <div className="px-5 py-8 text-center text-sm text-gray-500">Unable to load current checks. Try again.</div>
+          ) : allChecks.map((check, i, arr) => (
+            <div key={check.key || check.label} className={`flex items-center gap-3 px-5 py-4 text-[13px] ${i !== arr.length - 1 ? 'border-b border-[#232D39]' : ''}`}>
+              {check.passed ? (
+                <CheckCircle2 size={18} className="text-emerald-500 flex-shrink-0" />
+              ) : (
+                <Circle size={18} className="text-red-500 flex-shrink-0" />
+              )}
+              <span className="text-gray-300 font-medium">{check.label}</span>
+              <b className={`ml-auto text-[10px] font-mono tracking-wide uppercase ${check.passed ? 'text-emerald-500' : 'text-red-400'}`}>
+                {check.passed ? 'verified' : `failed — ${check.value ?? ''}`}
+              </b>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!isReverifying && !allPassed && allChecks.length > 0 && (
+        <p className="text-xs text-red-400">One or more checks failed on re-verification. Resolve the issue and refresh before executing.</p>
+      )}
 
       <div className="flex justify-end mt-4">
-        <button className={`${btnPrimary} bg-emerald-600 border-emerald-600 hover:bg-emerald-500 py-3`} onClick={onExecute}><Check size={16} /> Execute Trade</button>
+        <button
+          className={`${btnPrimary} bg-emerald-600 border-emerald-600 hover:bg-emerald-500 py-3`}
+          onClick={onExecute}
+          disabled={isReverifying || !allPassed}
+        >
+          <Check size={16} /> Execute Trade
+        </button>
       </div>
     </div>
   );
@@ -477,14 +537,20 @@ function Settlement({ settlement, onRefresh, onNext }: { settlement: any; onRefr
   const cryptoStatus = legs.crypto?.status || 'pending';
   const fiatComplete = ['confirmed', 'completed'].includes(fiatStatus.toLowerCase());
   const cryptoComplete = ['confirmed', 'completed'].includes(cryptoStatus.toLowerCase());
-  const isComplete = settlement?.status === 'completed' || (fiatComplete && cryptoComplete);
-  const isFailed = settlement?.status === 'failed';
+  // "reconciled" is the sole authoritative complete state (routes/otc_admin.py
+  // ::_SETTLEMENT_TRANSITIONS) -- it's a deliberate treasury sign-off action
+  // (mark_reconciled), not something inferred from both legs looking
+  // "confirmed". Both legs confirmed just means the transfer/receipt steps
+  // are done; reconciliation is treasury's explicit final review.
+  const status = String(settlement?.status || 'pending').toLowerCase();
+  const isComplete = status === 'reconciled';
+  const isTerminatedEarly = ['failed', 'reservation_released'].includes(status);
   const steps = [
     ['Trade executed', true],
     ['Fiat collection', fiatComplete],
     ['Digital asset transfer', cryptoComplete],
     ['Blockchain confirmation', cryptoComplete],
-    ['Settlement complete', isComplete],
+    ['Settlement reconciled', isComplete],
   ] as [string, boolean][];
 
   return (
@@ -544,10 +610,15 @@ function Settlement({ settlement, onRefresh, onNext }: { settlement: any; onRefr
         })}
       </div>
 
+      <p className="text-center text-[11px] text-gray-500">
+        Treasury reviews, confirms funds, approves and submits the transfer, then reconciles this
+        settlement in the <a href="/admin/settlements" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 underline">Treasury Settlement Queue</a> -- this screen just tracks its progress.
+      </p>
+
       <div className="flex justify-end gap-3 mt-2">
         <button className="text-gray-400 font-bold text-sm hover:text-white px-4" onClick={onRefresh}>Refresh status</button>
         <button className={`${btnPrimary} ${isComplete ? 'bg-blue-600 hover:bg-blue-500' : 'bg-[#1C2431] border-[#1C2431] text-gray-400'}`} onClick={onNext} disabled={!isComplete}>
-          {isComplete ? <><Check size={16}/> View Completed Trade</> : isFailed ? 'Settlement failed' : 'Awaiting provider confirmations...'}
+          {isComplete ? <><Check size={16}/> View Completed Trade</> : isTerminatedEarly ? `Settlement ${status.replace('_', ' ')}` : 'Awaiting treasury confirmation...'}
         </button>
       </div>
     </div>
@@ -569,7 +640,7 @@ function Completed({ rfq, settlement, onNew, onClose }: { rfq: RfqRecord; settle
   const totalCosts = totalCostsUsd * (blendedCost || customerRate || 1);
   const netPnl = grossMargin - totalCosts;
   const formatAmount = (value: number, decimals = 4) => Number.isFinite(value) ? value.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) : 'Unavailable';
-  const settlementComplete = String(settlement?.status || '').toLowerCase() === 'completed';
+  const settlementComplete = String(settlement?.status || '').toLowerCase() === 'reconciled';
   return (
     <div className="max-w-4xl mx-auto flex flex-col gap-6 mt-4 pb-12">
       <div>

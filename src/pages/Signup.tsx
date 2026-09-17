@@ -4,6 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
 import logo from '../pages/assets/jasiri-icon.png';
+import { getFriendlyErrorMessage } from '../utils/errorMessages';
 
 export default function Signup() {
     const navigate = useNavigate();
@@ -77,7 +78,7 @@ export default function Signup() {
                 navigate('/kyc');
             }
         } catch (err: any) {
-            setError(err.response?.data?.detail || err.message || 'Failed to create account.');
+            setError(getFriendlyErrorMessage(err, { fallback: 'Failed to create account.' }));
         } finally {
             setLoading(false);
         }
@@ -93,7 +94,7 @@ export default function Signup() {
             setResendCooldown(result.cooldownSeconds || 30);
             setSuccessMessage(`A new code was sent to ${email}. It expires in ${result.expiresInMinutes} minutes.`);
         } catch (err: any) {
-            setError(err.response?.data?.detail || err.message || 'Failed to resend OTP.');
+            setError(getFriendlyErrorMessage(err, { fallback: 'Failed to resend OTP.' }));
         } finally {
             setLoading(false);
         }

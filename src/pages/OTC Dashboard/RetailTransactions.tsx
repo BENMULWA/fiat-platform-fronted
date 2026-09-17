@@ -30,6 +30,7 @@ export const RetailTransactionsPage = () => {
     const [refundReason, setRefundReason] = useState('');
     const [refundCaseId, setRefundCaseId] = useState('');
     const [refundEvidence, setRefundEvidence] = useState('');
+    const [refundNotReceivedConfirmed, setRefundNotReceivedConfirmed] = useState(false);
     const [refundSubmitting, setRefundSubmitting] = useState(false);
     const [showCallbackEvents, setShowCallbackEvents] = useState(false);
     const [callbackEvents, setCallbackEvents] = useState<any[]>([]);
@@ -315,12 +316,17 @@ export const RetailTransactionsPage = () => {
         setRefundReason('');
         setRefundCaseId('');
         setRefundEvidence(getProviderReference(tx) || getExternalId(tx) || '');
+        setRefundNotReceivedConfirmed(false);
     };
 
     const submitRefund = async () => {
         if (!refundTransaction) return;
         if (!refundEvidence.trim()) {
             addToast('Evidence required', 'Enter the provider reference, receipt, or support ticket evidence first.');
+            return;
+        }
+        if (!refundNotReceivedConfirmed) {
+            addToast('Confirmation required', 'Confirm the customer did NOT receive this payout before reversing it.');
             return;
         }
         const reference = refundTransaction.providerReference || getExternalId(refundTransaction) || refundTransaction.id;
@@ -608,7 +614,7 @@ export const RetailTransactionsPage = () => {
                                             ) : tx.status.toLowerCase() === 'failed' ? (
                                                 <button onClick={() => openReview(tx)} className="bg-[#1e2d3d] hover:bg-[#2a3a50] text-gray-300 px-4 py-1.5 rounded-lg text-xs font-bold transition-colors">Review</button>
                                             ) : (String(tx.direction).toLowerCase() === 'off' || String(tx.direction).toLowerCase() === 'withdrawal') && ['completed', 'credited'].includes(tx.status.toLowerCase()) ? (
-                                                <button onClick={() => openRefund(tx)} className="bg-[#1e2d3d] hover:bg-[#2a3a50] text-amber-300 px-4 py-1.5 rounded-lg text-xs font-bold transition-colors opacity-0 group-hover:opacity-100">Refund</button>
+                                                <button onClick={() => openRefund(tx)} title="Only if the payout did not reach the customer" className="bg-[#1e2d3d] hover:bg-[#2a3a50] text-amber-300 px-4 py-1.5 rounded-lg text-xs font-bold transition-colors opacity-0 group-hover:opacity-100">Reverse</button>
                                             ) : (
                                                 <span className="text-xs text-gray-600 font-medium">—</span>
                                             )}
@@ -690,21 +696,27 @@ export const RetailTransactionsPage = () => {
                     <div className="w-full max-w-lg bg-[#0b0f19] border border-[#1e2d3d] rounded-2xl shadow-2xl p-6" onClick={event => event.stopPropagation()}>
                         <div className="flex items-start justify-between gap-4 mb-5">
                             <div>
-                                <h2 className="text-lg font-bold text-white">Refund withdrawal</h2>
+                                <h2 className="text-lg font-bold text-white">Reverse withdrawal — payout not received</h2>
                                 <p className="text-xs text-gray-500 mt-1">TXN-{(refundTransaction.id || '').slice(-6).toUpperCase()} · {refundTransaction.customerName} · {Number(refundTransaction.fromAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} {refundTransaction.fromAsset}</p>
                             </div>
                             <button onClick={() => setRefundTransaction(null)} className="text-gray-500 hover:text-white" aria-label="Close refund"><X className="w-5 h-5" /></button>
                         </div>
-                        <p className="text-xs text-amber-400/80 mb-4">This puts the {refundTransaction.fromAsset} back into the customer's wallet and marks the withdrawal reversed. Only do this when the payout did not actually reach the customer.</p>
+                        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 mb-4">
+                            <p className="text-sm text-red-300 leading-relaxed"><strong>Only use this if the customer's phone did NOT receive this payout.</strong> This is not a general "give money back" tool — it puts the {refundTransaction.fromAsset} back into the wallet because we believe it never left the platform. If the customer already has the cash on their phone, using this will double-credit them.</p>
+                        </div>
                         <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Evidence (receipt, provider trace, or ticket note)</label>
                         <input value={refundEvidence} onChange={event => setRefundEvidence(event.target.value)} placeholder="Provider reference / receipt / note" className="w-full bg-[#06090f] border border-[#1e2d3d] rounded-xl px-4 py-3 text-sm text-white font-mono outline-none focus:border-blue-500" />
                         <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mt-4 mb-2">Reason</label>
-                        <input value={refundReason} onChange={event => setRefundReason(event.target.value)} placeholder="e.g. Customer requested refund before payout cleared" className="w-full bg-[#06090f] border border-[#1e2d3d] rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-blue-500" />
+                        <input value={refundReason} onChange={event => setRefundReason(event.target.value)} placeholder="e.g. Provider trace shows payout failed after we marked it completed" className="w-full bg-[#06090f] border border-[#1e2d3d] rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-blue-500" />
                         <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mt-4 mb-2">Support case ID (optional)</label>
                         <input value={refundCaseId} onChange={event => setRefundCaseId(event.target.value)} placeholder="e.g. ZD-4821" className="w-full bg-[#06090f] border border-[#1e2d3d] rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-blue-500" />
+                        <label className="flex items-start gap-3 mt-4 text-sm text-gray-300 cursor-pointer">
+                            <input type="checkbox" checked={refundNotReceivedConfirmed} onChange={event => setRefundNotReceivedConfirmed(event.target.checked)} className="mt-0.5 accent-amber-500" />
+                            <span>I confirmed (via provider trace or the customer) that this payout did <strong>not</strong> reach the customer's phone, and reversing it will not double-credit them.</span>
+                        </label>
                         <div className="flex justify-end gap-3 mt-6">
                             <button onClick={() => setRefundTransaction(null)} disabled={refundSubmitting} className="px-4 py-2 rounded-lg text-sm font-bold text-gray-300 bg-[#1e2d3d] hover:bg-[#2a3a50] disabled:opacity-50">Cancel</button>
-                            <button onClick={submitRefund} disabled={refundSubmitting} className="px-4 py-2 rounded-lg text-sm font-bold text-black bg-amber-500 hover:bg-amber-400 disabled:opacity-50">{refundSubmitting ? 'Refunding...' : 'Refund to wallet'}</button>
+                            <button onClick={submitRefund} disabled={refundSubmitting || !refundNotReceivedConfirmed} className="px-4 py-2 rounded-lg text-sm font-bold text-black bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed">{refundSubmitting ? 'Reversing...' : 'Reverse and credit wallet'}</button>
                         </div>
                     </div>
                 </div>

@@ -1,6 +1,6 @@
 // @ts-nocheck
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Activity, ArrowLeftRight, Settings,
   TrendingUp, AlertTriangle, RefreshCw, Power,
@@ -30,13 +30,25 @@ const INFRASTRUCTURE_NODES = [
   { id: 'N7', name: 'USDA Stablecoin Mint', desc: 'Cardano Native Token', category: 'Web3', icon: Coins, color: 'text-indigo-400', bg: 'bg-indigo-400/10 border-indigo-400/20', dbKey: 'N7_USDA', currency: 'USDA' },
   { id: 'N8', name: 'Impalacoin Treasury', desc: 'Collateral & Reserve Mgr', category: 'Web3', icon: Layers, color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20', dbKey: 'N8_IMP', currency: 'IMP' },
   { id: 'N9', name: 'Multi-Chain Router', desc: 'Stellar / Midnight Network', category: 'Web3', icon: Network, color: 'text-cyan-400', bg: 'bg-cyan-400/10 border-cyan-400/20', dbKey: 'N9_XLM', currency: 'XLM' },
+  { id: 'Celo', name: 'Celo Exit', desc: 'DEX Settlement Layer', category: 'Web3', icon: Link2, color: 'text-yellow-400', bg: 'bg-yellow-400/10 border-yellow-400/20', dbKey: 'CELO_USDC', currency: 'USDC' },
   { id: 'N10', name: 'PSP & Virtual Card Engine', desc: 'Global Card Settlement', category: 'Payments', icon: CreditCard, color: 'text-orange-400', bg: 'bg-orange-400/10 border-orange-400/20', dbKey: 'N10_USD', currency: 'USD' },
+  // 11th node — placeholder slot only. No provider, no credentials, no
+  // real balance source anywhere in the backend yet (see /dashboard's
+  // "N11_GOLD": 0.0, which nothing ever overwrites). Listed here so it's
+  // visible (and honestly shown OFFLINE / $0.00) rather than silently
+  // absent, the same fix already applied to N10.
+  { id: 'N11', name: 'Commodities Vault', desc: 'Gold-Backed Reserve (not yet integrated)', category: 'Commodities', icon: Layers, color: 'text-amber-400', bg: 'bg-amber-400/10 border-amber-400/20', dbKey: 'N11_GOLD', currency: 'GOLD' },
 ];
 
 const NODE_CATEGORIES = [
   { id: 'Mobile Money', label: 'Mobile Money Liquidity', icon: Smartphone, color: 'text-emerald-400' },
   { id: 'Airtime', label: 'Airtime Liquidity', icon: Radio, color: 'text-blue-400' },
   { id: 'Web3', label: 'Web3 Blockchain', icon: Coins, color: 'text-indigo-400' },
+  // N10 (PSP & Virtual Card Engine) has always had category: 'Payments' —
+  // this entry was simply missing, so N10 never rendered in this section
+  // at all, on any data.
+  { id: 'Payments', label: 'Payments & Card Settlement', icon: CreditCard, color: 'text-orange-400' },
+  { id: 'Commodities', label: 'Commodities', icon: Layers, color: 'text-amber-400' },
 ];
 
 export default function MarketMakerPage() {
@@ -49,10 +61,30 @@ export default function MarketMakerPage() {
   // DYNAMIC BACKEND STATE
   const [opportunities, setOpportunities] = useState<any>(null);
   const [spreadConfig, setSpreadConfig] = useState({ active: true, autoPeg: true, bid: 128.00, ask: 132.00, reference: 130.50 });
+  // Live KES/IMC rate read straight from Comet Engine's IMM (not admin-typed)
+  // — separate from spreadConfig above, which stays the existing USDA/KES
+  // admin-set peg. `error` carries Comet's own reason (e.g. "no rate set
+  // for this pair" or a stale-rate refusal) so the UI can show it honestly
+  // instead of silently falling back to a stale number.
+  const [cometQuote, setCometQuote] = useState<{ rate: number | null; rateAge: string | null; error: string | null }>({
+    rate: null, rateAge: null, error: null,
+  });
   const [activeOpp, setActiveOpp] = useState<string>('');
 
   const [simCycle, setSimCycle] = useState<number>(4);
   const [isExecutingCorridor, setIsExecutingCorridor] = useState(false);
+  const [isSimulating, setIsSimulating] = useState(false);
+
+  // AWAITING_OPPORTUNITY can legitimately hold a live run for minutes to a
+  // day (see Brain_Engine/state_engine.py) — the status poll below keeps
+  // going for as long as that takes, so it must stop touching state the
+  // moment this page unmounts rather than assuming the run finishes while
+  // the component is still around.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
   const [deployAmountInput, setDeployAmountInput] = useState('100');
   const [deployLogs, setDeployLogs] = useState<string[]>([]);
   const [activeNode, setActiveNode] = useState<string | null>(null);
@@ -60,10 +92,24 @@ export default function MarketMakerPage() {
   const [dbVaults, setDbVaults] = useState<any>({});
   const [liveTape, setLiveTape] = useState<any[]>([]);
 
+  // IMM per-node / per-corridor switches — gates both the autonomous
+  // DecisionEngine (Brain_Engine/bot.py) and the manual Deploy button
+  // (routes/treasury.py execute-hft), source of truth in node_registry.py
+  const [immNodes, setImmNodes] = useState<any[]>([]);
+  const [immCorridors, setImmCorridors] = useState<any[]>([]);
+  const [immTogglingId, setImmTogglingId] = useState<string | null>(null);
+  // N9 (Celo Exit) is the one node whose output is already a real
+  // Comet-registered asset (USDC) — see market_maker.py's /n9-reference/comet.
+  // Read-only price check, not tied to the 5s poll loop since it's a
+  // secondary detail, not core dashboard state.
+  const [n9CometRef, setN9CometRef] = useState<{ realUsdcBalance: number; quotedOut: number; quoteTo: string } | null>(null);
+
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
     'Mobile Money': true,
     'Airtime': true,
     'Web3': true,
+    'Payments': true,
+    'Commodities': true,
   });
 
   const toggleCategory = (catId: string) => setExpandedCategories(prev => ({ ...prev, [catId]: !prev[catId] }));
@@ -75,11 +121,14 @@ export default function MarketMakerPage() {
 
   const fetchDashboardData = async () => {
     try {
-      const [dashRes, ledgerRes, oppRes, spreadRes] = await Promise.allSettled([
+      const [dashRes, ledgerRes, oppRes, spreadRes, immNodesRes, immCorridorsRes, cometRes] = await Promise.allSettled([
         getTreasuryDashboard(),
         getLiveLedgerFeed(25),
         api.get('/api/market-maker/opportunities'),
-        api.get('/api/market-maker/spread')
+        api.get('/api/market-maker/spread'),
+        api.get('/api/imm/nodes'),
+        api.get('/api/imm/corridors'),
+        api.get('/api/market-maker/spread/comet', { params: { base: 'KES', quote: 'IMC', amount_in: 1 } }),
       ]);
 
       if (dashRes.status === 'fulfilled') {
@@ -108,6 +157,24 @@ export default function MarketMakerPage() {
         if (s) setSpreadConfig(s);
       }
 
+      if (immNodesRes.status === 'fulfilled' && Array.isArray(immNodesRes.value.data)) {
+        setImmNodes(immNodesRes.value.data);
+      }
+
+      if (immCorridorsRes.status === 'fulfilled' && Array.isArray(immCorridorsRes.value.data)) {
+        setImmCorridors(immCorridorsRes.value.data);
+      }
+
+      if (cometRes.status === 'fulfilled') {
+        const c = cometRes.value.data;
+        setCometQuote({ rate: c?.rate ?? null, rateAge: c?.rateAge ?? null, error: null });
+      } else {
+        // 502 from our backend means Comet itself refused (no rate set, or
+        // stale past its 60-min window) — surface that reason, don't guess.
+        const detail = (cometRes.reason as any)?.response?.data?.detail;
+        setCometQuote({ rate: null, rateAge: null, error: detail || 'Comet IMM unreachable' });
+      }
+
     } catch (err) {
       console.error("Dashboard fetch error:", err);
     } finally {
@@ -121,6 +188,20 @@ export default function MarketMakerPage() {
     return () => clearInterval(intervalId);
   }, []);
 
+  useEffect(() => {
+    const fetchN9CometRef = async () => {
+      try {
+        const res = await api.get('/api/market-maker/n9-reference/comet', { params: { to_symbol: 'USDT' } });
+        setN9CometRef(res.data);
+      } catch {
+        setN9CometRef(null); // real balance read or Comet AMM call failed — omit the badge, don't show a stale/fake number
+      }
+    };
+    fetchN9CometRef();
+    const id = setInterval(fetchN9CometRef, 30000); // slower cadence: this hits a live Celo RPC call server-side, not just a cache read
+    return () => clearInterval(id);
+  }, []);
+
   const handleSpreadUpdate = async (updates: any) => {
     const newConfig = { ...spreadConfig, ...updates };
     setSpreadConfig(newConfig);
@@ -131,49 +212,171 @@ export default function MarketMakerPage() {
     }
   };
 
+  const handleToggleImmNode = async (nodeId: string, nextEnabled: boolean) => {
+    setImmTogglingId(`node:${nodeId}`);
+    setImmNodes(prev => prev.map(n => n.id === nodeId ? { ...n, enabled: nextEnabled } : n));
+    try {
+      await api.post(`/api/imm/nodes/${nodeId}/enabled`, { enabled: nextEnabled });
+      await fetchDashboardData(); // refresh corridor eligibility + opportunities, which may depend on this node
+    } catch (err) {
+      console.error('Failed to toggle IMM node', err);
+      setImmNodes(prev => prev.map(n => n.id === nodeId ? { ...n, enabled: !nextEnabled } : n)); // revert on failure
+    } finally {
+      setImmTogglingId(null);
+    }
+  };
+
+  const handleToggleImmCorridor = async (corridorId: string, nextEnabled: boolean) => {
+    setImmTogglingId(`corridor:${corridorId}`);
+    setImmCorridors(prev => prev.map(c => c.id === corridorId ? { ...c, corridorEnabled: nextEnabled } : c));
+    try {
+      await api.post(`/api/imm/corridors/${corridorId}/enabled`, { enabled: nextEnabled });
+      await fetchDashboardData();
+    } catch (err) {
+      console.error('Failed to toggle IMM corridor', err);
+      setImmCorridors(prev => prev.map(c => c.id === corridorId ? { ...c, corridorEnabled: !nextEnabled } : c)); // revert
+    } finally {
+      setImmTogglingId(null);
+    }
+  };
+
+  // Polls GET /corridor/{run_id}/status until COMPLETED or HALTED, logging
+  // each distinct (status, cycle) transition it observes — including
+  // AWAITING_OPPORTUNITY holds, which can legitimately last minutes to a
+  // day (Brain_Engine/state_engine.py) and are no longer something a
+  // single blocking request could wait out. Stops touching component
+  // state the moment the page unmounts; the run itself keeps going on the
+  // server regardless (see workers/corridor_worker.py's resume sweep).
+  const pollCorridorRun = async (runId: string, opp: any) => {
+    let lastKey = '';
+    while (isMountedRef.current) {
+      const res = await api.get(`/api/treasury/corridor/${runId}/status`);
+      const run = res.data;
+      const key = `${run.status}:${run.currentCycle}`;
+
+      if (key !== lastKey) {
+        lastKey = key;
+        if (run.status === 'PROCURE') setActiveNode(opp.nodes[0].id);
+        else if (run.status === 'MINT') setActiveNode('N7');
+        else if (run.status === 'AWAITING_OPPORTUNITY') setActiveNode(null);
+        else if (run.status === 'CELO_EXIT' || run.status === 'COMPLETED') setActiveNode(opp.nodes[opp.nodes.length - 1].id);
+
+        if (run.status === 'AWAITING_OPPORTUNITY') {
+          setDeployLogs(prev => [...prev, `[C${run.currentCycle}] ⏸ AWAITING OPPORTUNITY — holding $${run.currentUsdPrincipal.toFixed(4)} USDA, no open corridor yet...`]);
+        } else if (run.status === 'COMPLETED') {
+          setDeployLogs(prev => [...prev,
+            `✅ [SUCCESS] Live 5x Rollover Complete!`,
+            `💰 Profit: +$${run.profit.toFixed(4)} USDC (final: $${run.finalUsd.toFixed(4)})`,
+            `🔗 Check General Ledger for the Celo exit tx hash.`,
+          ]);
+        } else if (run.status === 'HALTED') {
+          setDeployLogs(prev => [...prev, `❌ [FAILED] Corridor halted at cycle ${run.currentCycle}. Reason: ${run.haltReason || 'unknown'}`]);
+        } else {
+          setDeployLogs(prev => [...prev, `[C${run.currentCycle}] → ${run.status}`]);
+        }
+      }
+
+      if (run.status === 'COMPLETED' || run.status === 'HALTED') return run;
+      await new Promise(r => setTimeout(r, 1000));
+    }
+    return null; // page unmounted mid-run — the run itself is unaffected
+  };
+
   const handleExecuteCorridor = async () => {
     const amt = parseFloat(deployAmountInput);
     if (!amt || amt <= 0) return alert("Please enter a valid amount.");
+    if (!opportunities || !opportunities[activeOpp]) return;
 
     setIsExecutingCorridor(true);
     setDeployLogs([]);
     const opp = opportunities[activeOpp];
 
-    // Step 1: Procurement
     setActiveNode(opp.nodes[0].id);
-    setDeployLogs(prev => [...prev, `[1/3] Deployed ${amt} KES. Initiating LIVE Mam-laka B2B API...`]);
+    setDeployLogs([`Deploying ${amt} ${opp.currency} — starting real 5x rollover via ${activeOpp}...`]);
 
     try {
-      // 🟢 Calls the LIVE endpoint instead of the execute-hft dummy endpoint
-      const payload = { amount_kes: amt };
-      const response = await api.post('/api/treasury/corridor/airtime-celo', payload);
+      // 🟢 Starts the real 5-cycle HFTCorridorFSM (state_engine.py) as a
+      // background task and returns immediately — the run can no longer be
+      // awaited inside one request now that AWAITING_OPPORTUNITY can hold
+      // for a long time. Poll for progress instead.
+      const startRes = await api.post('/api/treasury/corridor/start', {
+        amount: amt,
+        corridor_id: activeOpp,
+        currency: opp.currency,
+      });
+      const runId = startRes.data.run._id;
+      setDeployLogs(prev => [...prev, `🆔 Run ${runId} started — polling live status...`]);
 
-      // Step 2: Internal Minting
-      setActiveNode('N7');
-      setDeployLogs(prev => [...prev, `[2/3] Yield Captured! Minting USDA internally...`]);
-      await new Promise(r => setTimeout(r, 1000));
-
-      // Step 3: Celo Web3 Exit
-      setActiveNode(opp.nodes[opp.nodes.length - 1].id);
-      setDeployLogs(prev => [...prev, `[3/3] Target Gate Hit. Executing LIVE Celo Web3 Exit...`]);
-
-      const txHash = response.data.data.tx_hash;
-      const profit = response.data.data.profit_usda;
-
-      setDeployLogs(prev => [...prev, `✅ [SUCCESS] Live Execution Complete!`]);
-      setDeployLogs(prev => [...prev, `💰 Profit: +$${profit.toFixed(4)} USDC`]);
-      setDeployLogs(prev => [...prev, `🔗 TxHash: ${txHash}`]);
-
+      await pollCorridorRun(runId, opp);
       await fetchDashboardData();
     } catch (error: any) {
       const serverError = error.response?.data?.detail || error.message || "Execution error";
-      setDeployLogs(prev => [...prev, `❌ [FAILED] Transaction reverted. Reason: ${serverError}`]);
+      setDeployLogs(prev => [...prev, `❌ [FAILED] ${serverError}`]);
     } finally {
-      setTimeout(() => {
+      if (isMountedRef.current) {
         setIsExecutingCorridor(false);
         setActiveNode(null);
-        // setDeployLogs([]); // Keep logs visible for the admin to read
-      }, 8000);
+      }
+    }
+  };
+
+  // Drives the REAL corridor state machine (Brain_Engine/state_engine.py's
+  // HFTCorridorFSM) with every external dependency swapped for a
+  // deterministic fake — see Brain_Engine/simulate.py. No real airtime,
+  // paybill balance, Cardano vault, or Celo broadcast is touched; nothing
+  // here writes to the real ledger. Replays the returned step trace with a
+  // short delay between entries so PROCURE -> LIQUIDATE -> MINT ->
+  // AWAITING_OPPORTUNITY (hold/poll) -> ... -> CELO_EXIT is visible on the
+  // flow map and terminal log, not just a instant jump to the result.
+  const handleSimulateCorridor = async () => {
+    const amt = parseFloat(deployAmountInput);
+    if (!amt || amt <= 0) return alert("Please enter a valid amount.");
+    if (!opportunities || !opportunities[activeOpp]) return;
+
+    setIsSimulating(true);
+    setDeployLogs([`🧪 SIMULATION MODE — mocked nodes, no real airtime/paybill/Cardano/Celo calls`]);
+    setActiveNode(null);
+    const opp = opportunities[activeOpp];
+
+    try {
+      const response = await api.post('/api/treasury/corridor/simulate-5x', {
+        amount: amt,
+        currency: opp.currency,
+      });
+      const result = response.data;
+
+      for (const step of result.steps) {
+        if (step.type === 'STATE_CHANGE') {
+          if (step.to === 'PROCURE') setActiveNode(opp.nodes[0].id);
+          else if (step.to === 'MINT') setActiveNode('N7');
+          else if (step.to === 'AWAITING_OPPORTUNITY') setActiveNode(null);
+          else if (step.to === 'CELO_EXIT' || step.to === 'COMPLETED') setActiveNode(opp.nodes[opp.nodes.length - 1].id);
+          setDeployLogs(prev => [...prev, `[C${step.cycle}] ${step.from} → ${step.to}`]);
+        } else if (step.type === 'HOLDING') {
+          setDeployLogs(prev => [...prev, `[C${step.cycle}] ⏸ AWAITING OPPORTUNITY — holding $${step.amount.toFixed(4)} USDA, no open corridor yet...`]);
+        } else if (step.type === 'PROCURE') {
+          setDeployLogs(prev => [...prev, `[C${step.cycle}] 📦 PROCURE: bought ${step.amount.toFixed(2)} KES airtime (${step.externalRef})`]);
+        } else if (step.type === 'LIQUIDATE') {
+          setDeployLogs(prev => [...prev, `[C${step.cycle}] 💵 LIQUIDATE: recognized ${step.amount.toFixed(2)} KES against paybill float (no STK push)`]);
+        } else if (step.type === 'MINT') {
+          setDeployLogs(prev => [...prev, `[C${step.cycle}] 🪙 MINT: $${step.amount.toFixed(4)} USDA vault-backed`]);
+        } else if (step.type === 'CELO_EXIT') {
+          setDeployLogs(prev => [...prev, `[C${step.cycle}] 🔗 CELO EXIT (hot wallet): $${step.amount.toFixed(4)} USDC — tx ${step.externalRef}`]);
+        }
+        await new Promise(r => setTimeout(r, 300));
+      }
+
+      setDeployLogs(prev => [...prev, result.status === 'success'
+        ? `✅ SIMULATED 5x COMPLETE — final $${result.finalUsd.toFixed(4)} USDC (profit +$${result.profit.toFixed(4)}) over ${result.cyclesReached} cycles`
+        : `⚠️ SIMULATION HALTED at ${result.finalState} (cycle ${result.cyclesReached})`]);
+    } catch (error: any) {
+      const serverError = error.response?.data?.detail || error.message || "Simulation error";
+      setDeployLogs(prev => [...prev, `❌ [SIM FAILED] ${serverError}`]);
+    } finally {
+      setTimeout(() => {
+        setIsSimulating(false);
+        setActiveNode(null);
+      }, 3000);
     }
   };
 
@@ -287,7 +490,7 @@ export default function MarketMakerPage() {
                   type="number"
                   value={deployAmountInput}
                   onChange={(e) => setDeployAmountInput(e.target.value)}
-                  disabled={isExecutingCorridor}
+                  disabled={isExecutingCorridor || isSimulating}
                   className="bg-[#111827] border border-[#1e2d3d] text-emerald-400 font-mono font-bold text-lg rounded-lg py-2.5 pl-4 pr-16 w-full sm:w-40 outline-none focus:border-blue-500 shadow-inner disabled:opacity-50"
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-xs uppercase tracking-wider pointer-events-none">
@@ -295,8 +498,17 @@ export default function MarketMakerPage() {
                 </span>
               </div>
               <button
+                onClick={handleSimulateCorridor}
+                disabled={isExecutingCorridor || isSimulating}
+                title="Runs the real 5x state machine with mocked nodes — no real airtime, paybill, Cardano vault, or Celo call is made"
+                className="bg-purple-600/90 hover:bg-purple-500 text-white font-bold text-sm px-6 py-3 rounded-lg transition-colors shadow-[0_0_15px_rgba(147,51,234,0.4)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 whitespace-nowrap"
+              >
+                {isSimulating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <TerminalSquare className="w-4 h-4" />}
+                Simulate 5x
+              </button>
+              <button
                 onClick={handleExecuteCorridor}
-                disabled={isExecutingCorridor}
+                disabled={isExecutingCorridor || isSimulating}
                 className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm px-6 py-3 rounded-lg transition-colors shadow-[0_0_15px_rgba(37,99,235,0.4)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 whitespace-nowrap"
               >
                 {isExecutingCorridor ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" fill="currentColor" />}
@@ -561,25 +773,48 @@ export default function MarketMakerPage() {
     );
   };
 
+  // Converts a node's raw balance into a USD estimate. Same per-asset
+  // math the old hardcoded VAULTS array used (KES-family / spread
+  // reference, XLM/GOLD at a rough spot price, everything else ~$1-pegged)
+  // — centralized here so it applies per-node instead of only to the
+  // handful of asset classes the old list happened to aggregate.
+  const KES_DENOMINATED_NODE_IDS = ['N1', 'N2', 'N3', 'N4', 'N5', 'N6'];
+  const getNodeUsdValue = (node: any, balance: number, referenceRate: number) => {
+    if (KES_DENOMINATED_NODE_IDS.includes(node.id)) return balance / referenceRate;
+    if (node.dbKey === 'N9_XLM') return balance * 0.10;
+    if (node.dbKey === 'N11_GOLD') return balance * 2400;
+    return balance; // USDA, IMP, CELO_USDC, USD — already ~$1-pegged
+  };
+
+  const VAULT_NODE_COLORS: Record<string, string> = {
+    N1: 'bg-blue-500', N2: 'bg-red-500', N3: 'bg-emerald-500',
+    N4: 'bg-emerald-600', N5: 'bg-red-600', N6: 'bg-blue-600',
+    N7: 'bg-indigo-500', N8: 'bg-purple-500', N9: 'bg-cyan-500',
+    Celo: 'bg-yellow-500', N10: 'bg-orange-500', N11: 'bg-amber-600',
+  };
+
   const renderDashboard = () => {
     const usdaBal = dbVaults['N7_USDA'] || 0;
-    const kesBal = dbVaults['N4_MPESA'] || 0;
     const impBal = dbVaults['N8_IMP'] || 0;
     const airtBal = (dbVaults['N1_TELKOM'] || 0) + (dbVaults['N2_AIRTEL'] || 0) + (dbVaults['N3_SAFARICOM'] || 0);
-    const xlmBal = dbVaults['N9_XLM'] || 0;
-    const usdBal = dbVaults['N10_USD'] || 0;
-    const goldBal = dbVaults['N11_GOLD'] || 0;
-    const totalPortfolioUSD = usdaBal + (kesBal / spreadConfig.reference) + impBal + (airtBal / spreadConfig.reference) + (xlmBal * 0.10) + usdBal + (goldBal * 2400);
 
-    const VAULTS = [
-      { id: 'USDA', name: 'USDA', desc: 'Master Wallet', balance: usdaBal, usdValue: usdaBal, color: 'bg-blue-500' },
-      { id: 'KES', name: 'KES (Fiat)', desc: 'Mobile Money', balance: kesBal, usdValue: kesBal / spreadConfig.reference, color: 'bg-emerald-500' },
-      { id: 'IMP', name: 'IMP', desc: 'Impala Coin Treasury', balance: impBal, usdValue: impBal, color: 'bg-purple-500' },
-      { id: 'AIRT', name: 'AIRT', desc: 'Telco Airtime', balance: airtBal, usdValue: airtBal / spreadConfig.reference, color: 'bg-orange-500' },
-      { id: 'XLM', name: 'XLM', desc: 'Stellar Router', balance: xlmBal, usdValue: xlmBal * 0.10, color: 'bg-cyan-500' },
-      { id: 'USD', name: 'USD', desc: 'Virtual Cards', balance: usdBal, usdValue: usdBal, color: 'bg-slate-400' },
-      { id: 'GOLD', name: 'GOLD', desc: 'Commodities Vault', balance: goldBal, usdValue: goldBal * 2400, color: 'bg-yellow-500' },
-    ];
+    // Same node list "Active Infrastructure Nodes" renders below — this is
+    // the fix for the two sections showing different, drifting sets of
+    // assets: both now read the exact same INFRASTRUCTURE_NODES array
+    // against the exact same dbVaults response.
+    const VAULTS = INFRASTRUCTURE_NODES.map((node) => {
+      const balance = dbVaults[node.dbKey] || 0;
+      return {
+        id: node.id,
+        name: node.name,
+        desc: node.desc,
+        category: node.category,
+        balance,
+        usdValue: getNodeUsdValue(node, balance, spreadConfig.reference),
+        color: VAULT_NODE_COLORS[node.id] || 'bg-slate-500',
+      };
+    });
+    const totalPortfolioUSD = VAULTS.reduce((sum, v) => sum + v.usdValue, 0);
 
     return (
       <div className={`space-y-6 transition-opacity duration-500 ${isDashboardLoading ? 'opacity-60' : 'opacity-100'} animate-in fade-in`}>
@@ -618,40 +853,63 @@ export default function MarketMakerPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <div className="xl:col-span-2 bg-[#111827] border border-[#1e2d3d] rounded-2xl p-6 shadow-lg">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-[11px] font-bold text-slate-400 tracking-widest uppercase">Live Vault Allocation</h2>
-              <button onClick={() => setSearchParams({ tab: 'otc' })} className="text-[10px] uppercase tracking-widest font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition-colors">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
+          <div className="xl:col-span-2 bg-[#111827] border border-[#1e2d3d] rounded-2xl shadow-lg flex flex-col max-h-[600px]">
+            <div className="flex justify-between items-center px-6 pt-6 pb-4 shrink-0">
+              <div>
+                <h2 className="text-[11px] font-bold text-slate-400 tracking-widest uppercase">Live Vault Allocation</h2>
+                <p className="text-[10px] text-slate-600 mt-1">{VAULTS.length} nodes · updated every refresh</p>
+              </div>
+              <button onClick={() => setSearchParams({ tab: 'otc' })} className="text-[10px] uppercase tracking-widest font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition-colors shrink-0">
                 Manage liquidity <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
-            <div className="space-y-0">
-              {VAULTS.map((vault) => {
-                const pct = totalPortfolioUSD > 0 ? (vault.usdValue / totalPortfolioUSD) * 100 : 0;
-                const isWarning = pct > 0 && pct < 15;
+
+            <div className="grid grid-cols-[1fr_auto_auto_auto_20px] gap-x-3 px-6 pb-2 text-[9px] font-bold uppercase tracking-widest text-slate-600 shrink-0 border-b border-[#1e2d3d]">
+              <span>Node</span>
+              <span className="text-right w-24">Balance</span>
+              <span className="text-right w-14">Alloc.</span>
+              <span className="text-right w-20">USD</span>
+              <span />
+            </div>
+
+            <div className="overflow-y-auto px-6 pb-4">
+              {NODE_CATEGORIES.map((cat) => {
+                const rows = VAULTS.filter((v) => v.category === cat.id);
+                if (!rows.length) return null;
+                const CatIcon = cat.icon;
+                const catTotal = rows.reduce((sum, v) => sum + v.usdValue, 0);
                 return (
-                  <div key={vault.id} className={`flex flex-col sm:flex-row sm:items-center gap-4 py-3.5 border-b border-[#1e2d3d]/60 last:border-0 ${isWarning ? 'bg-red-500/5 -mx-4 px-4 rounded-lg' : ''}`}>
-                    <div className="w-full sm:w-44 shrink-0 flex items-center gap-3">
-                      <div className="px-2.5 py-1 rounded bg-[#1e293b] border border-[#2a3754] text-[10px] font-bold text-slate-300 w-12 text-center">{vault.id}</div>
-                      <div>
-                        <h3 className="text-white font-bold text-sm flex items-center gap-1.5 tracking-wide">
-                          {vault.name}
-                          {isWarning && <AlertTriangle className="w-3.5 h-3.5 text-red-500" />}
-                        </h3>
-                        <p className="text-[10px] text-slate-500 mt-0.5">{vault.desc}</p>
+                  <div key={cat.id}>
+                    <div className="flex items-center justify-between pt-3 pb-1.5 sticky top-0 bg-[#111827]">
+                      <div className="flex items-center gap-1.5">
+                        <CatIcon className={`w-3 h-3 ${cat.color}`} />
+                        <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500">{cat.label}</span>
                       </div>
+                      <span className="text-[9px] font-mono text-slate-600">= ${fmt(catTotal)}</span>
                     </div>
-                    <div className="flex-1 flex items-center gap-4 w-full">
-                      <div className="h-1.5 flex-1 bg-[#1e293b] rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full transition-all duration-1000 ${isWarning ? 'bg-red-500' : vault.color}`} style={{ width: `${Math.max(pct, 1)}%` }} />
-                      </div>
-                      <span className={`text-[11px] font-mono font-bold w-12 text-right ${isWarning ? 'text-red-400' : 'text-slate-400'}`}>{pct.toFixed(1)}%</span>
-                    </div>
-                    <div className="w-full sm:w-32 shrink-0 sm:text-right flex justify-between sm:block">
-                      <p className={`font-mono font-bold text-[15px] ${isWarning ? 'text-red-400' : 'text-white'}`}>{fmt(vault.balance)}</p>
-                      <p className="text-[10px] text-slate-500 font-mono mt-0.5">≈ ${fmt(vault.usdValue)}</p>
-                    </div>
+                    {rows.map((vault) => {
+                      const pct = totalPortfolioUSD > 0 ? (vault.usdValue / totalPortfolioUSD) * 100 : 0;
+                      const isWarning = pct > 0 && pct < 15;
+                      return (
+                        <div
+                          key={vault.id}
+                          title={vault.desc}
+                          className={`grid grid-cols-[1fr_auto_auto_auto_20px] gap-x-3 items-center h-9 border-b border-[#1e2d3d]/40 last:border-0 ${isWarning ? 'bg-red-500/[0.04]' : ''}`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="shrink-0 px-1.5 py-0.5 rounded bg-[#1e293b] border border-[#2a3754] text-[9px] font-bold text-slate-400 tabular-nums">{vault.id}</span>
+                            <span className={`text-xs font-medium truncate ${isWarning ? 'text-red-300' : 'text-slate-200'}`}>{vault.name}</span>
+                          </div>
+                          <span className={`text-right w-24 text-xs font-mono tabular-nums ${isWarning ? 'text-red-400' : 'text-white'}`}>{fmt(vault.balance)}</span>
+                          <span className={`text-right w-14 text-[11px] font-mono tabular-nums ${isWarning ? 'text-red-400' : 'text-slate-500'}`}>{pct.toFixed(1)}%</span>
+                          <span className="text-right w-20 text-[11px] font-mono tabular-nums text-slate-500">${fmt(vault.usdValue)}</span>
+                          <span className="flex justify-center">
+                            <span className={`w-1.5 h-1.5 rounded-full ${isWarning ? 'bg-red-500' : 'bg-emerald-500'}`} title={isWarning ? 'Below 5% portfolio share' : 'Nominal'} />
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 );
               })}
@@ -762,7 +1020,7 @@ export default function MarketMakerPage() {
 
   const renderSpreadEngine = () => (
     <div className="space-y-6 animate-in fade-in duration-300">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-[#111827] border border-[#1e2d3d] rounded-xl p-4 shadow-lg shadow-black/20">
           <p className="text-[11px] text-gray-500 uppercase tracking-wider font-semibold mb-1">24h Realized P&L</p>
           <div className="flex items-center justify-between">
@@ -777,6 +1035,21 @@ export default function MarketMakerPage() {
         <div className="bg-[#111827] border border-[#1e2d3d] rounded-xl p-4 shadow-lg shadow-black/20">
           <p className="text-[11px] text-gray-500 uppercase tracking-wider font-semibold mb-1">CBK Official (Ref)</p>
           <p className="text-2xl font-bold text-gray-400 font-mono">129.50 KES</p>
+        </div>
+        <div className={`bg-[#111827] border rounded-xl p-4 shadow-lg shadow-black/20 ${cometQuote.error ? 'border-red-500/40' : 'border-[#1e2d3d]'}`}>
+          <p className="text-[11px] text-gray-500 uppercase tracking-wider font-semibold mb-1 flex items-center gap-1">
+            Comet IMM (KES/IMC) <Radio className="w-3 h-3 text-blue-400" />
+          </p>
+          {cometQuote.error ? (
+            <p className="text-sm font-semibold text-red-400" title={cometQuote.error}>
+              {cometQuote.error.length > 40 ? 'Rate unavailable' : cometQuote.error}
+            </p>
+          ) : (
+            <>
+              <p className="text-2xl font-bold text-blue-400 font-mono">{cometQuote.rate ?? '—'}</p>
+              <p className="text-[10px] text-gray-500 mt-1">age: {cometQuote.rateAge ?? '—'}</p>
+            </>
+          )}
         </div>
       </div>
 
@@ -842,6 +1115,73 @@ export default function MarketMakerPage() {
             </div>
             <p className="text-emerald-400 text-xs mt-2 font-medium">Spread Profit: +{(spreadConfig.ask - spreadConfig.reference).toFixed(2)} KES per USD</p>
           </div>
+        </div>
+      </div>
+
+      <h2 className="text-lg font-medium text-white flex items-center gap-2 pt-2">
+        <Power className="w-5 h-5 text-purple-400" />
+        Strategy & Node Switches
+      </h2>
+      <p className="text-xs text-gray-500 -mt-4">
+        Independent of the global kill switch above — pull a single node out of service, or park a whole
+        rollover strategy, without halting everything else.
+      </p>
+
+      <div className="bg-[#111827] border border-[#1e2d3d] rounded-2xl p-6 shadow-xl space-y-4">
+        <h3 className="text-white font-bold text-sm uppercase tracking-wider text-gray-400">Corridors</h3>
+        {immCorridors.length === 0 && (
+          <p className="text-xs text-gray-500">No corridors loaded.</p>
+        )}
+        {immCorridors.map((c) => (
+          <div key={c.id} className="flex items-center justify-between bg-[#0d1420] border border-[#1e2d3d] rounded-xl p-4">
+            <div>
+              <p className="text-white font-semibold text-sm">{c.name} <span className="text-gray-500 font-mono text-xs">({c.id})</span></p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {c.node_procure} → {c.node_liquidate} &nbsp;·&nbsp; disc {(c.discount * 100).toFixed(0)}% &nbsp;·&nbsp; fx {(c.fx_edge * 100).toFixed(0)}%
+              </p>
+              {!c.eligible && (
+                <p className="text-[11px] text-amber-400 mt-1 flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3" /> {c.corridorEnabled ? 'A required node is disabled or not live' : 'Corridor switched off'}
+                </p>
+              )}
+            </div>
+            <button
+              onClick={() => handleToggleImmCorridor(c.id, !c.corridorEnabled)}
+              disabled={immTogglingId === `corridor:${c.id}`}
+              className={`text-xs px-4 py-2 rounded-lg border font-bold tracking-wide uppercase whitespace-nowrap disabled:opacity-50 ${c.corridorEnabled ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}
+            >
+              {c.corridorEnabled ? 'ENABLED' : 'DISABLED'}
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-[#111827] border border-[#1e2d3d] rounded-2xl p-6 shadow-xl space-y-4">
+        <h3 className="text-white font-bold text-sm uppercase tracking-wider text-gray-400">Nodes</h3>
+        {immNodes.length === 0 && (
+          <p className="text-xs text-gray-500">No nodes loaded.</p>
+        )}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {immNodes.map((n) => (
+            <div key={n.id} className="flex items-center justify-between bg-[#0d1420] border border-[#1e2d3d] rounded-xl p-3">
+              <div>
+                <p className="text-white font-semibold text-sm">{n.id} <span className="text-gray-500">· {n.label}</span></p>
+                <p className="text-[11px] text-gray-500">{n.assetType} / {n.category}{!n.live && <span className="text-gray-600"> · no live integration</span>}</p>
+                {n.id === 'N9' && n9CometRef && (
+                  <p className="text-[10px] text-blue-400 font-mono mt-1">
+                    Comet AMM ref: {n9CometRef.realUsdcBalance.toFixed(4)} USDC → {n9CometRef.quotedOut.toFixed(4)} {n9CometRef.quoteTo}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => handleToggleImmNode(n.id, !n.enabled)}
+                disabled={immTogglingId === `node:${n.id}`}
+                className={`text-[11px] px-3 py-1.5 rounded-lg border font-bold tracking-wide uppercase whitespace-nowrap disabled:opacity-50 ${n.enabled ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}
+              >
+                {n.enabled ? 'ON' : 'OFF'}
+              </button>
+            </div>
+          ))}
         </div>
       </div>
     </div>

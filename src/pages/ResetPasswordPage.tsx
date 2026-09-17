@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { Lock, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { resetPassword } from '../api/client';
+import { getFriendlyErrorMessage } from '../utils/errorMessages';
 
 export default function ResetPasswordPage() {
     const [searchParams] = useSearchParams();
@@ -49,7 +50,7 @@ export default function ResetPasswordPage() {
             setSuccess(true);
             setTimeout(() => navigate('/login', { state: { successMessage: 'Password has been reset successfully. You can now log in.' } }), 3000);
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Failed to reset password. The link may be expired.');
+            setError(getFriendlyErrorMessage(err, { fallback: 'Failed to reset password. The link may be expired.' }));
         } finally {
             setLoading(false);
         }
