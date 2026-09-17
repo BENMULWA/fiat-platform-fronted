@@ -1,7 +1,7 @@
 
 //@ts-nocheck
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Eye, EyeOff, Loader2, Shield, AlertCircle } from 'lucide-react';
 import logo from '../pages/assets/jasiri-icon.png';
@@ -9,6 +9,16 @@ import { getFriendlyErrorMessage } from '../utils/errorMessages';
 
 export default function Login() {
     const { requestLoginOtp, verifyLoginOtp, resendLoginOtp } = useAuth();
+
+    // Reached via the Staff Portal's "Staff login" card (see
+    // StaffPortalPage.tsx's Admin & Internal Staff link: /login?portal=admin).
+    // Admin accounts are provisioned internally by IT only -- there is no
+    // self-service admin signup anywhere in this app -- so this hides the
+    // retail/institutional "create an account" links for that one entry
+    // point instead of removing them for everyone (retail and institutional
+    // visitors still need those links on the exact same shared /login page).
+    const [searchParams] = useSearchParams();
+    const isAdminPortal = searchParams.get('portal') === 'admin';
 
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -205,18 +215,27 @@ export default function Login() {
                 </form>
 
                 <div className="mt-8 text-center border-t border-[#1e2d3d] pt-6">
-                    <p className="text-sm text-gray-400">
-                        Don't have an account?{' '}
-                        <Link to="/signup" className="text-emerald-400 hover:text-emerald-300 font-bold transition-colors">
-                            Create one now
-                        </Link>
-                    </p>
-                    <p className="text-xs text-gray-500 mt-2">
-                        Signing in as a business for OTC settlement?{' '}
-                        <Link to="/otc/signup" className="text-emerald-400 hover:text-emerald-300 font-semibold transition-colors">
-                            Open an institutional account
-                        </Link>
-                    </p>
+                    {isAdminPortal ? (
+                        <p className="text-xs text-gray-500 flex items-center justify-center gap-2">
+                           
+                            Admin Login
+                        </p>
+                    ) : (
+                        <>
+                            <p className="text-sm text-gray-400">
+                                Don't have an account?{' '}
+                                <Link to="/signup" className="text-emerald-400 hover:text-emerald-300 font-bold transition-colors">
+                                    Create one now
+                                </Link>
+                            </p>
+                            <p className="text-xs text-gray-500 mt-2">
+                                Signing in as a business for OTC settlement?{' '}
+                                <Link to="/otc/signup" className="text-emerald-400 hover:text-emerald-300 font-semibold transition-colors">
+                                    Open an institutional account
+                                </Link>
+                            </p>
+                        </>
+                    )}
                 </div>
             </div>
         </div>

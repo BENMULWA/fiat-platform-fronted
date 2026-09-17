@@ -300,7 +300,7 @@ export default function LandingPage() {
 
       {/* NAVBAR */}
       <nav className={`sticky top-0 z-40 backdrop-blur-xl border-b transition-colors duration-300 ${current.nav}`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-[88rem] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-20 items-center">
 
             <div className="flex items-center shrink-0">
@@ -339,6 +339,18 @@ export default function LandingPage() {
                 <button onClick={navigateToHome} className={`text-sm font-medium px-4 py-2 rounded-lg transition-colors hover:bg-emerald-500/10 ${current.text}`}>
                   Dashboard
                 </button>
+              )}
+              {/* Retail login/signup is its own path (above and in the hero
+                  CTAs) -- this is the separate gateway to the institutional
+                  and admin portals, previously mis-wired to handleGetStarted()
+                  (retail signup) under this same "Staff Portal" label. */}
+              {!user && (
+                <Link
+                  to="/staff"
+                  className={`text-sm font-bold px-4 py-2.5 rounded-lg border transition-all ${theme === 'light' ? 'border-slate-300 text-slate-700 hover:bg-slate-100' : 'border-white/15 text-white hover:bg-white/5'}`}
+                >
+                  Staff Portal
+                </Link>
               )}
               <button onClick={handleGetStarted} className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-sm font-bold px-5 py-2.5 rounded-lg transition-all shadow-[0_0_15px_rgba(16,185,129,0.3)]">
                 {user ? 'Open Workspace' : 'Get Started'}
@@ -379,9 +391,14 @@ export default function LandingPage() {
 
               <div className="pt-6 border-t border-slate-500/20 flex flex-col gap-4">
                 {!user ? (
-                  <Link to="/login" className={`block text-center w-full py-4 rounded-xl border font-bold ${theme === 'light' ? 'border-slate-300' : 'border-white/10'}`}>
-                    Log in
-                  </Link>
+                  <>
+                    <Link to="/login" className={`block text-center w-full py-4 rounded-xl border font-bold ${theme === 'light' ? 'border-slate-300' : 'border-white/10'}`}>
+                      Log in
+                    </Link>
+                    <Link to="/staff" onClick={() => setIsMobileMenuOpen(false)} className={`block text-center w-full py-4 rounded-xl border font-bold ${theme === 'light' ? 'border-slate-300' : 'border-white/10'}`}>
+                      Staff Portal
+                    </Link>
+                  </>
                 ) : (
                   <button onClick={navigateToHome} className={`block text-center w-full py-4 rounded-xl border font-bold ${theme === 'light' ? 'border-slate-300' : 'border-white/10'}`}>
                     Dashboard
@@ -401,7 +418,7 @@ export default function LandingPage() {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-emerald-500/10 blur-[120px] rounded-full pointer-events-none"></div>
         <div className="absolute top-1/2 right-0 w-[400px] h-[400px] bg-amber-500/5 blur-[120px] rounded-full pointer-events-none"></div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        <div className="max-w-[88rem] mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="grid lg:grid-cols-2 gap-12 lg:gap-8 items-center">
 
             <div className="text-center lg:text-left max-w-2xl mx-auto lg:mx-0">
@@ -587,7 +604,7 @@ export default function LandingPage() {
 
       {/* 2. WHAT YOU CAN DO */}
       <section id="features" className={`py-24 border-t transition-colors duration-300 ${theme === 'light' ? 'border-slate-200 bg-white' : 'border-white/5 bg-[#09090b]'}`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-[88rem] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight mb-4">
               Everything you need, <span className="text-amber-500">in one app.</span>
@@ -663,7 +680,7 @@ export default function LandingPage() {
 
       {/* 3. HOW IT WORKS */}
       <section id="how-it-works" className={`py-32 border-t transition-colors duration-300 ${theme === 'light' ? 'border-slate-200' : 'border-white/5'}`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-[88rem] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-20">
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight mb-4">
              Simple Steps 
@@ -713,7 +730,7 @@ export default function LandingPage() {
 
       {/* 4. SECURITY & PLATFORM STATUS */}
       <section id="security" className={`py-24 border-t transition-colors duration-300 ${theme === 'light' ? 'border-slate-200' : 'border-white/5'}`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-[88rem] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid lg:grid-cols-2 gap-16 items-center">
 
             <div>
@@ -796,7 +813,7 @@ export default function LandingPage() {
 
       {/* 5. FOR BUSINESSES */}
       <section id="business" className={`py-24 border-t transition-colors duration-300 ${theme === 'light' ? 'border-slate-200 bg-white' : 'border-white/5 bg-[#09090b]'}`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-[88rem] mx-auto px-4 sm:px-6 lg:px-8">
           <div className={`rounded-[2rem] border p-8 sm:p-14 ${current.card}`}>
             <div className="grid lg:grid-cols-3 gap-10 items-center">
               <div className="lg:col-span-2">
@@ -842,7 +859,7 @@ export default function LandingPage() {
 
       {/* 6. CROSS-BORDER */}
       <section id="cross-border" className={`py-24 border-t transition-colors duration-300 ${theme === 'light' ? 'border-slate-200' : 'border-white/5'}`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-[88rem] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid lg:grid-cols-2 gap-16 items-center">
             <div>
               <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-8 border shadow-lg ${theme === 'light' ? 'bg-blue-50 border-blue-200' : 'bg-blue-500/10 border-blue-500/20'}`}>
@@ -908,7 +925,7 @@ export default function LandingPage() {
 
       {/* 8. TRUST CENTER */}
       <section id="trust-center" className={`py-24 border-t transition-colors duration-300 ${theme === 'light' ? 'border-slate-200 bg-slate-50/60' : 'border-white/5 bg-[#0b0b0e]'}`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-[88rem] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-14">
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight mb-4">
               Trust Center
@@ -966,7 +983,7 @@ export default function LandingPage() {
 
       {/* 9. FOOTER */}
       <footer className={`border-t pt-16 pb-8 transition-colors duration-300 ${current.footer}`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-[88rem] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-12 mb-16">
 
             <div className="lg:col-span-2 pr-8">

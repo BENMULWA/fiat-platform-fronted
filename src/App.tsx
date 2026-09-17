@@ -9,6 +9,7 @@ import NotificationToastHost from './components/NotificationToastHost'
 import LandingPage from './pages/LandingPage'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
+import StaffPortalPage from './pages/StaffPortalPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import FAQPage from './pages/FAQPage'
@@ -145,6 +146,7 @@ function AppRoutes() {
       <Route path="/forgot-password" element={user ? <Navigate to={defaultRoute} replace /> : <ForgotPasswordPage />} />
       <Route path="/reset-password" element={user ? <Navigate to={defaultRoute} replace /> : <ResetPasswordPage />} />
       <Route path="/faq" element={<FAQPage />} />
+      <Route path="/staff" element={user ? <Navigate to={defaultRoute} replace /> : <StaffPortalPage />} />
 
       {/* OTC MERCHANT PORTAL -- own layout (no admin/retail Sidebar+AppLayout
           shell), each page below handles its own auth via InstitutionalRoute
