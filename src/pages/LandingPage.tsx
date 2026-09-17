@@ -485,7 +485,7 @@ export default function LandingPage() {
                 <div className={`mb-6 flex items-center gap-1 p-1 rounded-lg ${theme === 'light' ? 'bg-slate-100' : 'bg-white/5'}`}>
                   <div className={`flex-1 text-center py-1.5 rounded-md text-sm font-bold ${theme === 'light' ? 'bg-white text-slate-900 shadow-sm' : 'bg-[#18181b] text-white shadow-sm'}`}>Quick Swap</div>
                   <Link
-                    to={user ? '/admin/dealer-workspace' : '/login'}
+                    to={user ? '/admin/dealer-workspace' : '/otc'}
                     className={`flex-1 text-center py-1.5 rounded-md text-sm font-semibold transition-colors ${theme === 'light' ? 'text-slate-500 hover:text-slate-700' : 'text-slate-400 hover:text-slate-200'}`}
                   >
                     Business (OTC)
@@ -1029,7 +1029,7 @@ export default function LandingPage() {
               <h4 className="font-bold text-xs tracking-widest uppercase mb-6">Products</h4>
               <ul className={`space-y-4 text-sm ${current.textMuted}`}>
                 <li><Link to={user ? '/swap' : '/signup'} className="hover:text-amber-500 transition-colors">Retail Swap</Link></li>
-                <li><Link to={user ? '/admin/dealer-workspace' : '/login'} className="hover:text-amber-500 transition-colors">OTC Desk</Link></li>
+                <li><Link to={user ? '/admin/dealer-workspace' : '/otc'} className="hover:text-amber-500 transition-colors">OTC Desk</Link></li>
                 <li><span className="opacity-75">Liquidity API (Coming soon)</span></li>
               </ul>
             </div>

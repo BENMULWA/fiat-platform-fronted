@@ -10,6 +10,7 @@ import LandingPage from './pages/LandingPage'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 import StaffPortalPage from './pages/StaffPortalPage'
+import OtcGatewayPage from './pages/OtcGatewayPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import FAQPage from './pages/FAQPage'
@@ -152,6 +153,7 @@ function AppRoutes() {
           shell), each page below handles its own auth via InstitutionalRoute
           (or is public, for signup). See routes/otc_merchant.py for the
           backend these call. */}
+      <Route path="/otc" element={user ? <Navigate to={defaultRoute} replace /> : <OtcGatewayPage />} />
       <Route path="/otc/signup" element={user ? <Navigate to={defaultRoute} replace /> : <OtcSignup />} />
       <Route path="/otc/onboarding" element={<InstitutionalRoute requireApproved={false}><OtcOnboarding /></InstitutionalRoute>} />
       <Route path="/otc/overview" element={<InstitutionalRoute><OtcOverview /></InstitutionalRoute>} />
