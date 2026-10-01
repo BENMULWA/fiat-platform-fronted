@@ -11,6 +11,8 @@ export default function LiquidityPage() {
     const [rateSaving, setRateSaving] = useState(false);
     const [rateMessage, setRateMessage] = useState('');
     const [rateHistory, setRateHistory] = useState<any[]>([]);
+    const [newAssetCode, setNewAssetCode] = useState('');
+    const [newAssetRate, setNewAssetRate] = useState('');
 
     useEffect(() => {
         const fetchLiquidity = async () => {
@@ -146,6 +148,30 @@ export default function LiquidityPage() {
                                 <input type="number" step="any" min="0.00000001" value={value} onChange={event => setRateForm((current: any) => ({ ...current, usdBaseRates: { ...current.usdBaseRates, [asset]: event.target.value } }))} className="mt-2 w-full bg-[#0a0e17] border border-[#1e2d3d] rounded-lg px-3 py-2.5 text-sm text-white font-mono outline-none focus:border-emerald-500" />
                             </label>
                         ))}
+                    </div>
+                    <div className="flex items-end gap-3 mb-5 p-3 rounded-lg border border-dashed border-[#1e2d3d]">
+                        <label className="text-xs text-gray-500 uppercase tracking-wider font-bold">
+                            New currency code
+                            <input value={newAssetCode} onChange={event => setNewAssetCode(event.target.value.toUpperCase().slice(0, 12))} placeholder="e.g. NGN" className="mt-2 w-32 bg-[#0a0e17] border border-[#1e2d3d] rounded-lg px-3 py-2.5 text-sm text-white font-mono outline-none focus:border-emerald-500" />
+                        </label>
+                        <label className="text-xs text-gray-500 uppercase tracking-wider font-bold">
+                            Units per USD
+                            <input type="number" step="any" min="0.00000001" value={newAssetRate} onChange={event => setNewAssetRate(event.target.value)} placeholder="e.g. 1650" className="mt-2 w-40 bg-[#0a0e17] border border-[#1e2d3d] rounded-lg px-3 py-2.5 text-sm text-white font-mono outline-none focus:border-emerald-500" />
+                        </label>
+                        <button
+                            type="button"
+                            disabled={!newAssetCode.trim() || !newAssetRate || Number(newAssetRate) <= 0 || Object.prototype.hasOwnProperty.call(rateForm.usdBaseRates || {}, newAssetCode.trim())}
+                            onClick={() => {
+                                const code = newAssetCode.trim();
+                                setRateForm((current: any) => ({ ...current, usdBaseRates: { ...current.usdBaseRates, [code]: newAssetRate } }));
+                                setNewAssetCode('');
+                                setNewAssetRate('');
+                            }}
+                            className="px-4 py-2.5 rounded-lg text-xs font-bold bg-[#1e2d3d] text-gray-200 hover:bg-[#2a3a4f] disabled:opacity-40"
+                        >
+                            Add currency
+                        </button>
+                        <p className="text-[11px] text-gray-600 mb-2.5">Added on save -- quotes and the merchant rate ticker pick it up immediately once saved below.</p>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <label className="text-xs text-gray-500 uppercase tracking-wider font-bold">Reference source<input value={rateForm.referenceSource || ''} onChange={event => setRateForm({ ...rateForm, referenceSource: event.target.value })} className="mt-2 w-full bg-[#0a0e17] border border-[#1e2d3d] rounded-lg px-3 py-2.5 text-sm text-white outline-none focus:border-emerald-500" /></label>

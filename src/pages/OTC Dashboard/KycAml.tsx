@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { RefreshCw, CheckCircle2, XCircle, AlertTriangle, ShieldCheck, Clock, Eye, ArrowUpRight } from 'lucide-react';
 import { getAdminKycQueue, approveAdminKyc, rejectAdminKyc, getAdminKycDetail, getAdminComplianceMonitoring, updateAdminRiskAlertStatus, releaseRampComplianceHold, releaseDealerRfqComplianceHold, getInstitutionalOnboardingQueue, getInstitutionalOnboardingDetail, approveInstitutionalOnboarding, rejectInstitutionalOnboarding } from '../../api/client';
+import InstitutionalReviewModal from '../../components/onboarding/InstitutionalReviewModal';
 
 export default function KycRiskPage() {
     const [activeTab, setActiveTab] = useState<'kyc' | 'aml' | 'alerts' | 'zigram' | 'institutional'>('kyc');
@@ -548,100 +549,14 @@ export default function KycRiskPage() {
             )}
 
             {(selectedInstitutional || institutionalDetailLoading) && (
-                <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-[#0f1724] border border-[#1e2d3d] rounded-2xl p-6 shadow-2xl">
-                        <div className="flex items-center justify-between mb-5">
-                            <h3 className="text-xl font-bold text-white">Institutional Onboarding Review</h3>
-                            <button onClick={closeInstitutionalModal} className="px-3 py-1.5 rounded-lg bg-[#1e2d3d] text-gray-300 hover:bg-[#2a3a4f]">Close</button>
-                        </div>
-
-                        {institutionalDetailLoading ? (
-                            <div className="py-12 flex items-center justify-center">
-                                <RefreshCw className="w-7 h-7 animate-spin text-cyan-500" />
-                            </div>
-                        ) : selectedInstitutional ? (
-                            <div className="space-y-5">
-                                <div>
-                                    <p className="text-xs text-gray-500 uppercase font-bold tracking-wide mb-2">Business Overview</p>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                        {[
-                                            ['Legal name', selectedInstitutional.legalName || selectedInstitutional.businessName],
-                                            ['Company type', selectedInstitutional.companyType],
-                                            ['Business model', selectedInstitutional.businessModel],
-                                            ['Incorporation number', selectedInstitutional.incorporationNumber],
-                                            ['Date of incorporation', selectedInstitutional.dateOfIncorporation],
-                                            ['Country of incorporation', selectedInstitutional.countryOfIncorporation],
-                                            ['Tax number', selectedInstitutional.taxNumber],
-                                            ['Website', selectedInstitutional.companyWebsite],
-                                            ['Address', selectedInstitutional.companyAddress],
-                                        ].map(([label, value]) => (
-                                            <div key={label} className="p-3 rounded-lg bg-[#111827] border border-[#1e2d3d]">
-                                                <p className="text-xs text-gray-500 uppercase">{label}</p>
-                                                <p className="text-sm font-semibold text-white">{value || 'N/A'}</p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    {selectedInstitutional.businessDescription && (
-                                        <p className="text-sm text-gray-400 mt-3">{selectedInstitutional.businessDescription}</p>
-                                    )}
-                                </div>
-
-                                {[
-                                    ['Directors', selectedInstitutional.directors],
-                                    ['Shareholders', selectedInstitutional.shareholders],
-                                    ['Politically Exposed Persons', selectedInstitutional.peps],
-                                ].map(([label, list]: [string, any[]]) => (
-                                    <div key={label}>
-                                        <p className="text-xs text-gray-500 uppercase font-bold tracking-wide mb-2">{label} ({(list || []).length})</p>
-                                        {(list || []).length > 0 ? (
-                                            <div className="space-y-2">
-                                                {list.map((p: any, i: number) => (
-                                                    <div key={i} className="p-3 rounded-lg bg-[#111827] border border-[#1e2d3d] flex flex-wrap gap-x-6 gap-y-1 text-sm">
-                                                        <span className="text-white font-semibold">{p.name || 'Unnamed'}</span>
-                                                        <span className="text-gray-400">{p.nationality || 'N/A'}</span>
-                                                        <span className="text-gray-500 font-mono text-xs">{p.idNumber || 'No ID on file'}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : <p className="text-sm text-gray-500">None listed.</p>}
-                                    </div>
-                                ))}
-
-                                <div>
-                                    <p className="text-xs text-gray-500 uppercase font-bold tracking-wide mb-2">Documents ({(selectedInstitutional.documents || []).length})</p>
-                                    {(selectedInstitutional.documents || []).length > 0 ? (
-                                        <div className="space-y-2">
-                                            {selectedInstitutional.documents.map((d: any, i: number) => (
-                                                <div key={i} className="p-3 rounded-lg bg-[#111827] border border-[#1e2d3d] flex flex-wrap gap-x-6 gap-y-1 text-sm">
-                                                    <span className="text-white font-semibold">{d.name || 'Unnamed document'}</span>
-                                                    <span className="text-gray-400">{d.type || 'N/A'}</span>
-                                                    {d.reference && <a href={d.reference} target="_blank" rel="noreferrer" className="text-emerald-400 hover:text-emerald-300 text-xs">View</a>}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : <p className="text-sm text-gray-500">No documents submitted.</p>}
-                                </div>
-
-                                <div className="flex items-center gap-3 pt-2 border-t border-[#1e2d3d]">
-                                    <button
-                                        onClick={() => handleInstitutionalAction(selectedInstitutional.userId, 'approve')}
-                                        disabled={institutionalActionLoading === selectedInstitutional.userId}
-                                        className="flex-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500 hover:text-black px-4 py-2.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
-                                    >
-                                        Approve
-                                    </button>
-                                    <button
-                                        onClick={() => handleInstitutionalAction(selectedInstitutional.userId, 'reject')}
-                                        disabled={institutionalActionLoading === selectedInstitutional.userId}
-                                        className="flex-1 bg-red-500/10 text-red-500 border border-red-500/30 hover:bg-red-500 hover:text-white px-4 py-2.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
-                                    >
-                                        Reject
-                                    </button>
-                                </div>
-                            </div>
-                        ) : null}
-                    </div>
-                </div>
+                <InstitutionalReviewModal
+                    profile={selectedInstitutional}
+                    loading={institutionalDetailLoading}
+                    actionLoading={institutionalActionLoading === selectedInstitutional?.userId}
+                    onClose={closeInstitutionalModal}
+                    onApprove={() => handleInstitutionalAction(selectedInstitutional.userId, 'approve')}
+                    onReject={() => handleInstitutionalAction(selectedInstitutional.userId, 'reject')}
+                />
             )}
         </div>
     );

@@ -13,7 +13,7 @@ import {
 
 // imports for api router
 import { useSearchParams } from 'react-router-dom';
-import { getTreasuryDashboard, getLiveLedgerFeed, api } from '../api/client';
+import { getTreasuryDashboard, getLiveLedgerFeed, api, getBaseRateStatus, fixBaseRate } from '../api/client';
 
 const MOCK_ROUTES = [
   { id: '#0042', path: 'KES → USDA', volume: 10000, entry: 125, market: 130.50, spreadPct: 4.4, timeElapsed: '12m', status: 'OPEN', isStuck: false },
@@ -87,6 +87,14 @@ export default function MarketMakerPage() {
   }, []);
   const [deployAmountInput, setDeployAmountInput] = useState('100');
   const [deployLogs, setDeployLogs] = useState<string[]>([]);
+  // Terminal auto-scroll: keeps the newest line in view inside the bounded
+  // log panel below instead of letting the panel itself grow unbounded
+  // (a 5-cycle run produces 25+ lines, which used to push the whole page
+  // down with no scroll container at all).
+  const logEndRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [deployLogs]);
   const [activeNode, setActiveNode] = useState<string | null>(null);
 
   const [dbVaults, setDbVaults] = useState<any>({});
@@ -103,6 +111,47 @@ export default function MarketMakerPage() {
   // Read-only price check, not tied to the 5s poll loop since it's a
   // secondary detail, not core dashboard state.
   const [n9CometRef, setN9CometRef] = useState<{ realUsdcBalance: number; quotedOut: number; quoteTo: string } | null>(null);
+
+  // services/rate_feed.py — the admin-fixed KES/USD base rate that feeds
+  // the Comet peg refresh and the live-discount/KES-exit corridor paths.
+  // Separate from spreadConfig (the USDA/KES admin spread) and cometQuote
+  // (Comet's own KES/IMC quote) — this is the one upstream number both of
+  // those ultimately depend on now.
+  const [baseRateStatus, setBaseRateStatus] = useState<{ rate: number | null; source: string | null; fixedBy: string | null; updatedAt: string | null; ageSeconds: number | null; stale: boolean }>({
+    rate: null, source: null, fixedBy: null, updatedAt: null, ageSeconds: null, stale: true,
+  });
+  const [baseRateInput, setBaseRateInput] = useState('129.50');
+  const [isFixingBaseRate, setIsFixingBaseRate] = useState(false);
+
+  const fetchBaseRateStatus = async () => {
+    try {
+      const res = await getBaseRateStatus();
+      setBaseRateStatus(res.data);
+      if (res.data?.rate) setBaseRateInput(String(res.data.rate));
+    } catch (err) {
+      console.error('Failed to fetch base rate status', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchBaseRateStatus();
+    const id = setInterval(fetchBaseRateStatus, 15000);
+    return () => clearInterval(id);
+  }, []);
+
+  const handleFixBaseRate = async () => {
+    const rate = parseFloat(baseRateInput);
+    if (!rate || rate <= 0) return alert('Enter a valid KES/USD rate.');
+    setIsFixingBaseRate(true);
+    try {
+      await fixBaseRate(rate, 'manual');
+      await fetchBaseRateStatus();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to fix base rate — admin role required.');
+    } finally {
+      setIsFixingBaseRate(false);
+    }
+  };
 
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
     'Mobile Money': true,
@@ -256,8 +305,9 @@ export default function MarketMakerPage() {
 
       if (key !== lastKey) {
         lastKey = key;
+        const mintNodeId = opp.nodes.find((n: any) => n.type === 'mint')?.id || 'N7';
         if (run.status === 'PROCURE') setActiveNode(opp.nodes[0].id);
-        else if (run.status === 'MINT') setActiveNode('N7');
+        else if (run.status === 'MINT') setActiveNode(mintNodeId);
         else if (run.status === 'AWAITING_OPPORTUNITY') setActiveNode(null);
         else if (run.status === 'CELO_EXIT' || run.status === 'COMPLETED') setActiveNode(opp.nodes[opp.nodes.length - 1].id);
 
@@ -299,6 +349,12 @@ export default function MarketMakerPage() {
       // background task and returns immediately — the run can no longer be
       // awaited inside one request now that AWAITING_OPPORTUNITY can hold
       // for a long time. Poll for progress instead.
+      // mint_provider/exit_provider aren't sent here — the real source of
+      // truth is node_registry.CORRIDORS[activeOpp] on the server, keyed
+      // off corridor_id. opp.mintProvider/exitProvider (from
+      // /api/market-maker/opportunities) exist so this UI can *display*
+      // which variant is active; a client can't redirect a corridor's
+      // provider by sending a different value here.
       const startRes = await api.post('/api/treasury/corridor/start', {
         amount: amt,
         corridor_id: activeOpp,
@@ -342,13 +398,15 @@ export default function MarketMakerPage() {
       const response = await api.post('/api/treasury/corridor/simulate-5x', {
         amount: amt,
         currency: opp.currency,
+        corridor_id: activeOpp,
       });
       const result = response.data;
+      const mintNodeId = opp.nodes.find((n: any) => n.type === 'mint')?.id || 'N7';
 
       for (const step of result.steps) {
         if (step.type === 'STATE_CHANGE') {
           if (step.to === 'PROCURE') setActiveNode(opp.nodes[0].id);
-          else if (step.to === 'MINT') setActiveNode('N7');
+          else if (step.to === 'MINT') setActiveNode(mintNodeId);
           else if (step.to === 'AWAITING_OPPORTUNITY') setActiveNode(null);
           else if (step.to === 'CELO_EXIT' || step.to === 'COMPLETED') setActiveNode(opp.nodes[opp.nodes.length - 1].id);
           setDeployLogs(prev => [...prev, `[C${step.cycle}] ${step.from} → ${step.to}`]);
@@ -458,9 +516,9 @@ export default function MarketMakerPage() {
             <h2 className="text-sm font-bold tracking-widest uppercase mb-1 flex flex-wrap items-center gap-2">
               <span className={opp.nodes[0].color === 'red' ? "text-red-400" : "text-blue-400"}>{opp.nodes[0].name.split(' ')[0]}</span>
               <span className="text-slate-600">→</span>
-              <span className="text-emerald-400">USDA</span> <span className="text-slate-600">→</span>
+              <span className="text-emerald-400">{opp.mintAsset || 'USDA'}</span> <span className="text-slate-600">→</span>
               {opp.exitGate === 'CYCLE 5' && <><span className="text-purple-400">×5 ROLLOVER</span> <span className="text-slate-600">→</span></>}
-              <span className="text-slate-400">{opp.nodes[opp.nodes.length - 1].id === 'N9' ? 'CELO' : 'MERCHANT'}</span>
+              <span className="text-slate-400">{opp.exitLabel || (opp.nodes[opp.nodes.length - 1].id === 'N9' ? 'CELO' : 'MERCHANT')}</span>
             </h2>
             <p className="text-slate-400 text-sm tracking-wide">
               {opp.exitGate === 'CYCLE 5' ? '5× internal rollovers · single external exit · zero friction until cycle 5' : 'Direct 1-cycle yield capture · minimal execution risk'}
@@ -517,14 +575,26 @@ export default function MarketMakerPage() {
             </div>
           </div>
 
-          {/* Terminal Logs */}
+          {/* Terminal Logs — bounded height, auto-scrolls to the newest line */}
           {deployLogs.length > 0 && (
-            <div className="mb-8 bg-[#040a0f] border border-[#1e2d3d] rounded-xl p-4 font-mono text-xs space-y-2 text-slate-400 shadow-inner">
-              {deployLogs.map((log, idx) => (
-                <div key={idx} className={`${log.includes('SUCCESS') ? 'text-emerald-400' : log.includes('FAILED') ? 'text-red-400' : 'text-blue-300'} animate-in slide-in-from-left-2`}>
-                   {'>'} {log}
-                </div>
-              ))}
+            <div className="mb-8 bg-[#040a0f] border border-[#1e2d3d] rounded-xl shadow-inner overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-2 border-b border-[#1e2d3d] bg-[#070d14]">
+                <span className="text-[10px] font-bold tracking-widest uppercase text-slate-500">Execution Log · {deployLogs.length} lines</span>
+                <button
+                  onClick={() => setDeployLogs([])}
+                  className="text-[10px] font-bold tracking-widest uppercase text-slate-500 hover:text-slate-300 transition-colors"
+                >
+                  Clear
+                </button>
+              </div>
+              <div className="max-h-72 overflow-y-auto custom-scrollbar p-4 font-mono text-xs space-y-2 text-slate-400">
+                {deployLogs.map((log, idx) => (
+                  <div key={idx} className={`${log.includes('SUCCESS') ? 'text-emerald-400' : log.includes('FAILED') ? 'text-red-400' : 'text-blue-300'} animate-in slide-in-from-left-2`}>
+                     {'>'} {log}
+                  </div>
+                ))}
+                <div ref={logEndRef} />
+              </div>
             </div>
           )}
 
@@ -662,6 +732,42 @@ export default function MarketMakerPage() {
           { }
           {/* Right Column: Engine & Opportunities */}
           <div className="space-y-6">
+
+            {/* Base Rate — services/rate_feed.py. This is the one number
+                that feeds the Comet KES/IMC peg refresh (main.py) and the
+                live-discount / KES-exit corridor paths, distinct from the
+                Comet-quoted KES/IMC rate shown further down. */}
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="text-[11px] font-bold text-slate-400 tracking-widest uppercase">Base Rate (KES/USD)</h3>
+                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest ${baseRateStatus.stale ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'}`}>
+                  {baseRateStatus.stale ? 'STALE / UNFIXED' : `FRESH · ${Math.round(baseRateStatus.ageSeconds || 0)}s ago`}
+                </span>
+              </div>
+              <div className="bg-[#0b0f19] border border-[#1e2d3d] rounded-xl p-3 flex items-center gap-3">
+                <div className="flex-1">
+                  <p className="text-2xl font-mono font-bold text-white">{baseRateStatus.rate ? baseRateStatus.rate.toFixed(4) : '—'}</p>
+                  <p className="text-[10px] text-slate-500 font-mono">
+                    {baseRateStatus.fixedBy ? `fixed by ${baseRateStatus.fixedBy.slice(0, 8)}… · ${baseRateStatus.source}` : 'never fixed in this environment'}
+                  </p>
+                </div>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={baseRateInput}
+                  onChange={(e) => setBaseRateInput(e.target.value)}
+                  disabled={isFixingBaseRate}
+                  className="bg-[#111827] border border-[#1e2d3d] text-emerald-400 font-mono font-bold text-sm rounded-lg py-2 px-3 w-28 outline-none focus:border-blue-500 disabled:opacity-50"
+                />
+                <button
+                  onClick={handleFixBaseRate}
+                  disabled={isFixingBaseRate}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-2 rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap"
+                >
+                  {isFixingBaseRate ? '...' : 'Fix Rate'}
+                </button>
+              </div>
+            </div>
 
             {/* Price Discovery Engine Box */}
             <div>

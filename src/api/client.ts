@@ -224,8 +224,24 @@ export const getCometSpread = (base = 'KES', quote = 'IMC', amount_in = 1) =>
 
 export const toggleTreasuryKillSwitch = (active: boolean) =>
   api.post('/api/treasury/kill-switch', { active });
-export const executeHftCorridor = (data: { amount: number; corridor_id: string }) =>
-  api.post('/api/treasury/corridor/execute-hft', data);
+// executeHftCorridor (POST /api/treasury/corridor/execute-hft) removed —
+// that endpoint blocked an HTTP request open for the whole corridor run and
+// has been replaced by POST /api/treasury/corridor/start (see
+// startHftCorridor below), which returns immediately and is polled via
+// GET /api/treasury/corridor/{run_id}/status — the pattern
+// MarketMakerPage.tsx's handleExecuteCorridor already uses.
+export const startHftCorridor = (data: { amount: number; corridor_id: string; currency?: string }) =>
+  api.post('/api/treasury/corridor/start', data);
+export const getHftCorridorStatus = (runId: string) =>
+  api.get(`/api/treasury/corridor/${runId}/status`);
+
+// ==========================================
+// BASE RATE (KES/USD) — services/rate_feed.py
+// ==========================================
+
+export const getBaseRateStatus = () => api.get('/api/base-rate');
+export const fixBaseRate = (rate: number, source: string = 'manual') =>
+  api.post('/api/base-rate/fix', { rate, source });
 
 // ==========================================
 // VALORA APIS
@@ -256,8 +272,11 @@ export const getDealerRfqs = () => api.get('/api/admin/dealer/rfqs');
 export const analyzeDealerRfq = (id: string) => api.get(`/api/admin/dealer/rfqs/${id}/analysis`);
  export const createDealerRfq = (data: { customer_id: string; from_asset: string; to_asset: string; side: string; amount: number; channel?: string; settlement_channel?: string; collection_phone?: string; destination_wallet?: string; network?: string }) =>
   api.post('/api/admin/dealer/rfqs', data);
-export const quoteDealerRfq = (id: string, spread_bps: number, send_quote = true) =>
-  api.post(`/api/admin/dealer/rfqs/${id}/quote`, { spread_bps, send_quote });
+export const quoteDealerRfq = (id: string, spread_bps: number, send_quote = true, price_source: 'auto' | 'live' | 'cbk' | 'rate_book' = 'rate_book') =>
+  api.post(`/api/admin/dealer/rfqs/${id}/quote`, { spread_bps, send_quote, price_source });
+export const setCbkReferenceRate = (rate: number) => api.post('/api/admin/otc/market-rates/cbk-reference', { rate });
+export const getOtcMarketRates = (assets: string[], refresh = false) =>
+  api.get('/api/admin/otc/market-rates', { params: { assets: assets.join(','), refresh } });
 export const acceptDealerRfq = (id: string) => api.post(`/api/admin/dealer/rfqs/${id}/accept`);
 export const executeDealerRfq = (id: string) => api.post(`/api/admin/dealer/rfqs/${id}/execute`);
 export const getDealerSettlements = () => api.get('/api/admin/dealer/settlements');
@@ -403,15 +422,45 @@ export const updateOtcDocuments = (documents: unknown[]) => api.put('/api/otc/on
 export const submitOtcOnboarding = () => api.post('/api/otc/onboarding/submit');
 
 export const getOtcWallet = () => api.get('/api/otc/wallet');
+export const getOtcRates = () => api.get('/api/otc/rates');
 
-export const createOtcRfq = (data: { customer_id?: string; from_asset: string; to_asset: string; side: string; amount: number; settlement_channel?: string; collection_phone?: string; destination_wallet?: string; network?: string }) =>
+export const createOtcRfq = (data: { customer_id?: string; from_asset: string; to_asset: string; side: string; amount: number; settlement_channel?: string; collection_phone?: string; destination_wallet?: string; network?: string; bank_details?: { country: string; bankName: string; accountNumber: string; accountName: string; swift?: string } }) =>
   api.post('/api/otc/rfqs', data);
+export const getOtcSettlementOptions = () => api.get('/api/otc/settlement-options');
 export const listOtcRfqs = () => api.get('/api/otc/rfqs');
 export const getOtcRfq = (id: string) => api.get(`/api/otc/rfqs/${id}`);
 export const acceptOtcRfq = (id: string) => api.post(`/api/otc/rfqs/${id}/accept`);
 
 export const getOtcRfqMessages = (id: string) => api.get(`/api/otc/rfqs/${id}/messages`);
 export const postOtcRfqMessage = (id: string, text: string) => api.post(`/api/otc/rfqs/${id}/messages`, { text });
+
+export const listOtcCollections = (limit = 100) => api.get('/api/otc/collections', { params: { limit } });
+export const listOtcPayouts = (limit = 100) => api.get('/api/otc/payouts', { params: { limit } });
+export const listOtcTransactions = (limit = 200) => api.get('/api/otc/transactions', { params: { limit } });
+export const listOtcSettlements = () => api.get('/api/otc/settlements');
+export const getOtcProfile = () => api.get('/api/otc/profile');
+export const updateOtcProfile = (data: { contactName?: string; contactPhone?: string }) => api.put('/api/otc/profile', data);
+
+// Beneficiaries + payout requests (merchant self-service; requests are
+// treasury-reviewed, not auto-executed -- see routes/otc_admin.py::
+// act_on_otc_payout_request's docstring for why).
+export const listOtcBeneficiaries = () => api.get('/api/otc/beneficiaries');
+export const createOtcBeneficiary = (data: { name: string; channel: 'bank' | 'mobile_money'; currency: string; bankName?: string; accountNumber?: string; accountName?: string; phoneNumber?: string; provider?: string; beneficiaryType?: 'individual' | 'business'; email?: string; saved?: boolean }) =>
+  api.post('/api/otc/beneficiaries', data);
+export const deleteOtcBeneficiary = (id: string) => api.delete(`/api/otc/beneficiaries/${id}`);
+
+export const listOtcPayoutRequests = () => api.get('/api/otc/payouts/requests');
+export const createOtcPayoutRequest = (data: { beneficiaryId: string; amount: number; purpose?: string; reference?: string; batchId?: string }) => api.post('/api/otc/payouts/request', data);
+
+// Wallet funding requests ("Fund Balance") -- a real request treasury
+// fulfills manually via creditInstitutionalWallet, not self-serve funding.
+export const listOtcFundingRequests = () => api.get('/api/otc/wallet/funding-requests');
+export const createOtcFundingRequest = (data: { currency: string; amount: number; method?: 'mobile_money' | 'bank_transfer'; country?: string; phoneNumber?: string; provider?: string }) => api.post('/api/otc/wallet/fund-request', data);
+
+// Collection method requests (virtual account / payment link) -- treasury
+// provisions manually, no real banking-rail auto-issuance exists yet.
+export const listOtcCollectionRequests = () => api.get('/api/otc/collections/requests');
+export const createOtcCollectionRequest = (data: { currency: string; method: 'mobile_money' | 'crypto' | 'virtual_card' }) => api.post('/api/otc/collections/request', data);
 
 // Admin-side institutional onboarding review + deposit confirmation
 export const getInstitutionalOnboardingQueue = () => api.get('/api/admin/compliance/institutional-onboarding');
@@ -421,4 +470,31 @@ export const rejectInstitutionalOnboarding = (userId: string, reason?: string) =
 export const creditInstitutionalWallet = (userId: string, data: { asset: string; amount: number; reference?: string }) =>
   api.post(`/api/admin/institutional-wallets/${userId}/credit`, data);
 
+// OTC desk analytics -- dealer/treasury-side rollup, separate from the
+// retail-only /operations-overview.
+export const getOtcAnalyticsOverview = (days = 30) => api.get('/api/admin/otc/analytics-overview', { params: { days } });
+
+// Admin review queue for merchant beneficiary payout requests.
+export const listOtcPayoutRequestsAdmin = (status?: string) => api.get('/api/admin/otc/payout-requests', { params: status ? { status } : {} });
+export const actOnOtcPayoutRequest = (id: string, action: 'approve' | 'reject' | 'mark_paid', data?: { reference?: string; notes?: string }) =>
+  api.post(`/api/admin/otc/payout-requests/${id}/action`, { action, ...data });
+
 export default api;
+// Treasury desk: merchant funding + collection-method requests
+export const listOtcFundingRequestsAdmin = (status?: string) => api.get('/api/admin/otc/funding-requests', { params: status ? { status } : {} });
+export const actOnOtcFundingRequest = (id: string, data: { action: 'credit' | 'reject'; amount?: number; reference?: string; notes?: string }) =>
+  api.post(`/api/admin/otc/funding-requests/${id}/action`, data);
+export const listOtcCollectionRequestsAdmin = (status?: string) => api.get('/api/admin/otc/collection-requests', { params: status ? { status } : {} });
+export const actOnOtcCollectionRequest = (id: string, data: { action: 'provision' | 'reject'; details?: string }) =>
+  api.post(`/api/admin/otc/collection-requests/${id}/action`, data);
+
+// Treasury reconciliation: expected holdings vs the real balance treasury records
+export const getOtcReconciliation = () => api.get('/api/admin/otc/reconciliation');
+export const recordTreasurySnapshot = (data: { asset: string; balance: number; source?: string; note?: string }) =>
+  api.post('/api/admin/otc/reconciliation/snapshot', data);
+
+// Treasury settlement proof uploads
+export const uploadSettlementEvidence = (id: string, data: { filename: string; dataUrl: string; note?: string }) =>
+  api.post(`/api/admin/dealer/settlements/${id}/evidence`, data);
+export const getSettlementEvidence = (id: string, evidenceId: string) =>
+  api.get(`/api/admin/dealer/settlements/${id}/evidence/${evidenceId}`);

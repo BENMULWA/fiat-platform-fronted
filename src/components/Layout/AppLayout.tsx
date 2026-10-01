@@ -249,8 +249,21 @@ export default function AppLayout() {
                           // (e.g. "medium" liquidity warnings) in between.
                           const isBad = notification.type === 'error' || notification.type === 'high'
                           const isWarn = notification.type === 'medium'
+                          const openNotification = () => {
+                            setShowNotifMenu(false)
+                            if (!notification.route) return
+                            // Deep-link to the specific RFQ/settlement the
+                            // notification is about (Institutional RFQs page
+                            // reads ?rfq= to auto-select it), not just the
+                            // generic queue -- previously this row had no
+                            // onClick at all despite looking clickable.
+                            const target = notification.sourceRfqId
+                              ? `${notification.route}?rfq=${encodeURIComponent(notification.sourceRfqId)}`
+                              : notification.route
+                            navigate(target)
+                          }
                           return (
-                          <div key={notification.id} className={`p-4 border-b transition-colors cursor-pointer flex gap-3 ${isLight ? 'border-slate-100 hover:bg-slate-50' : 'border-[#1E2533]/50 hover:bg-[#111827]'} ${notification.isRead ? 'opacity-70' : ''}`}>
+                          <button type="button" onClick={openNotification} key={notification.id} className={`w-full text-left p-4 border-b transition-colors flex gap-3 ${notification.route ? 'cursor-pointer' : 'cursor-default'} ${isLight ? 'border-slate-100 hover:bg-slate-50' : 'border-[#1E2533]/50 hover:bg-[#111827]'} ${notification.isRead ? 'opacity-70' : ''}`}>
                             <div className={`w-8 h-8 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${isBad ? 'bg-red-500/10 border-red-500/20' : isWarn ? 'bg-amber-500/10 border-amber-500/20' : 'bg-emerald-500/10 border-emerald-500/20'}`}>
                               {isBad ? <XCircle className="w-4 h-4 text-red-400" /> : isWarn ? <CircleAlert className="w-4 h-4 text-amber-400" /> : <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
                             </div>
@@ -259,7 +272,7 @@ export default function AppLayout() {
                               <p className={`text-xs leading-relaxed ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>{notification.message}</p>
                               <p className={`text-[10px] mt-2 font-mono ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>{notification.createdAtLabel || 'Just now'}</p>
                             </div>
-                          </div>
+                          </button>
                           )
                         }) : (
                           <div className={`p-4 text-sm ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>No notifications yet.</div>

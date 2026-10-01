@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     ArrowDown, ArrowUp, ArrowRight, RefreshCw,
-    DollarSign, Bitcoin, Hexagon, CircleDollarSign, Coins, Radio, Eye, EyeOff, ChevronDown
+    DollarSign, Bitcoin, Hexagon, CircleDollarSign, Coins, Radio, Eye, EyeOff, ChevronDown, Copy, Check, ExternalLink, ShieldCheck
 } from 'lucide-react';
 import { getRetailWallet, getRampHistory } from '../../api/client';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -48,6 +48,18 @@ export default function WalletsPage() {
     });
     const [transactions, setTransactions] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    // Live on-chain snapshot at the user's own derived Celo address — shown
+    // next to the internal ledger balance so it's provable, not just trusted.
+    // `null` while loading/unavailable; the panel below hides itself then.
+    const [onchain, setOnchain] = useState<{ address: string; explorerUrl: string; balances: Record<string, number | null> } | null>(null);
+    const [copiedAddress, setCopiedAddress] = useState(false);
+    const copyOnchainAddress = () => {
+        if (!onchain?.address) return;
+        navigator.clipboard?.writeText(onchain.address).then(() => {
+            setCopiedAddress(true);
+            setTimeout(() => setCopiedAddress(false), 1500);
+        }).catch(() => {});
+    };
     // Full search/filter/pagination already lives on TransactionsPage — this
     // page only needs a teaser so it doesn't duplicate that page's job.
     const RECENT_ACTIVITY_COUNT = 5;
@@ -60,6 +72,9 @@ export default function WalletsPage() {
                 if (!isMounted) return;
                 if (walletRes.status === 'fulfilled' && walletRes.value.data?.balances) {
                     setBalances(prev => ({ ...prev, ...walletRes.value.data.balances }));
+                }
+                if (walletRes.status === 'fulfilled' && walletRes.value.data?.onchain) {
+                    setOnchain(walletRes.value.data.onchain);
                 }
                 if (txRes.status === 'fulfilled' && txRes.value.data?.entries) {
                     setTransactions(txRes.value.data.entries);
@@ -226,6 +241,48 @@ export default function WalletsPage() {
                     </div>
                 </div>
             </div>
+
+            {/* On-Chain Reserve panel — proves the stablecoin balances above aren't
+                just numbers in our database. This is the user's own Celo address
+                (derived per-account, never shared), read live from the chain, with
+                a link to verify it independently on Celoscan. Balances here can
+                legitimately read lower than the ledger above — deposits are swept
+                into the shared treasury shortly after arriving — this panel is a
+                transparency step, not yet the full move to self-custodied balances. */}
+            {onchain && (
+                <div className={`border rounded-2xl p-5 sm:p-6 ${isLight ? 'bg-white border-slate-200' : 'bg-[#0B0E14] border-[#1E2533]'}`}>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                        <div className="flex items-center gap-2">
+                            <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                            <h2 className={`text-sm font-bold uppercase tracking-wide ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>On-Chain Reserve (Celo)</h2>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className={`text-xs font-mono ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>
+                                {onchain.address.slice(0, 8)}...{onchain.address.slice(-6)}
+                            </span>
+                            <button onClick={copyOnchainAddress} title="Copy address" className={`p-1.5 rounded-lg transition-colors ${isLight ? 'hover:bg-slate-100 text-slate-400' : 'hover:bg-[#1e2d3d] text-gray-500'}`}>
+                                {copiedAddress ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                            </button>
+                            <a href={onchain.explorerUrl} target="_blank" rel="noopener noreferrer" title="View address on Celoscan" className={`p-1.5 rounded-lg transition-colors ${isLight ? 'hover:bg-slate-100 text-slate-400' : 'hover:bg-[#1e2d3d] text-gray-500'}`}>
+                                <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
+                        {(['USDT', 'USDC', 'cUSD'] as const).map(asset => (
+                            <div key={asset} className={`rounded-xl p-3 border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#111827] border-[#1E2533]'}`}>
+                                <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>{asset}</p>
+                                <p className={`text-sm font-mono font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                                    {onchain.balances?.[asset] == null ? '—' : onchain.balances[asset].toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}
+                                </p>
+                            </div>
+                        ))}
+                    </div>
+                    <p className={`text-[11px] mt-3 ${isLight ? 'text-slate-400' : 'text-gray-600'}`}>
+                        Read directly from Celoscan for your address above. This may differ from your balance below while funds are consolidated for processing.
+                    </p>
+                </div>
+            )}
 
             {/* Asset Cards — single accent (emerald) for supported assets you hold,
                 neutral slate for everything else, differentiated by icon/flag and

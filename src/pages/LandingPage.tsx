@@ -1,7 +1,7 @@
 //@ts-nocheck
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, ArrowDownUp, Shield, Smartphone, Sun, Moon, Monitor, CheckCircle2, Zap, ChevronDown, Menu, Lock, Globe, X, Wallet, Link2, Network, Phone, Mail, MessageCircle, Twitter, Github, Linkedin, Instagram, Facebook, Music2, TrendingUp, TrendingDown } from 'lucide-react';
+import { ArrowRight, ArrowDownUp, Shield, Smartphone, Sun, Moon, Monitor, CheckCircle2, Zap, ChevronDown, Menu, Lock, Globe, X, Wallet, Link2, Network, Phone, Mail, MessageCircle, Twitter, Github, Linkedin, Instagram, Facebook, Music2, TrendingUp, TrendingDown, Clock, Coins } from 'lucide-react';
 import logo from '../pages/assets/jasiri-icon.png';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
@@ -49,12 +49,170 @@ const customStyles = `
   /* Rate/country tickers convey live data, not decorative motion, so they
      keep scrolling even with prefers-reduced-motion — only fade-in-up
      (a one-shot entrance animation) respects that preference. */
+  @keyframes hero-in {
+    0% { opacity: 0; transform: translateY(18px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  .hero-in {
+    opacity: 0;
+    animation: hero-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  /* Scroll-reveal: sections fade/slide into view once as they enter the
+     viewport (IntersectionObserver toggles .is-visible — see the Reveal
+     component below). Kept to opacity/transform only so it's cheap to
+     animate and never affects layout. */
+  .reveal {
+    opacity: 0;
+    transform: translateY(28px);
+    transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .reveal.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* Hero stat cards: staggered entrance, pulsing icon ring, floating glyph,
+     hover lift + shine. All transform/opacity. */
+  @keyframes stat-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+  @keyframes stat-pulse { 0% { transform: scale(1); opacity: .5; } 100% { transform: scale(1.6); opacity: 0; } }
+  @keyframes stat-shine { 0% { transform: translateX(-120%); } 100% { transform: translateX(220%); } }
+  .stat-card { position: relative; overflow: hidden; transition: transform .35s cubic-bezier(.16,1,.3,1), box-shadow .35s; }
+  .stat-card:hover { transform: translateY(-6px); box-shadow: 0 18px 40px -18px var(--stat-glow); }
+  .stat-card::after { content: ''; position: absolute; inset: 0; width: 40%; background: linear-gradient(100deg, transparent, rgba(255,255,255,.35), transparent); transform: translateX(-120%); pointer-events: none; }
+  .stat-card:hover::after { animation: stat-shine .9s ease; }
+  .stat-icon { position: relative; }
+  .stat-icon::before { content: ''; position: absolute; inset: 0; border-radius: 9999px; background: var(--stat-color); animation: stat-pulse 2.4s ease-out infinite; }
+  .stat-glyph { display: inline-flex; animation: stat-float 3.6s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) {
+    .stat-glyph, .stat-icon::before { animation: none !important; }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .animate-fade-in-up {
       animation: none !important;
     }
+    .hero-in {
+      opacity: 1;
+      animation: none !important;
+    }
+    .reveal {
+      opacity: 1;
+      transform: none;
+      transition: none;
+    }
   }
 `;
+
+// Animated count-up that starts once when scrolled into view.
+function CountUp({ to, prefix = '', suffix = '', durationMs = 1400 }: { to: number; prefix?: string; suffix?: string; durationMs?: number }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [value, setValue] = useState(0);
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) { setValue(to); return; }
+    let raf = 0;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return;
+      observer.disconnect();
+      const start = performance.now();
+      const tick = (now: number) => {
+        const t = Math.min((now - start) / durationMs, 1);
+        setValue(Math.round(to * (1 - Math.pow(1 - t, 3))));
+        if (t < 1) raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+    }, { threshold: 0.4 });
+    observer.observe(node);
+    return () => { observer.disconnect(); cancelAnimationFrame(raf); };
+  }, [to, durationMs]);
+  return <span ref={ref}>{prefix}{value}{suffix}</span>;
+}
+
+function HeroStatCards({ theme }: { theme: string }) {
+  const light = theme === 'light';
+  const cards = [
+    {
+      key: 'countries', color: '#3b82f6', glow: 'rgba(59,130,246,.45)',
+      bg: light ? 'bg-gradient-to-br from-blue-50 to-sky-50 border-blue-100' : 'bg-blue-500/10 border-blue-400/15',
+      iconBg: light ? 'bg-blue-100 text-blue-600' : 'bg-blue-500/20 text-blue-400',
+      icon: <Globe className="w-5 h-5" />,
+      value: <CountUp to={5} suffix="+" />, label: 'Countries reachable',
+    },
+    {
+      key: 'settlement', color: '#8b5cf6', glow: 'rgba(139,92,246,.45)',
+      bg: light ? 'bg-gradient-to-br from-violet-50 to-fuchsia-50 border-violet-100' : 'bg-violet-500/10 border-violet-400/15',
+      iconBg: light ? 'bg-violet-100 text-violet-600' : 'bg-violet-500/20 text-violet-400',
+      icon: <Clock className="w-5 h-5" />,
+      value: <>&lt; <CountUp to={2} /> min</>, label: 'Typical settlement',
+    },
+    {
+      key: 'currencies', color: '#10b981', glow: 'rgba(16,185,129,.45)',
+      bg: light ? 'bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-100' : 'bg-emerald-500/10 border-emerald-400/15',
+      iconBg: light ? 'bg-emerald-100 text-emerald-600' : 'bg-emerald-500/20 text-emerald-400',
+      icon: <Coins className="w-5 h-5" />,
+      value: <CountUp to={6} />, label: 'Currencies & assets',
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-3 gap-3 mt-4">
+      {cards.map((c, i) => (
+        <div
+          key={c.key}
+          className={`hero-in stat-card rounded-2xl border px-3 py-3.5 ${c.bg}`}
+          style={{ animationDelay: `${320 + i * 120}ms`, ['--stat-glow' as any]: c.glow, ['--stat-color' as any]: c.color }}
+        >
+          <div className="relative flex items-center gap-2">
+            <span className={`stat-icon w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${c.iconBg}`}>
+              <span className="relative stat-glyph">{c.icon}</span>
+            </span>
+            <p className="text-lg sm:text-xl font-extrabold whitespace-nowrap leading-none">{c.value}</p>
+          </div>
+          <p className={`relative text-xs font-semibold mt-2.5 leading-snug ${light ? 'text-slate-600' : 'text-slate-300'}`}>{c.label}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Fades + slides its children up into place the first time they scroll into
+// view, then disconnects — a scroll-reveal without pulling in a motion
+// library. Purely opacity/transform (see .reveal above) so it's cheap and
+// respects prefers-reduced-motion via CSS alone (no JS branching needed).
+function Reveal({ children, className = '', as: Tag = 'div', delayMs = 0, id }: { children: React.ReactNode; className?: string; as?: any; delayMs?: number; id?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.15, rootMargin: '0px 0px -60px 0px' }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <Tag
+      ref={ref}
+      id={id}
+      className={`reveal ${isVisible ? 'is-visible' : ''} ${className}`}
+      style={delayMs ? { transitionDelay: `${delayMs}ms` } : undefined}
+    >
+      {children}
+    </Tag>
+  );
+}
 
 const ASSETS = ['USDT', 'USDC', 'USDA', 'cUSD', 'KES', 'AIRT'];
 
@@ -83,7 +241,7 @@ const SUPPORTED_COUNTRIES = [
 export default function LandingPage() {
   const navigate = useNavigate();
   const { user, viewAsAdmin } = useAuth();
-  const [theme, setTheme] = useState<'light' | 'dim' | 'dark'>('dark');
+  const [theme, setTheme] = useState<'light' | 'dim' | 'dark'>('light');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // Mobile Menu State
   const [enableMotion, setEnableMotion] = useState(false);
   const [isHelpCenterOpen, setIsHelpCenterOpen] = useState(false);
@@ -98,7 +256,7 @@ export default function LandingPage() {
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
 
   // --- HERO SWAP STATE ---
-  const [payAmount, setPayAmount] = useState<string>("100000");
+  const [payAmount, setPayAmount] = useState<string>("100");
   const [payAsset, setPayAsset] = useState<string>("KES");
   const [receiveAsset, setReceiveAsset] = useState<string>("USDA");
   const [isPayDropdownOpen, setIsPayDropdownOpen] = useState(false);
@@ -177,17 +335,22 @@ export default function LandingPage() {
   };
 
   // --- CALCULATE HERO RECEIVE AMOUNT ---
+  // liveRates holds each asset's units-per-1-USD (e.g. KES ~129.5, USDA ~1),
+  // so converting payAsset -> USD divides by its rate, and USD -> receiveAsset
+  // multiplies by the receive rate. (Previously inverted: multiplying by the
+  // pay rate turned 100,000 KES into ~12.95M "USDA" instead of ~770.)
   const calculateReceive = () => {
     const num = parseFloat(payAmount);
     if (isNaN(num) || num <= 0 || !liveRates[payAsset] || !liveRates[receiveAsset]) return "—";
-    const usdValue = num * liveRates[payAsset];
-    const receiveValue = usdValue / liveRates[receiveAsset];
+    const usdValue = num / liveRates[payAsset];
+    const receiveValue = usdValue * liveRates[receiveAsset];
     const decimals = receiveValue > 1000 ? 2 : 4;
     return receiveValue.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
   };
 
   const currentReceiveAmount = calculateReceive();
-  const crossRate = liveRates[payAsset] && liveRates[receiveAsset] ? (liveRates[payAsset] / liveRates[receiveAsset]) : 0;
+  // Units of receiveAsset per 1 payAsset (inverse of the units-per-USD ratio).
+  const crossRate = liveRates[payAsset] && liveRates[receiveAsset] ? (liveRates[receiveAsset] / liveRates[payAsset]) : 0;
   const formattedRate = !crossRate ? 'Indicative rate unavailable' : crossRate < 1
     ? `1 ${receiveAsset} = ${(1 / crossRate).toFixed(2)} ${payAsset}`
     : `1 ${payAsset} = ${crossRate.toFixed(2)} ${receiveAsset}`;
@@ -414,7 +577,7 @@ export default function LandingPage() {
       </nav>
 
       {/* 1. HERO SECTION */}
-      <section className="relative pt-20 pb-24 md:pt-32 md:pb-40 overflow-hidden">
+      <section className="relative pt-6 pb-24 md:pt-10 md:pb-40 overflow-hidden">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-emerald-500/10 blur-[120px] rounded-full pointer-events-none"></div>
         <div className="absolute top-1/2 right-0 w-[400px] h-[400px] bg-amber-500/5 blur-[120px] rounded-full pointer-events-none"></div>
 
@@ -422,17 +585,17 @@ export default function LandingPage() {
           <div className="grid lg:grid-cols-2 gap-12 lg:gap-8 items-center">
 
             <div className="text-center lg:text-left max-w-2xl mx-auto lg:mx-0">
-              <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight mb-6 leading-tight">
+              <h1 className="hero-in text-5xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight mb-6 leading-tight" style={{ animationDelay: '0ms' }}>
                 <span className="block">Turn FIAT Currencies</span>
-                <span className="block text-emerald-500">into crypto.</span> 
-                
+                <span className="block text-emerald-500">into crypto.</span>
+
                 <span className="block">Buy, Sell & Cash Out.</span>
               </h1>
-              <p className={`text-lg sm:text-xl mb-10 leading-relaxed ${current.textMuted}`}>
+              <p className={`hero-in text-lg sm:text-xl mb-10 leading-relaxed ${current.textMuted}`} style={{ animationDelay: '120ms' }}>
                 Deposit KES from M-Pesa, swap into USDT, USDC, USDA or cUSD, and cash out to airtime or mobile money — all in one place, at a rate you see before you confirm.
               </p>
 
-              <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start space-y-4 sm:space-y-0 sm:space-x-4">
+              <div className="hero-in flex flex-col sm:flex-row items-center justify-center lg:justify-start space-y-4 sm:space-y-0 sm:space-x-4" style={{ animationDelay: '220ms' }}>
                 <button onClick={handleGetStarted} className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-8 py-4 rounded-xl transition-all flex items-center justify-center">
                   {user ? 'Open Workspace' : 'Create Free Account'} <ArrowRight className="ml-2 w-5 h-5" />
                 </button>
@@ -464,24 +627,10 @@ export default function LandingPage() {
                 </div>
               </div>
 
-              <div className={`grid grid-cols-3 gap-4 mt-10 pt-8 border-t ${theme === 'light' ? 'border-slate-200' : 'border-white/10'}`}>
-                <div>
-                  <p className="text-2xl font-extrabold">5+</p>
-                  <p className={`text-xs mt-1 ${current.textMuted}`}>Countries reachable</p>
-                </div>
-                <div>
-                  <p className="text-2xl font-extrabold">&lt; 2 min</p>
-                  <p className={`text-xs mt-1 ${current.textMuted}`}>Typical settlement</p>
-                </div>
-                <div>
-                  <p className="text-2xl font-extrabold">6</p>
-                  <p className={`text-xs mt-1 ${current.textMuted}`}>Currencies & assets</p>
-                </div>
-              </div>
             </div>
 
-            <div className="relative h-full mx-auto w-full max-w-md lg:ml-auto">
-              <div className={`p-8 sm:p-8 rounded-[2rem] border transition-colors duration-300 ${current.card}`}>
+            <div className="hero-in relative h-full mx-auto w-full max-w-md lg:ml-auto" style={{ animationDelay: '160ms' }}>
+              <div className={`p-8 sm:p-8 rounded-[2rem] border transition-colors duration-300 hover:-translate-y-1 hover:shadow-2xl ${current.card}`}>
                 <div className={`mb-6 flex items-center gap-1 p-1 rounded-lg ${theme === 'light' ? 'bg-slate-100' : 'bg-white/5'}`}>
                   <div className={`flex-1 text-center py-1.5 rounded-md text-sm font-bold ${theme === 'light' ? 'bg-white text-slate-900 shadow-sm' : 'bg-[#18181b] text-white shadow-sm'}`}>Quick Swap</div>
                   <Link
@@ -597,6 +746,8 @@ export default function LandingPage() {
                   {user ? 'Swap Now' : 'Sign up to swap'}  
                 </button>
               </div>
+
+              <HeroStatCards theme={theme} />
             </div>
           </div>
         </div>
@@ -605,14 +756,14 @@ export default function LandingPage() {
       {/* 2. WHAT YOU CAN DO */}
       <section id="features" className={`py-24 border-t transition-colors duration-300 ${theme === 'light' ? 'border-slate-200 bg-white' : 'border-white/5 bg-[#09090b]'}`}>
         <div className="max-w-[88rem] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
+          <Reveal className="text-center mb-16">
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight mb-4">
               Everything you need, <span className="text-amber-500">in one app.</span>
             </h2>
             <p className={`text-lg max-w-2xl mx-auto ${current.textMuted}`}>
               Four things people actually do on Jasiri — no jargon, no hidden steps.
             </p>
-          </div>
+          </Reveal>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {[
@@ -648,21 +799,22 @@ export default function LandingPage() {
                 cta: 'Withdraw',
                 path: '/withdraw',
               },
-            ].map((item) => (
-              <button
-                key={item.title}
-                onClick={() => navigate(user ? item.path : '/signup')}
-                className={`text-left p-7 rounded-[2rem] border transition-all duration-300 hover:-translate-y-1 ${current.card}`}
-              >
-                <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-5 border ${item.color === 'emerald' ? 'bg-emerald-500/10 border-emerald-500/20' : item.color === 'amber' ? 'bg-amber-500/10 border-amber-500/20' : 'bg-blue-500/10 border-blue-500/20'}`}>
-                  <item.icon className={`w-5 h-5 ${item.color === 'emerald' ? 'text-emerald-500' : item.color === 'amber' ? 'text-amber-500' : 'text-blue-500'}`} />
-                </div>
-                <h3 className="text-lg font-bold mb-2">{item.title}</h3>
-                <p className={`text-sm mb-5 leading-relaxed ${current.textMuted}`}>{item.copy}</p>
-                <span className="inline-flex items-center text-sm font-bold text-emerald-500">
-                  {item.cta} <ArrowRight className="w-4 h-4 ml-1.5" />
-                </span>
-              </button>
+            ].map((item, i) => (
+              <Reveal key={item.title} delayMs={i * 80}>
+                <button
+                  onClick={() => navigate(user ? item.path : '/signup')}
+                  className={`w-full text-left p-7 rounded-[2rem] border transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${current.card}`}
+                >
+                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-5 border ${item.color === 'emerald' ? 'bg-emerald-500/10 border-emerald-500/20' : item.color === 'amber' ? 'bg-amber-500/10 border-amber-500/20' : 'bg-blue-500/10 border-blue-500/20'}`}>
+                    <item.icon className={`w-5 h-5 ${item.color === 'emerald' ? 'text-emerald-500' : item.color === 'amber' ? 'text-amber-500' : 'text-blue-500'}`} />
+                  </div>
+                  <h3 className="text-lg font-bold mb-2">{item.title}</h3>
+                  <p className={`text-sm mb-5 leading-relaxed ${current.textMuted}`}>{item.copy}</p>
+                  <span className="inline-flex items-center text-sm font-bold text-emerald-500">
+                    {item.cta} <ArrowRight className="w-4 h-4 ml-1.5" />
+                  </span>
+                </button>
+              </Reveal>
             ))}
           </div>
 
@@ -681,48 +833,34 @@ export default function LandingPage() {
       {/* 3. HOW IT WORKS */}
       <section id="how-it-works" className={`py-32 border-t transition-colors duration-300 ${theme === 'light' ? 'border-slate-200' : 'border-white/5'}`}>
         <div className="max-w-[88rem] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-20">
+          <Reveal className="text-center mb-20">
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight mb-4">
-             Simple Steps 
+             Simple Steps
             </h2>
             <p className={`text-lg max-w-2xl mx-auto ${current.textMuted}`}>
               Three simple steps to bridge your fiat and crypto.
             </p>
-          </div>
+          </Reveal>
 
           <div className="relative max-w-5xl mx-auto">
             <div className="absolute top-12 left-0 w-full h-px bg-emerald-500/20 hidden md:block"></div>
 
             <div className="grid md:grid-cols-3 gap-12 relative z-10">
-              <div className="flex flex-col items-center text-center">
-                <div className={`w-24 h-24 rounded-full flex items-center justify-center text-2xl font-bold mb-6 border-[3px] shadow-[0_0_30px_rgba(16,185,129,0.15)] ${theme === 'light' ? 'bg-white border-emerald-100 text-emerald-600' : 'bg-[#09090b] border-emerald-900/50 text-emerald-400'}`}>
-                  01
-                </div>
-                <h3 className="text-xl font-bold mb-3">Create Account</h3>
-                <p className={`text-sm leading-relaxed px-4 ${current.textMuted}`}>
-                  Sign up in seconds and complete a quick KYC verification to unlock your limits.
-                </p>
-              </div>
-
-              <div className="flex flex-col items-center text-center">
-                <div className={`w-24 h-24 rounded-full flex items-center justify-center text-2xl font-bold mb-6 border-[3px] shadow-[0_0_30px_rgba(16,185,129,0.15)] ${theme === 'light' ? 'bg-white border-emerald-100 text-emerald-600' : 'bg-[#09090b] border-emerald-900/50 text-emerald-400'}`}>
-                  02
-                </div>
-                <h3 className="text-xl font-bold mb-3">Fund Wallet</h3>
-                <p className={`text-sm leading-relaxed px-4 ${current.textMuted}`}>
-                  Deposit KES directly via M-Pesa, or send Stablecoins to your Jasiri Web3 address.
-                </p>
-              </div>
-
-              <div className="flex flex-col items-center text-center">
-                <div className={`w-24 h-24 rounded-full flex items-center justify-center text-2xl font-bold mb-6 border-[3px] shadow-[0_0_30px_rgba(16,185,129,0.15)] ${theme === 'light' ? 'bg-white border-emerald-100 text-emerald-600' : 'bg-[#09090b] border-emerald-900/50 text-emerald-400'}`}>
-                  03
-                </div>
-                <h3 className="text-xl font-bold mb-3">Swap & Withdraw</h3>
-                <p className={`text-sm leading-relaxed px-4 ${current.textMuted}`}>
-                  Execute instant swaps and withdraw directly to your phone or crypto wallet.
-                </p>
-              </div>
+              {[
+                { n: '01', title: 'Create Account', body: 'Sign up in seconds and complete a quick KYC verification to unlock your limits.' },
+                { n: '02', title: 'Fund Wallet', body: 'Deposit KES directly via M-Pesa, or send Stablecoins to your Jasiri Web3 address.' },
+                { n: '03', title: 'Swap & Withdraw', body: 'Execute instant swaps and withdraw directly to your phone or crypto wallet.' },
+              ].map((step, i) => (
+                <Reveal key={step.n} delayMs={i * 120} className="flex flex-col items-center text-center">
+                  <div className={`w-24 h-24 rounded-full flex items-center justify-center text-2xl font-bold mb-6 border-[3px] shadow-[0_0_30px_rgba(16,185,129,0.15)] transition-transform duration-300 hover:scale-105 ${theme === 'light' ? 'bg-white border-emerald-100 text-emerald-600' : 'bg-[#09090b] border-emerald-900/50 text-emerald-400'}`}>
+                    {step.n}
+                  </div>
+                  <h3 className="text-xl font-bold mb-3">{step.title}</h3>
+                  <p className={`text-sm leading-relaxed px-4 ${current.textMuted}`}>
+                    {step.body}
+                  </p>
+                </Reveal>
+              ))}
             </div>
           </div>
         </div>
@@ -733,7 +871,7 @@ export default function LandingPage() {
         <div className="max-w-[88rem] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid lg:grid-cols-2 gap-16 items-center">
 
-            <div>
+            <Reveal>
               <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-8 border shadow-lg ${theme === 'light' ? 'bg-amber-50 border-amber-200' : 'bg-amber-500/10 border-amber-500/20'}`}>
                 <Shield className="text-amber-500 w-8 h-8" />
               </div>
@@ -776,9 +914,9 @@ export default function LandingPage() {
                   See full security FAQ <ArrowRight className="w-4 h-4 ml-2" />
                 </Link>
               </div>
-            </div>
+            </Reveal>
 
-            <div className={`p-8 rounded-[2rem] border transition-colors duration-300 ${current.card}`}>
+            <Reveal delayMs={120} className={`p-8 rounded-[2rem] border transition-colors duration-300 ${current.card}`}>
               <div className="mb-6">
                 <span className={`text-xs font-bold tracking-widest uppercase ${current.textMuted}`}>Rails We Support</span>
               </div>
@@ -805,7 +943,7 @@ export default function LandingPage() {
                   <span className={`text-[11px] px-2.5 py-1 rounded-full border ${theme === 'light' ? 'bg-slate-100 border-slate-200 text-slate-600' : 'bg-white/5 border-white/10 text-slate-400'}`}>Coming soon</span>
                 </div>
               </div>
-            </div>
+            </Reveal>
 
           </div>
         </div>
@@ -814,7 +952,7 @@ export default function LandingPage() {
       {/* 5. FOR BUSINESSES */}
       <section id="business" className={`py-24 border-t transition-colors duration-300 ${theme === 'light' ? 'border-slate-200 bg-white' : 'border-white/5 bg-[#09090b]'}`}>
         <div className="max-w-[88rem] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className={`rounded-[2rem] border p-8 sm:p-14 ${current.card}`}>
+          <Reveal className={`rounded-[2rem] border p-8 sm:p-14 ${current.card}`}>
             <div className="grid lg:grid-cols-3 gap-10 items-center">
               <div className="lg:col-span-2">
                 <div className="mb-2">
@@ -853,7 +991,7 @@ export default function LandingPage() {
                 </Link>
               </div>
             </div>
-          </div>
+          </Reveal>
         </div>
       </section>
 
@@ -861,7 +999,7 @@ export default function LandingPage() {
       <section id="cross-border" className={`py-24 border-t transition-colors duration-300 ${theme === 'light' ? 'border-slate-200' : 'border-white/5'}`}>
         <div className="max-w-[88rem] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid lg:grid-cols-2 gap-16 items-center">
-            <div>
+            <Reveal>
               <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-8 border shadow-lg ${theme === 'light' ? 'bg-blue-50 border-blue-200' : 'bg-blue-500/10 border-blue-500/20'}`}>
                 <Globe className="text-blue-500 w-8 h-8" />
               </div>
@@ -883,8 +1021,8 @@ export default function LandingPage() {
                   </div>
                 ))}
               </div>
-            </div>
-            <div className={`p-8 rounded-[2rem] border transition-colors duration-300 ${current.card}`}>
+            </Reveal>
+            <Reveal delayMs={120} className={`p-8 rounded-[2rem] border transition-colors duration-300 ${current.card}`}>
               <h3 className={`text-xs font-bold tracking-widest uppercase mb-6 ${current.textMuted}`}>Regional currencies we settle to</h3>
               <div className="grid grid-cols-2 gap-3">
                 {[
@@ -901,7 +1039,7 @@ export default function LandingPage() {
                   </div>
                 ))}
               </div>
-            </div>
+            </Reveal>
           </div>
         </div>
       </section>
@@ -909,7 +1047,7 @@ export default function LandingPage() {
       {/* 7. CALL TO ACTION */}
       <section className="py-24 px-4">
         <div className="max-w-5xl mx-auto">
-          <div className={`relative rounded-[3rem] p-12 sm:p-20 text-center overflow-hidden border ${theme === 'light' ? 'bg-emerald-50 border-emerald-200' : 'bg-gradient-to-br from-[#064e3b]/40 to-transparent border-emerald-500/20'}`}>
+          <Reveal className={`relative rounded-[3rem] p-12 sm:p-20 text-center overflow-hidden border ${theme === 'light' ? 'bg-emerald-50 border-emerald-200' : 'bg-gradient-to-br from-[#064e3b]/40 to-transparent border-emerald-500/20'}`}>
             <h2 className="text-3xl sm:text-5xl font-bold tracking-tight mb-6">
               Ready to be brave?
             </h2>
@@ -919,64 +1057,38 @@ export default function LandingPage() {
             <button onClick={handleGetStarted} className="inline-flex items-center bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-8 py-4 rounded-xl transition-all shadow-[0_0_20px_rgba(16,185,129,0.4)]">
               {user ? 'Go to your workspace' : 'Create your free account'} <ArrowRight className="ml-2 w-5 h-5" />
             </button>
-          </div>
+          </Reveal>
         </div>
       </section>
 
       {/* 8. TRUST CENTER */}
       <section id="trust-center" className={`py-24 border-t transition-colors duration-300 ${theme === 'light' ? 'border-slate-200 bg-slate-50/60' : 'border-white/5 bg-[#0b0b0e]'}`}>
         <div className="max-w-[88rem] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-14">
+          <Reveal className="text-center mb-14">
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight mb-4">
               Trust Center
             </h2>
             <p className={`text-lg max-w-3xl mx-auto ${current.textMuted}`}>
               Everything You Need before you  move money: fees, legal terms, privacy protections, platform status and support.
             </p>
-          </div>
+          </Reveal>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <article id="fees" className={`p-7 rounded-3xl border ${current.card}`}>
-              <h3 className="text-xl font-bold mb-3">Fees</h3>
-              <p className={`text-sm leading-relaxed ${current.textMuted}`}>
-                Jasiri displays the estimated swap amount, execution rate and network fee before confirmation. Retail trades currently apply a 0.5% platform fee.
-              </p>
-            </article>
-
-            <article id="compliance" className={`p-7 rounded-3xl border ${current.card}`}>
-              <h3 className="text-xl font-bold mb-3">Compliance</h3>
-              <p className={`text-sm leading-relaxed ${current.textMuted}`}>
-                KYC onboarding and AML transaction monitoring are required for regulated cross-rail settlement and account protection.
-              </p>
-            </article>
-
-            <article id="status" className={`p-7 rounded-3xl border ${current.card}`}>
-              <h3 className="text-xl font-bold mb-3">Status</h3>
-              <p className={`text-sm leading-relaxed ${current.textMuted}`}>
-                The rails we support are listed above under Security. New rails are added as they're fully tested — we'd rather ship fewer things that work than promise everything at once.
-              </p>
-            </article>
-
-            <article id="help" className={`p-7 rounded-3xl border ${current.card}`}>
-              <h3 className="text-xl font-bold mb-3">Help</h3>
-              <p className={`text-sm leading-relaxed ${current.textMuted}`}>
-                Need onboarding help? Email support@jasiri.finance and include your account email for the fastest response.
-              </p>
-            </article>
-
-            <article id="privacy" className={`p-7 rounded-3xl border ${current.card}`}>
-              <h3 className="text-xl font-bold mb-3">Privacy</h3>
-              <p className={`text-sm leading-relaxed ${current.textMuted}`}>
-                Identity and transaction data are encrypted in transit and at rest. Access is role-based and audited for sensitive operations.
-              </p>
-            </article>
-
-            <article id="terms" className={`p-7 rounded-3xl border ${current.card}`}>
-              <h3 className="text-xl font-bold mb-3">Terms</h3>
-              <p className={`text-sm leading-relaxed ${current.textMuted}`}>
-                Trading, custody and withdrawal operations are governed by Jasiri service terms, risk disclosures and applicable local regulations.
-              </p>
-            </article>
+            {[
+              { id: 'fees', title: 'Fees', body: 'Jasiri displays the estimated swap amount, execution rate and network fee before confirmation. Retail trades currently apply a 0.5% platform fee.' },
+              { id: 'compliance', title: 'Compliance', body: 'KYC onboarding and AML transaction monitoring are required for regulated cross-rail settlement and account protection.' },
+              { id: 'status', title: 'Status', body: "The rails we support are listed above under Security. New rails are added as they're fully tested — we'd rather ship fewer things that work than promise everything at once." },
+              { id: 'help', title: 'Help', body: 'Need onboarding help? Email support@jasiri.finance and include your account email for the fastest response.' },
+              { id: 'privacy', title: 'Privacy', body: 'Identity and transaction data are encrypted in transit and at rest. Access is role-based and audited for sensitive operations.' },
+              { id: 'terms', title: 'Terms', body: 'Trading, custody and withdrawal operations are governed by Jasiri service terms, risk disclosures and applicable local regulations.' },
+            ].map((card, i) => (
+              <Reveal key={card.id} id={card.id} as="article" delayMs={(i % 3) * 80} className={`p-7 rounded-3xl border transition-transform duration-300 hover:-translate-y-1 ${current.card}`}>
+                <h3 className="text-xl font-bold mb-3">{card.title}</h3>
+                <p className={`text-sm leading-relaxed ${current.textMuted}`}>
+                  {card.body}
+                </p>
+              </Reveal>
+            ))}
           </div>
         </div>
       </section>

@@ -15,15 +15,22 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import FAQPage from './pages/FAQPage'
 import AppLayout from './components/Layout/AppLayout'
+import InstitutionalLayout from './components/Layout/InstitutionalLayout'
 import AdminRoute from './components/Guards/AdminRoute'
 import InstitutionalRoute from './components/Guards/InstitutionalRoute'
 
 // --- OTC MERCHANT PORTAL PAGES ---
 import OtcSignup from './pages/OTC Merchant/Signup'
 import OtcOnboarding from './pages/OTC Merchant/Onboarding'
-import OtcOverview from './pages/OTC Merchant/Overview'
+import OtcDashboard from './pages/OTC Merchant/Dashboard'
+import OtcWalletBalances from './pages/OTC Merchant/WalletBalances'
+import OtcCollections from './pages/OTC Merchant/Collections'
+import OtcPayouts from './pages/OTC Merchant/Payouts'
 import OtcRequestSettlement from './pages/OTC Merchant/RequestSettlement'
 import OtcRfqDetail from './pages/OTC Merchant/RfqDetail'
+import OtcSettlements from './pages/OTC Merchant/Settlements'
+import OtcProfile from './pages/OTC Merchant/Profile'
+import OtcTransactionsHistory from './pages/OTC Merchant/TransactionsHistory'
 
 // --- ADMIN PAGES ---
 import DashboardPage from './pages/DashboardPage'
@@ -43,6 +50,8 @@ import KycAmlPage from './pages/OTC Dashboard/KycAml'
 import CustomersPage from './pages/OTC Dashboard/Customers';
 import DealerWorkspaceWizard from './pages/OTC Dashboard/DealerWorkspaceWizard';
 import DealerWorkspaceLive from './pages/OTC Dashboard/DealerWorkspaceLive';
+import OtcRequests from './pages/OTC Dashboard/OtcRequests';
+import OtcReconciliation from './pages/OTC Dashboard/OtcReconciliation';
 import DealerQuotesPage from './pages/OTC Dashboard/DealerQuotesPage';
 import ComingSoon from './pages/OTC Dashboard/ComingSoon';
 import CompanyRevenuePage from './pages/OTC Dashboard/CompanyRevenue';
@@ -149,16 +158,26 @@ function AppRoutes() {
       <Route path="/faq" element={<FAQPage />} />
       <Route path="/staff" element={user ? <Navigate to={defaultRoute} replace /> : <StaffPortalPage />} />
 
-      {/* OTC MERCHANT PORTAL -- own layout (no admin/retail Sidebar+AppLayout
-          shell), each page below handles its own auth via InstitutionalRoute
-          (or is public, for signup). See routes/otc_merchant.py for the
-          backend these call. */}
+      {/* OTC MERCHANT PORTAL -- shares one InstitutionalLayout shell
+          (sidebar + navbar, mirroring retail's AppLayout) across every
+          nested page. InstitutionalRoute is now a pure auth/role gate --
+          approval is enforced per-action (useRequireOnboarding), not by
+          blocking navigation. See routes/otc_merchant.py for the backend
+          these call. */}
       <Route path="/otc" element={user ? <Navigate to={defaultRoute} replace /> : <OtcGatewayPage />} />
       <Route path="/otc/signup" element={user ? <Navigate to={defaultRoute} replace /> : <OtcSignup />} />
-      <Route path="/otc/onboarding" element={<InstitutionalRoute requireApproved={false}><OtcOnboarding /></InstitutionalRoute>} />
-      <Route path="/otc/overview" element={<InstitutionalRoute><OtcOverview /></InstitutionalRoute>} />
-      <Route path="/otc/request" element={<InstitutionalRoute><OtcRequestSettlement /></InstitutionalRoute>} />
-      <Route path="/otc/rfqs/:rfqId" element={<InstitutionalRoute><OtcRfqDetail /></InstitutionalRoute>} />
+      <Route element={<InstitutionalRoute><InstitutionalLayout /></InstitutionalRoute>}>
+        <Route path="/otc/onboarding" element={<OtcOnboarding />} />
+        <Route path="/otc/overview" element={<OtcDashboard />} />
+        <Route path="/otc/wallet" element={<OtcWalletBalances />} />
+        <Route path="/otc/collections" element={<OtcCollections />} />
+        <Route path="/otc/payouts" element={<OtcPayouts />} />
+        <Route path="/otc/request" element={<OtcRequestSettlement />} />
+        <Route path="/otc/rfqs/:rfqId" element={<OtcRfqDetail />} />
+        <Route path="/otc/settlements" element={<OtcSettlements />} />
+        <Route path="/otc/profile" element={<OtcProfile />} />
+        <Route path="/otc/transactions" element={<OtcTransactionsHistory />} />
+      </Route>
 
       {/* PROTECTED LAYOUT */}
       <Route path="/" element={<ProtectedRoute><RoleAwareLayout /></ProtectedRoute>}>
@@ -209,6 +228,8 @@ function AppRoutes() {
         */}
         <Route path="admin/institutional-settlements" element={<TreasurySettlementsPage />} />
         <Route path="admin/institutional-rfqs" element={<DealerWorkspaceLive />} />
+        <Route path="admin/otc-requests" element={<OtcRequests />} />
+        <Route path="admin/otc-reconciliation" element={<OtcReconciliation />} />
         <Route path="admin/institutional-rfqs/new" element={<DealerWorkspaceWizard initialOpen />} />
         <Route path="admin/otc-crypto" element={<ComingSoon title="OTC Crypto" />} />
         <Route path="admin/quotes" element={<DealerQuotesPage />} />

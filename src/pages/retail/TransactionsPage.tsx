@@ -1,6 +1,6 @@
 //@ts-nocheck
 import { useState, useEffect } from 'react';
-import { RefreshCw, Search, Eye, Download, X, FileText, AlertTriangle } from 'lucide-react';
+import { RefreshCw, Search, Eye, Download, X, FileText, AlertTriangle, Copy, Check, ExternalLink } from 'lucide-react';
 import { getRampHistory } from '../../api/client';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -17,6 +17,16 @@ export const TransactionsPage = () => {
     // 🟢 NEW STATE FOR ERROR MODAL
     const [errorModalOpen, setErrorModalOpen] = useState(false);
     const [currentErrorTx, setCurrentErrorTx] = useState<any>(null);
+
+    // Tracks which tx hash was just copied, so the icon can flash a checkmark
+    // briefly instead of relying on a toast the user might miss.
+    const [copiedHash, setCopiedHash] = useState<string | null>(null);
+    const copyTxHash = (hash: string) => {
+        navigator.clipboard?.writeText(hash).then(() => {
+            setCopiedHash(hash);
+            setTimeout(() => setCopiedHash(current => (current === hash ? null : current)), 1500);
+        }).catch(() => {});
+    };
 
     // --- AUTO-POLLING LOGIC ---
     useEffect(() => {
@@ -313,12 +323,13 @@ export const TransactionsPage = () => {
                                 <th className={`py-3.5 px-6 text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>Asset</th>
                                 <th className={`py-3.5 px-6 text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>Status</th>
                                 <th className={`py-3.5 px-6 text-[10px] font-bold uppercase tracking-widest text-right ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>Reference</th>
+                                <th className={`py-3.5 px-6 text-[10px] font-bold uppercase tracking-widest text-right ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>On-Chain Tx</th>
                             </tr>
                         </thead>
                         <tbody className={isLight ? 'divide-y divide-slate-100' : 'divide-y divide-[#1E2533]/40'}>
                             {loading ? (
                                 <tr>
-                                    <td colSpan={6} className="py-24 text-center">
+                                    <td colSpan={7} className="py-24 text-center">
                                         <RefreshCw className="w-6 h-6 animate-spin mx-auto text-blue-500 mb-3" />
                                         <p className={`text-sm ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>Syncing ledger...</p>
                                     </td>
@@ -376,12 +387,45 @@ export const TransactionsPage = () => {
                                             <td className={`py-4 px-6 text-xs font-mono text-right transition-colors ${isLight ? 'text-slate-400 group-hover:text-slate-600' : 'text-gray-600 group-hover:text-gray-400'}`}>
                                                 {tx.id?.slice(0, 16)}...
                                             </td>
+
+                                            {/* On-chain tx hash — copy + open in the right block explorer.
+                                                Only real on-chain settlements have one; internal-ledger-only
+                                                entries (e.g. plain swaps) show a dash instead. */}
+                                            <td className="py-4 px-6 text-right">
+                                                {tx.txHash ? (
+                                                    <div className="flex items-center justify-end gap-1.5">
+                                                        <span className={`text-xs font-mono ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>
+                                                            {tx.txHash.slice(0, 6)}...{tx.txHash.slice(-4)}
+                                                        </span>
+                                                        <button
+                                                            onClick={() => copyTxHash(tx.txHash)}
+                                                            title="Copy transaction hash"
+                                                            className={`p-1.5 rounded-lg transition-colors ${isLight ? 'hover:bg-slate-100 text-slate-400 hover:text-slate-700' : 'hover:bg-[#1e2d3d] text-gray-500 hover:text-gray-300'}`}
+                                                        >
+                                                            {copiedHash === tx.txHash ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                                                        </button>
+                                                        {tx.explorerUrl && (
+                                                            <a
+                                                                href={tx.explorerUrl}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                title={`View transaction on ${tx.network ? tx.network[0].toUpperCase() + tx.network.slice(1) : 'block'} explorer`}
+                                                                className={`p-1.5 rounded-lg transition-colors ${isLight ? 'hover:bg-slate-100 text-slate-400 hover:text-slate-700' : 'hover:bg-[#1e2d3d] text-gray-500 hover:text-gray-300'}`}
+                                                            >
+                                                                <ExternalLink className="w-3.5 h-3.5" />
+                                                            </a>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <span className={`text-xs ${isLight ? 'text-slate-300' : 'text-gray-700'}`}>—</span>
+                                                )}
+                                            </td>
                                         </tr>
                                     );
                                 })
                             ) : (
                                 <tr>
-                                    <td colSpan={6} className="py-24 text-center">
+                                    <td colSpan={7} className="py-24 text-center">
                                         <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 border ${isLight ? 'bg-slate-100 border-slate-200' : 'bg-[#0F1520] border-[#1E2533]'}`}>
                                             <Search className={`w-7 h-7 ${isLight ? 'text-slate-400' : 'text-gray-600'}`} />
                                         </div>

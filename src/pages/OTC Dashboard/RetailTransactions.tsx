@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { RefreshCw, Search, Download, Filter, ChevronDown, FileText, User, CheckCircle2, AlertCircle, Copy, Check, X, Eye } from 'lucide-react';
+import { RefreshCw, Search, Download, Filter, ChevronDown, FileText, User, CheckCircle2, AlertCircle, Copy, Check, X, Eye, ExternalLink } from 'lucide-react';
 import { getOtcRetailTransactions, updateOtcRetailTransactionStatus, getCallbackEvents, refundWithdrawal } from '../../api/client';
 import useWebsocket from '../../hooks/useWebsocket';
 import SimpleToast from '../../components/ui/SimpleToast';
@@ -528,13 +528,14 @@ export const RetailTransactionsPage = () => {
                                 <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">PROVIDER REF</th>
                                 <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">SECURE ID</th>
                                 <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">EXTERNAL ID</th>
+                                <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">ON-CHAIN TX</th>
                                 <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em] text-center">STATUS</th>
                                 <th className="py-4 px-6 text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em] text-right">ACTIONS</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-[#1e2d3d]/50">
                             {isLoading ? (
-                                <tr><td colSpan={11} className="py-24 text-center"><RefreshCw className="w-8 h-8 animate-spin mx-auto text-emerald-500 mb-4" /><p className="text-gray-500 text-sm font-medium">Syncing Ledger...</p></td></tr>
+                                <tr><td colSpan={12} className="py-24 text-center"><RefreshCw className="w-8 h-8 animate-spin mx-auto text-emerald-500 mb-4" /><p className="text-gray-500 text-sm font-medium">Syncing Ledger...</p></td></tr>
                             ) : filteredTxs.length > 0 ? (
                                 filteredTxs.map((tx) => (
                                     <tr key={tx.id} className="hover:bg-[#151e2e] transition-colors group">
@@ -590,6 +591,23 @@ export const RetailTransactionsPage = () => {
                                             </div>
                                         </td>
 
+                                        {/* On-chain tx hash — for reconciliation, confirm directly on the
+                                            block explorer rather than trusting our own "status" field, which
+                                            is exactly what was wrong in the TRADE_22993792 incident. */}
+                                        <td className="py-4 px-6">
+                                            <div className="flex items-center gap-2 min-w-[145px]">
+                                                <span className="text-xs text-gray-400 font-mono" title={tx.txHash || 'No on-chain transaction'}>{maskIdentifier(tx.txHash)}</span>
+                                                {tx.txHash && <button onClick={() => copyIdentifier(tx.txHash, 'Transaction hash')} className="text-gray-500 hover:text-white transition-colors" title="Copy transaction hash" aria-label="Copy transaction hash">
+                                                    {copiedId === tx.txHash ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                                                </button>}
+                                                {tx.explorerUrl && (
+                                                    <a href={tx.explorerUrl} target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-white transition-colors" title={`View on ${tx.network ? tx.network[0].toUpperCase() + tx.network.slice(1) : 'block'} explorer`} aria-label="View on block explorer">
+                                                        <ExternalLink className="w-3.5 h-3.5" />
+                                                    </a>
+                                                )}
+                                            </div>
+                                        </td>
+
                                         <td className="py-4 px-6">
                                             <div className="flex items-center gap-2">
                                                 {getStatusBadge(tx.status)}
@@ -623,7 +641,7 @@ export const RetailTransactionsPage = () => {
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={11} className="py-20 text-center">
+                                    <td colSpan={12} className="py-20 text-center">
                                         <div className="w-16 h-16 bg-[#111827] rounded-full flex items-center justify-center mx-auto mb-4 border border-[#1e2d3d]">
                                             <Search className="w-6 h-6 text-gray-600" />
                                         </div>

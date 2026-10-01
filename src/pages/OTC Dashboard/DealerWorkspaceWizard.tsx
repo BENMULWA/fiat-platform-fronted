@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from 'react';
 import { ArrowRight, Check, CheckCircle2, Circle, RefreshCw, X, Zap } from 'lucide-react';
-import { acceptDealerRfq, api, analyzeDealerRfq, createDealerRfq, executeDealerRfq, getDealerClients, getDealerSettlement, quoteDealerRfq } from '../../api/client';
+import { acceptDealerRfq, api, analyzeDealerRfq, createDealerRfq, executeDealerRfq, getDealerClients, getDealerSettlement, getOtcMarketRates, setCbkReferenceRate, quoteDealerRfq } from '../../api/client';
 import { useSearchParams } from 'react-router-dom';
 
 // Types
@@ -33,6 +33,7 @@ export default function DealerWorkspaceWizard({ initialOpen = true, rfqId }: { i
   const [stage, setStage] = useState(requestedRfqId ? 1 : 0);
   const [open, setOpen] = useState(initialOpen);
   const [spread, setSpread] = useState(50);
+  const [priceSource, setPriceSource] = useState<'auto' | 'auto' | 'live' | 'cbk' | 'rate_book'>('auto');
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [rfq, setRfq] = useState<RfqRecord | null>(null);
   const [analysis, setAnalysis] = useState<any | null>(null);
@@ -77,12 +78,12 @@ export default function DealerWorkspaceWizard({ initialOpen = true, rfqId }: { i
 
   const createQuote = async () => {
     if (!rfq) return;
-    try { const response = await quoteDealerRfq(rfq.id, Number(spread), false); setRfq(response.data.rfq); setStage(2); } catch (err) { handleError(err); }
+    try { const response = await quoteDealerRfq(rfq.id, Number(spread), false, priceSource); setRfq(response.data.rfq); setStage(2); } catch (err) { handleError(err); }
   };
 
   const sendQuote = async () => {
     if (!rfq) return;
-    try { const response = await quoteDealerRfq(rfq.id, Number(spread), true); setRfq(response.data.rfq); } catch (err) { handleError(err); }
+    try { const response = await quoteDealerRfq(rfq.id, Number(spread), true, priceSource); setRfq(response.data.rfq); } catch (err) { handleError(err); }
   };
 
   const acceptQuote = async () => {
@@ -101,7 +102,17 @@ export default function DealerWorkspaceWizard({ initialOpen = true, rfqId }: { i
       setError('');
       setRfq(response.data.rfq);
       setStage(3);
-    } catch (err) { handleError(err); }
+    } catch (err: any) {
+      // Merchant self-service RFQs are accepted by the merchant themselves; if
+      // that already happened, the dealer just continues to execution.
+      if (/accepted state/i.test(String(err?.response?.data?.detail || ''))) {
+        setError('');
+        setRfq({ ...rfq, status: 'accepted' });
+        setStage(3);
+        return;
+      }
+      handleError(err);
+    }
   };
 
   const execute = async () => {
@@ -184,7 +195,7 @@ export default function DealerWorkspaceWizard({ initialOpen = true, rfqId }: { i
             {error && <div className="max-w-5xl mx-auto mb-4 rounded-md border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</div>}
             {stage === 0 && <NewRfq form={form} setForm={setForm} clients={clients} onSubmit={create} />}
             {stage === 1 && rfq && <Analysis rfq={rfq} analysis={analysis} onRefresh={refreshAnalysis} onNext={createQuote} />}
-            {stage === 2 && rfq && <Quote rfq={rfq} spread={spread} setSpread={setSpread} onBack={() => setStage(1)} onSend={sendQuote} onNext={acceptQuote} />}
+            {stage === 2 && rfq && <Quote rfq={rfq} spread={spread} setSpread={setSpread} priceSource={priceSource} setPriceSource={setPriceSource} onRequote={createQuote} onBack={() => setStage(1)} onSend={sendQuote} onNext={acceptQuote} />}
             {stage === 3 && rfq && <Execution analysis={analysis} isReverifying={isReverifying} onExecute={execute} />}
             {stage === 4 && rfq && <Settlement settlement={settlement} onRefresh={refreshSettlement} onNext={() => setStage(5)} />}
             {stage === 5 && rfq && <Completed rfq={rfq} settlement={settlement} onNew={() => { setStage(0); setForm(EMPTY_FORM); setRfq(null); setAnalysis(null); setSettlement(null); }} onClose={() => setOpen(false)} />}
@@ -370,12 +381,97 @@ function Analysis({ rfq, analysis, onRefresh, onNext }: { rfq: RfqRecord; analys
 // --------------------------------------------------------------------------------------
 // STAGE 2: DEALER QUOTE
 // --------------------------------------------------------------------------------------
-function Quote({ rfq, spread, setSpread, onBack, onSend, onNext }: { rfq: RfqRecord; spread: number; setSpread: (value: number) => void; onBack: () => void; onSend: () => void; onNext: () => void }) {
+function MarketPanel({ rfq, priceSource, setPriceSource, onRequote }: { rfq: RfqRecord; priceSource: 'auto' | 'live' | 'cbk' | 'rate_book'; setPriceSource: (v: 'auto' | 'live' | 'cbk' | 'rate_book') => void; onRequote: () => void }) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [cbkInput, setCbkInput] = useState('');
+  const assets = [rfq.fromAsset, rfq.toAsset].filter(a => !['USDT', 'USDC', 'USDA', 'USD'].includes(a));
+
+  const load = (refresh = false) => {
+    if (assets.length === 0) return;
+    setLoading(true);
+    getOtcMarketRates(assets, refresh).then(res => setData(res.data)).catch(() => setData({ status: 'unavailable', detail: 'Could not reach the market-rate service.' })).finally(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, [rfq.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (assets.length === 0) return null;
+
+  const unavailable = data?.status === 'unavailable';
+  const effective = priceSource === 'auto' ? (rfq.quote?.priceSource || (assets.includes('KES') ? 'cbk' : 'live')) : priceSource;
+  return (
+    <div className="bg-[#121822] border border-[#232D39] rounded-xl p-5">
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-gray-500 text-[11px] font-bold uppercase tracking-wider">MARKET CHECK</p>
+        <div className="flex items-center gap-3">
+          <div className="inline-flex rounded-lg border border-[#232D39] overflow-hidden text-[11px] font-bold">
+            <button type="button" onClick={() => setPriceSource('live')} className={`px-3 py-1.5 ${effective === 'live' ? 'bg-emerald-600 text-white' : 'text-gray-400 hover:text-white'}`}>Live market</button>
+            <button type="button" onClick={() => setPriceSource('cbk')} className={`px-3 py-1.5 ${effective === 'cbk' ? 'bg-amber-600 text-white' : 'text-gray-400 hover:text-white'}`}>CBK</button>
+            <button type="button" onClick={() => setPriceSource('rate_book')} className={`px-3 py-1.5 ${effective === 'rate_book' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>Rate book</button>
+          </div>
+          <button type="button" onClick={() => load(true)} className="text-gray-400 hover:text-white" title="Refresh market rate"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} /></button>
+        </div>
+      </div>
+      {unavailable ? (
+        <p className="text-amber-400 text-xs">{data.detail} Switch to Rate book to quote anyway.</p>
+      ) : !data ? (
+        <p className="text-gray-500 text-xs">Loading market rates...</p>
+      ) : (
+        <>
+          <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-6 gap-y-2 font-mono text-[13px] text-gray-300">
+            <span className="text-gray-500 text-[11px]">PAIR</span><span className="text-gray-500 text-[11px] text-right">LIVE MARKET</span><span className="text-gray-500 text-[11px] text-right">CBK</span><span className="text-gray-500 text-[11px] text-right">RATE BOOK</span><span className="text-gray-500 text-[11px] text-right">BOOK vs MARKET</span>
+            {data.rows.map((r: any) => (
+              <Fragment key={r.asset}>
+                <span>USDT / {r.asset} <span className="text-gray-600 text-[10px]">{r.source ? `· ${r.source}` : ''}</span></span>
+                <span className="text-right text-white">{r.liveRate ?? '—'}</span>
+                <span className="text-right">{r.cbkRate ?? '—'}</span>
+                <span className="text-right">{r.rateBookRate ?? '—'}</span>
+                <span className={`text-right ${Math.abs(r.deviationBps ?? 0) > 50 ? 'text-amber-400' : 'text-gray-400'}`}>{r.deviationBps == null ? '—' : `${r.deviationBps > 0 ? '+' : ''}${r.deviationBps} bps`}</span>
+              </Fragment>
+            ))}
+          </div>
+          <p className="text-gray-500 text-[11px] mt-3">
+            {data.provider} · {data.cadence} · fetched {new Date(data.fetchedAt).toLocaleTimeString()}{data.usdtUsd ? ` · USDT = $${data.usdtUsd}` : ''}
+          </p>
+          {assets.includes('KES') && (
+            <div className="mt-3 pt-3 border-t border-[#232D39] flex flex-wrap items-center gap-3 text-[11px] text-gray-400">
+              <span className="font-bold uppercase tracking-wider text-gray-500">CBK mean USD/KES</span>
+              {data.cbk ? (
+                <span className="font-mono text-gray-200">
+                  {data.cbk.usdKes}{' '}
+                  <span className="text-gray-500">
+                    {data.cbk.automatic ? `${data.cbk.source} · CBK date ${data.cbk.cbkDate} · fetched ${new Date(data.cbk.fetchedAt).toLocaleTimeString()}` : `${data.cbk.source} · ${new Date(data.cbk.enteredAt).toLocaleString()}`}
+                  </span>
+                  {data.cbk.deviationVsLiveBps != null && <span className={Math.abs(data.cbk.deviationVsLiveBps) > 50 ? ' text-amber-400' : ' text-gray-500'}> · {data.cbk.deviationVsLiveBps > 0 ? '+' : ''}{data.cbk.deviationVsLiveBps} bps vs live</span>}
+                </span>
+              ) : <span className="text-gray-500">CBK rates unavailable from Comet</span>}
+              {!data.cbk?.automatic && (
+                <span className="flex items-center gap-1.5">
+                  <input value={cbkInput} onChange={e => setCbkInput(e.target.value)} placeholder="manual e.g. 129.25" className="w-28 bg-[#0A0D12] border border-[#232D39] rounded px-2 py-1 font-mono text-white outline-none" />
+                  <button type="button" onClick={() => { const v = Number(cbkInput); if (v) setCbkReferenceRate(v).then(() => { setCbkInput(''); load(true); }).catch(() => {}); }} className="font-bold text-blue-400 hover:text-blue-300">Save</button>
+                </span>
+              )}
+            </div>
+          )}
+          {rfq.quote?.autoNote && <p className="text-amber-400 text-[11px] mt-1">{rfq.quote.autoNote}</p>}
+          {(data.providerErrors || []).length > 0 && <p className="text-amber-400 text-[11px] mt-1">Provider issue: {data.providerErrors.join(' · ')}</p>}
+          {data.rows.some((r: any) => Math.abs(r.deviationBps ?? 0) > 50) && (
+            <p className="text-amber-400 text-[11px] mt-1">The rate book is more than 50 bps away from the market. Price from Live market, or update the book.</p>
+          )}
+          <div className="flex items-center justify-between mt-4">
+            <p className="text-[11px] text-gray-400">Quoting from: <span className={effective === 'live' ? 'text-emerald-400 font-bold' : effective === 'cbk' ? 'text-amber-400 font-bold' : 'text-blue-400 font-bold'}>{effective === 'live' ? 'Live market' : effective === 'cbk' ? 'CBK (Central Bank of Kenya)' : 'Rate book'}</span>{priceSource === 'auto' ? ' (automatic: CBK for KES pairs, Live market otherwise)' : ''}. The rate is locked when you press Send Quote.</p>
+            <button type="button" onClick={onRequote} className="text-xs font-bold text-blue-400 hover:text-blue-300">Recalculate preview</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function Quote({ rfq, spread, setSpread, priceSource, setPriceSource, onRequote, onBack, onSend, onNext }: { rfq: RfqRecord; spread: number; setSpread: (value: number) => void; priceSource: 'auto' | 'live' | 'cbk' | 'rate_book'; setPriceSource: (v: 'auto' | 'live' | 'cbk' | 'rate_book') => void; onRequote: () => void; onBack: () => void; onSend: () => void; onNext: () => void }) {
   const quote = rfq.quote || {};
   const executionRate = Number(quote.execution_rate || 0);
   const receiveAmount = Number(quote.receive_amount || 0);
   const isSent = Boolean(quote.sent && quote.expiresAt);
-  const [secondsLeft, setSecondsLeft] = useState(15);
+  const [secondsLeft, setSecondsLeft] = useState(60);
 
   useEffect(() => {
     if (!isSent) return;
@@ -389,7 +485,7 @@ function Quote({ rfq, spread, setSpread, onBack, onSend, onNext }: { rfq: RfqRec
   }, [isSent, quote.expiresAt]);
 
   const quoteExpired = isSent && secondsLeft <= 0;
-  const progress = isSent ? Math.min((secondsLeft / 15) * 100, 100) : 0;
+  const progress = isSent ? Math.min((secondsLeft / 60) * 100, 100) : 0;
   return (
     <div className="max-w-5xl mx-auto flex flex-col gap-6 mt-4">
       <div>
@@ -419,9 +515,12 @@ function Quote({ rfq, spread, setSpread, onBack, onSend, onNext }: { rfq: RfqRec
           <div className="flex justify-between"><span>Execution rate</span><span>{executionRate || 'Pending'}</span></div>
           <div className="flex justify-between"><span>Receive amount</span><span>{receiveAmount ? receiveAmount.toLocaleString() : 'Pending'} {rfq.toAsset}</span></div>
           <div className="flex justify-between"><span>Requested amount</span><span>{rfq.amount.toLocaleString()} {rfq.fromAsset}</span></div>
+          <div className="flex justify-between"><span>Pricing source</span><span>{quote.priceSource === 'live' ? `Live · ${quote.marketProvider || ''}` : quote.priceSource === 'cbk' ? `CBK · ${quote.cbkDate || ''}` : 'Rate book'}</span></div>
           <div className="flex justify-between"><span>Quote status</span><span>{rfq.status}</span></div>
         </div>
       </div>
+
+      {!isSent && <MarketPanel rfq={rfq} priceSource={priceSource} setPriceSource={setPriceSource} onRequote={onRequote} />}
 
       {!isSent && <div className="bg-[#121822] border border-[#232D39] rounded-xl p-5">
         <p className="text-gray-500 text-[11px] font-bold uppercase tracking-wider mb-4">DEALER OVERRIDE</p>

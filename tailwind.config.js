@@ -26,6 +26,30 @@ export default {
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
       },
+      keyframes: {
+        'orbit-float': {
+          '0%, 100%': { transform: 'translateY(0px)' },
+          '50%': { transform: 'translateY(-10px)' },
+        },
+        'pulse-ring': {
+          '0%': { transform: 'scale(0.85)', opacity: '0.6' },
+          '80%, 100%': { transform: 'scale(1.35)', opacity: '0' },
+        },
+        'draw-check': {
+          '0%': { strokeDashoffset: '24' },
+          '100%': { strokeDashoffset: '0' },
+        },
+        'spin-slow': {
+          '0%': { transform: 'rotate(0deg)' },
+          '100%': { transform: 'rotate(360deg)' },
+        },
+      },
+      animation: {
+        'orbit-float': 'orbit-float 4s ease-in-out infinite',
+        'pulse-ring': 'pulse-ring 2.4s cubic-bezier(0.2, 0.6, 0.4, 1) infinite',
+        'draw-check': 'draw-check 0.6s 0.3s ease-out forwards',
+        'spin-slow': 'spin-slow 14s linear infinite',
+      },
     },
   },
   plugins: [],

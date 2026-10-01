@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Search, Bell, Zap, RefreshCw, ArrowRight, ShieldCheck, CheckCircle2, AlertTriangle, Clock3 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import AdminRfqChat from '../../components/otc-admin/AdminRfqChat';
 import { api, getTreasuryPositions, quoteDealerRfq, acceptDealerRfq, executeDealerRfq } from '../../api/client';
+import OtcAnalyticsStrip from '../../components/otc-admin/OtcAnalyticsStrip';
 
 interface WorkspaceData {
     rates: any[];
@@ -14,6 +16,7 @@ interface WorkspaceData {
 
 export default function InstitutionalRFQsPage() {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
 
     const [workspaceData, setWorkspaceData] = useState<WorkspaceData>({
         rates: [],
@@ -83,6 +86,17 @@ export default function InstitutionalRFQsPage() {
         const clock = setInterval(() => setNow(new Date()), 1000);
         return () => { clearInterval(interval); clearInterval(clock); };
     }, []);
+
+    // Deep link from the notification bell ("New message on RFQ-X") -- once
+    // the queue has loaded, auto-select the RFQ named in ?rfq= instead of
+    // leaving the admin to find it in a 55-row queue themselves.
+    const rfqParam = searchParams.get('rfq');
+    useEffect(() => {
+        if (!rfqParam || selectedRfq?.id === rfqParam) return;
+        const match = workspaceData.rfqs.find(r => r.id === rfqParam);
+        if (match) handleSelectRfq(match);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [rfqParam, workspaceData.rfqs]);
 
     // Handle clicking a specific RFQ in the table
     const handleSelectRfq = async (rfq: any) => {
@@ -216,6 +230,8 @@ export default function InstitutionalRFQsPage() {
                         </button>
                     ))}
                 </nav>
+
+                <OtcAnalyticsStrip />
 
                 {/* RATE CARDS (Dynamic from Backend) */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-5">
@@ -440,6 +456,8 @@ export default function InstitutionalRFQsPage() {
                                             <p className="text-[10px] text-gray-600">Expected P&amp;L is shown once a quote is generated.</p>
                                         </div>
                                     </div>
+
+                                    <AdminRfqChat rfqId={selectedRfq.id} />
                                 </div>
 
                                 <div className="p-5 border-t border-[#1E2D3D] bg-[#0A0D14] shrink-0 space-y-3">
