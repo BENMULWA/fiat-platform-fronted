@@ -15,6 +15,7 @@ import { AFRICAN_COUNTRIES, OTC_LIVE_MARKET_COUNT } from '../../data/africanCoun
 import { Field } from '../../components/onboarding/FormField';
 import FileUploadField, { UploadedFile } from '../../components/onboarding/FileUploadField';
 import OnboardingHero from '../../components/onboarding/OnboardingHero';
+import { getFriendlyErrorMessage } from '../../utils/errorMessages';
 
 // --- Types -------------------------------------------------------------
 
@@ -148,7 +149,7 @@ export default function OtcOnboarding() {
     if (key === 'overview') return !!overview.legalName;
     if (key === 'directors') return directors.length > 0;
     if (key === 'shareholders') return shareholders.length > 0;
-    if (key === 'documents') return documents.length > 0;
+    if (key === 'documents') return documents.length > 0 && documents.every(d => d.name?.trim() && d.file);
     return false;
   };
   const requiredKeys = ['overview', 'directors', 'shareholders', 'documents'];
@@ -586,7 +587,7 @@ export default function OtcOnboarding() {
                 setSaveState('synced');
                 await refetch();
               } catch (e: any) {
-                setError(e?.response?.data?.detail || 'Failed to submit.');
+                setError(getFriendlyErrorMessage(e, { fallback: 'Failed to submit.' }));
                 setSaveState('error');
               } finally { setSaving(false); }
             }}
