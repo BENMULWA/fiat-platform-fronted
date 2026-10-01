@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { RefreshCw, Eye, EyeOff, CheckCircle2, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { AuthBackdrop, AuthBrand } from '../../components/auth/AuthShell';
+import { DeskEmblem } from '../../components/auth/OtcArtwork';
 
 const COUNTRIES: { name: string; dial: string }[] = [
     { name: 'Kenya', dial: '+254' }, { name: 'Uganda', dial: '+256' }, { name: 'Tanzania', dial: '+255' }, { name: 'Rwanda', dial: '+250' },
@@ -251,8 +252,9 @@ export default function OtcSignup() {
                         </p>
                     </div>
 
-                    <aside className="rounded-2xl border border-white/10 bg-[#04101c]/80 p-6 text-white shadow-2xl shadow-black/40 backdrop-blur-md lg:mt-6 [text-shadow:0_1px_2px_rgba(0,0,0,0.45)]">
-                        <h2 className="text-lg font-bold">Your Jasiri OTC account gives you:</h2>
+                    <aside className="relative rounded-2xl border border-white/10 bg-[#04101c]/80 p-6 text-white shadow-2xl shadow-black/40 backdrop-blur-md lg:mt-6 [text-shadow:0_1px_2px_rgba(0,0,0,0.45)]">
+                        <DeskEmblem className="absolute right-5 top-5 h-14 w-14 drop-shadow-[0_0_14px_rgba(94,234,212,0.35)]" />
+                        <h2 className="pr-20 text-lg font-bold">Your Jasiri OTC account gives you:</h2>
                         <ul className="mt-5 space-y-4">
                             {BENEFITS.map(b => (
                                 <li key={b} className="flex items-start gap-3 text-sm leading-relaxed text-white/95">

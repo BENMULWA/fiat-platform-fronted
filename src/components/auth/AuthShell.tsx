@@ -2,7 +2,7 @@ import { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle2, ShieldCheck } from 'lucide-react';
 import logo from '../../pages/assets/jasiri-icon.png';
-import hero from '../../pages/assets/otc-hero.webp';
+import OtcArtwork, { DeskEmblem } from './OtcArtwork';
 
 export type AuthVariant = 'retail' | 'otc' | 'staff';
 
@@ -22,12 +22,11 @@ export function AuthBackdrop({ variant }: { variant: AuthVariant }) {
       <div className="pointer-events-none absolute inset-0" aria-hidden>
         <style>{FLOAT_CSS}</style>
         <div className="absolute inset-0 bg-[linear-gradient(135deg,#04101c_0%,#06263a_46%,#0a4a5a_100%)]" />
-        {/* Floating OTC artwork: duotone-tinted to Jasiri teal and dissolved into the page at every edge */}
-        <div className="absolute inset-y-0 right-0 w-full lg:w-[88%]"
-          style={{ WebkitMaskImage: 'radial-gradient(ellipse 62% 58% at 58% 44%, #000 28%, transparent 78%)', maskImage: 'radial-gradient(ellipse 62% 58% at 58% 44%, #000 28%, transparent 78%)' }}>
-          <div className="jasiri-float absolute inset-0 bg-gradient-to-br from-[#0b5d6e] via-[#0a3f55] to-[#06263a]">
-            <img src={hero} alt="" draggable={false} className="h-full w-full select-none object-cover opacity-45 mix-blend-luminosity" />
-            <div className="absolute inset-0 bg-gradient-to-tr from-[#04101c]/85 via-[#04101c]/45 to-[#04101c]/65" />
+        {/* Original Jasiri OTC artwork (SVG): stablecoins -> Jasiri desk -> African currencies. Floats and fades at the edges. */}
+        <div className="absolute inset-y-0 right-0 w-full lg:w-[94%]"
+          style={{ WebkitMaskImage: 'radial-gradient(ellipse 80% 78% at 56% 46%, #000 38%, transparent 100%)', maskImage: 'radial-gradient(ellipse 80% 78% at 56% 46%, #000 38%, transparent 100%)' }}>
+          <div className="jasiri-float absolute inset-0">
+            <OtcArtwork className="h-full w-full opacity-60" />
           </div>
         </div>
         <div className="absolute -top-40 -left-32 h-[520px] w-[520px] rounded-full bg-teal-500/25 blur-[120px]" />
@@ -121,10 +120,11 @@ export function authStyles(variant: AuthVariant) {
   };
 }
 
-export function AuthAside({ title, items, footer }: { title: string; items: string[]; footer?: ReactNode }) {
+export function AuthAside({ title, items, footer, emblem }: { title: string; items: string[]; footer?: ReactNode; emblem?: boolean }) {
   return (
-    <aside className="rounded-2xl border border-white/10 bg-[#04101c]/80 p-6 text-white shadow-2xl shadow-black/40 backdrop-blur-md lg:mt-6 [text-shadow:0_1px_2px_rgba(0,0,0,0.45)]">
-      <h2 className="text-lg font-bold">{title}</h2>
+    <aside className="relative rounded-2xl border border-white/10 bg-[#04101c]/80 p-6 text-white shadow-2xl shadow-black/40 backdrop-blur-md lg:mt-6 [text-shadow:0_1px_2px_rgba(0,0,0,0.45)]">
+      {emblem && <DeskEmblem className="absolute right-5 top-5 h-14 w-14 drop-shadow-[0_0_14px_rgba(94,234,212,0.35)]" />}
+      <h2 className={`text-lg font-bold ${emblem ? 'pr-20' : ''}`}>{title}</h2>
       <ul className="mt-5 space-y-4">
         {items.map(b => (
           <li key={b} className="flex items-start gap-3 text-sm leading-relaxed text-white/95">

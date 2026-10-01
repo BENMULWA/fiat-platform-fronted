@@ -1,7 +1,7 @@
 //@ts-nocheck
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, ArrowDownUp, Shield, Smartphone, Sun, Moon, Monitor, CheckCircle2, Zap, ChevronDown, Menu, Lock, Globe, X, Wallet, Link2, Network, Phone, Mail, MessageCircle, Twitter, Github, Linkedin, Instagram, Facebook, Music2, TrendingUp, TrendingDown, Clock, Coins } from 'lucide-react';
+import { User, Building2, ArrowRight, ArrowDownUp, Shield, Smartphone, Sun, Moon, Monitor, CheckCircle2, Zap, ChevronDown, Menu, Lock, Globe, X, Wallet, Link2, Network, Phone, Mail, MessageCircle, Twitter, Github, Linkedin, Instagram, Facebook, Music2, TrendingUp, TrendingDown, Clock, Coins } from 'lucide-react';
 import logo from '../pages/assets/jasiri-icon.png';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
@@ -440,6 +440,10 @@ export default function LandingPage() {
       };
     });
 
+  const otcHref = !user ? '/otc'
+    : ['institutional', 'merchant'].includes(String(user.role)) ? '/otc/overview'
+    : !['retail', 'trader'].includes(String(user.role)) ? '/admin/institutional-rfqs'
+    : '/otc';
   return (
     <div className={`min-h-screen ${current.bg} ${current.text} font-sans transition-colors duration-300`}>
       <style>{customStyles}</style>
@@ -631,15 +635,26 @@ export default function LandingPage() {
 
             <div className="hero-in relative h-full mx-auto w-full max-w-md lg:ml-auto" style={{ animationDelay: '160ms' }}>
               <div className={`p-8 sm:p-8 rounded-[2rem] border transition-colors duration-300 hover:-translate-y-1 hover:shadow-2xl ${current.card}`}>
-                <div className={`mb-6 flex items-center gap-1 p-1 rounded-lg ${theme === 'light' ? 'bg-slate-100' : 'bg-white/5'}`}>
-                  <div className={`flex-1 text-center py-1.5 rounded-md text-sm font-bold ${theme === 'light' ? 'bg-white text-slate-900 shadow-sm' : 'bg-[#18181b] text-white shadow-sm'}`}>Quick Swap</div>
-                  <Link
-                    to={user ? '/admin/dealer-workspace' : '/otc'}
-                    className={`flex-1 text-center py-1.5 rounded-md text-sm font-semibold transition-colors ${theme === 'light' ? 'text-slate-500 hover:text-slate-700' : 'text-slate-400 hover:text-slate-200'}`}
-                  >
-                    Business (OTC)
-                  </Link>
-                </div>
+                {/* Who is this for? Quick Swap = individuals (the swap form below). OTC Desk = businesses settling bulk trades. */}
+                <nav aria-label="Choose your account type" className="mb-6">
+                  <div className={`grid grid-cols-2 gap-2 p-1.5 rounded-2xl ${theme === 'light' ? 'bg-slate-100' : 'bg-white/5'}`}>
+                    <div aria-current="page" className={`relative flex flex-col items-center gap-0.5 rounded-xl px-3 py-3 text-center ${theme === 'light' ? 'bg-white text-slate-900 shadow-md ring-1 ring-emerald-500/40' : 'bg-[#18181b] text-white shadow-md ring-1 ring-emerald-500/40'}`}>
+                      <span className="flex items-center gap-1.5 text-sm font-extrabold"><User className="w-4 h-4 text-emerald-500" /> Quick Swap</span>
+                      <span className="text-[11px] font-semibold text-emerald-500">For individuals</span>
+                      <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-emerald-500 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">You are here</span>
+                    </div>
+                    <Link
+                      to={otcHref}
+                      className={`group flex flex-col items-center gap-0.5 rounded-xl px-3 py-3 text-center transition-all border border-transparent ${theme === 'light' ? 'text-slate-600 hover:bg-white hover:text-slate-900 hover:border-slate-200 hover:shadow-sm' : 'text-slate-300 hover:bg-[#18181b] hover:text-white hover:border-white/10'}`}
+                    >
+                      <span className="flex items-center gap-1.5 text-sm font-bold"><Building2 className="w-4 h-4 text-amber-500" /> OTC Desk <ArrowRight className="w-3.5 h-3.5 opacity-0 -ml-1 transition-all group-hover:opacity-100 group-hover:ml-0" /></span>
+                      <span className="text-[11px] font-semibold text-amber-500">For businesses</span>
+                    </Link>
+                  </div>
+                  <p className={`mt-2.5 text-center text-[11px] leading-snug ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
+                    Swapping for yourself? Use Quick Swap below. Settling large trades for a company? Use the OTC Desk.
+                  </p>
+                </nav>
 
                 <div className="space-y-2 relative">
                   <div className={`p-5 rounded-2xl border transition-colors duration-300 relative ${current.input}`}>

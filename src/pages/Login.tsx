@@ -89,7 +89,7 @@ export default function Login() {
     const sub = isAdminPortal ? 'Reserved for authorised Jasiri staff.' : variant === 'otc' ? 'Access your institutional desk, wallets and settlements.' : 'Log in to your Jasiri account.';
 
     const aside = isAdminPortal ? null : variant === 'otc'
-        ? <AuthAside title="Your Jasiri OTC desk" items={ASIDE_ITEMS.otc} />
+        ? <AuthAside title="Your Jasiri OTC desk" items={ASIDE_ITEMS.otc} emblem />
         : <AuthAside title="Welcome back to Jasiri" items={ASIDE_ITEMS.retail} />;
 
     return (
