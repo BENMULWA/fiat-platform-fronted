@@ -3,6 +3,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, ArrowUpRight, LineChart, Users } from 'lucide-react';
 import logo from './assets/jasiri-icon.png';
+import { AuthBackdrop } from '../components/auth/AuthShell';
 
 // Landing point for the "Business (OTC)" entry on the public landing page
 // (the Quick Swap widget's second tab, and the footer's "OTC Desk" link —
@@ -15,17 +16,8 @@ import logo from './assets/jasiri-icon.png';
 // the backend) and /otc/signup (OtcSignup.tsx).
 export default function OtcGatewayPage() {
     return (
-        <div className="min-h-screen relative flex items-center justify-center p-4 py-16">
-            {/* Background — same visual family as Login.tsx/StaffPortalPage.tsx */}
-            <div
-                className="absolute inset-0 z-0"
-                style={{
-                    backgroundImage: "url('/image_aaeaf7.jpg')",
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
-                }}
-            />
-            <div className="absolute inset-0 z-0 bg-[#0a0f1a]/90 backdrop-blur-sm" />
+        <div className="min-h-screen relative overflow-hidden bg-[#04101c] flex items-center justify-center p-4 py-16">
+            <AuthBackdrop variant="otc" />
 
             <div className="relative z-10 w-full max-w-lg">
                 <Link
@@ -66,7 +58,7 @@ export default function OtcGatewayPage() {
 
                     <div className="space-y-3">
                         <Link
-                            to="/login"
+                            to="/login?portal=otc"
                             className="w-full flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-400 text-white text-sm font-bold py-3.5 rounded-xl transition-all"
                         >
                             Log in <ArrowRight className="w-4 h-4" />

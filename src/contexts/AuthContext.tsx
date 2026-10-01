@@ -24,7 +24,7 @@ interface AuthContextType {
   requestLoginOtp: (email: string, password: string) => Promise<{ otpSessionId: string; expiresInMinutes: number }>;
   verifyLoginOtp: (otpSessionId: string, otpCode: string) => Promise<void>;
   resendLoginOtp: (otpSessionId: string) => Promise<{ otpSessionId: string; expiresInMinutes: number; cooldownSeconds: number }>;
-  requestSignupOtp: (displayName: string, email: string, password: string, accountType?: 'retail' | 'institutional', businessName?: string) => Promise<{ otpSessionId: string; expiresInMinutes: number }>;
+  requestSignupOtp: (displayName: string, email: string, password: string, accountType?: 'retail' | 'institutional', businessName?: string, profile?: Record<string, unknown>) => Promise<{ otpSessionId: string; expiresInMinutes: number }>;
   verifySignupOtp: (otpSessionId: string, otpCode: string) => Promise<void>;
   resendSignupOtp: (otpSessionId: string) => Promise<{ otpSessionId: string; expiresInMinutes: number; cooldownSeconds: number }>;
   logout: () => void;
@@ -150,12 +150,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const requestSignupOtp = async (displayName: string, email: string, password: string, accountType: 'retail' | 'institutional' = 'retail', businessName?: string) => {
+  const requestSignupOtp = async (displayName: string, email: string, password: string, accountType: 'retail' | 'institutional' = 'retail', businessName?: string, profile?: Record<string, unknown>) => {
     try {
       const res = await api.post('/api/auth/signup/request-otp', {
         displayName, email, password,
         account_type: accountType,
         business_name: businessName,
+        profile,
       });
       return {
         otpSessionId: res.data.otp_session_id,

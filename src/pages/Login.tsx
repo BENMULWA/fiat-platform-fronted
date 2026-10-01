@@ -1,28 +1,26 @@
-
 //@ts-nocheck
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Eye, EyeOff, Loader2, Shield, AlertCircle } from 'lucide-react';
-import logo from '../pages/assets/jasiri-icon.png';
+import { Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
 import { getFriendlyErrorMessage } from '../utils/errorMessages';
+import AuthShell, { AuthAside, ASIDE_ITEMS, StaffNotice, authStyles } from '../components/auth/AuthShell';
 
 export default function Login() {
     const { requestLoginOtp, verifyLoginOtp, resendLoginOtp } = useAuth();
 
-    // Reached via the Staff Portal's "Staff login" card (see
-    // StaffPortalPage.tsx's Admin & Internal Staff link: /login?portal=admin).
-    // Admin accounts are provisioned internally by IT only -- there is no
-    // self-service admin signup anywhere in this app -- so this hides the
-    // retail/institutional "create an account" links for that one entry
-    // point instead of removing them for everyone (retail and institutional
-    // visitors still need those links on the exact same shared /login page).
+    // One shared /login for every audience: the backend resolves the account's role and
+    // App.tsx redirects to the right home. The ?portal= value only changes the look and
+    // the links shown. Reached via /staff ("Staff login" -> ?portal=admin) and the OTC
+    // pages (?portal=otc). Admin accounts are provisioned internally -- no signup link.
     const [searchParams] = useSearchParams();
-    const isAdminPortal = searchParams.get('portal') === 'admin';
+    const portal = searchParams.get('portal');
+    const variant = portal === 'admin' ? 'staff' : portal === 'otc' ? 'otc' : 'retail';
+    const isAdminPortal = variant === 'staff';
+    const st = authStyles(variant);
 
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
@@ -60,15 +58,9 @@ export default function Login() {
                     return;
                 }
                 await verifyLoginOtp(otpSessionId, otpCode.trim());
-                // No explicit navigate() here -- this used to hardcode a
-                // retail/trader-vs-everything-else check duplicating (and,
-                // for institutional accounts, contradicting) App.tsx's
-                // defaultRouteFor(). The wrapping <Route path="/login"> in
-                // App.tsx already redirects to the right destination
-                // (/dashboard, /admin/dashboard, or /otc/overview) the
-                // instant `user` updates from applyAuthenticatedSession
-                // above -- one source of truth for "where does this role go"
-                // instead of two that can drift apart.
+                // No navigate() here: the wrapping <Route path="/login"> in App.tsx redirects to
+                // the right destination (/dashboard, /admin/dashboard, /otc/overview) as soon as
+                // `user` updates -- one source of truth for where each role goes.
             }
         } catch (err: any) {
             setError(getFriendlyErrorMessage(err, { fallback: 'Login failed. Please verify your credentials.' }));
@@ -93,151 +85,80 @@ export default function Login() {
         }
     };
 
+    const heading = isAdminPortal ? 'Staff sign-in' : variant === 'otc' ? 'Sign in to Jasiri OTC' : 'Welcome back';
+    const sub = isAdminPortal ? 'Reserved for authorised Jasiri staff.' : variant === 'otc' ? 'Access your institutional desk, wallets and settlements.' : 'Log in to your Jasiri account.';
+
+    const aside = isAdminPortal ? null : variant === 'otc'
+        ? <AuthAside title="Your Jasiri OTC desk" items={ASIDE_ITEMS.otc} />
+        : <AuthAside title="Welcome back to Jasiri" items={ASIDE_ITEMS.retail} />;
+
     return (
-        <div className="min-h-screen relative flex items-center justify-center p-4">
-            {/* Background Image with Overlay */}
-            <div
-                className="absolute inset-0 z-0"
-                style={{
-                    backgroundImage: "url('/image_aaeaf7.jpg')",
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center'
-                }}
-            />
-            <div className="absolute inset-0 z-0 bg-[#0a0f1a]/85 backdrop-blur-sm" />
+        <AuthShell variant={variant} aside={aside} narrow backTo={{ to: '/', label: 'Back to Jasiri' }}>
+            <h1 className={`text-2xl font-bold ${st.title}`}>{heading}</h1>
+            <p className={`mt-1.5 text-sm ${st.muted}`}>{sub}</p>
 
-            {/* Login Card */}
-            <div className="relative z-10 w-full max-w-[420px] bg-[#0b101a]/80 backdrop-blur-xl border border-[#1e2d3d] rounded-3xl p-8 shadow-2xl">
-
-                {/* Logo Header */}
-                <div className="flex flex-col items-center mb-8">
-                    <div className="bg-white p-3 rounded-3xl shadow-[0_0_30px_rgba(0,210,130,0.15)] mb-4 border border-gray-100">
-                        <img
-                            src={logo}
-                            alt="Jasiri Capital Logo"
-                            className="h-20 md:h-24 w-auto object-contain"
-                        />
-                    </div>
-
-                    <h2 className="text-2xl font-extrabold text-white tracking-tight mt-2">Welcome Back</h2>
-                    <p className="text-sm text-gray-400 mt-1">Log in to your account</p>
+            {error && (
+                <div className={`mt-5 flex items-start gap-2.5 ${st.error}`}>
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><p>{error}</p>
                 </div>
+            )}
+            {successMessage && <div className={`mt-5 ${st.success}`}><p>{successMessage}</p></div>}
 
-                {error && (
-                    <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm font-medium flex items-center gap-3">
-                        <AlertCircle className="w-5 h-5 shrink-0" />
-                        <p>{error}</p>
-                    </div>
-                )}
-
-                {successMessage && (
-                    <div className="mb-6 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-300 text-sm font-medium">
-                        <p>{successMessage}</p>
-                    </div>
-                )}
-
-                <form onSubmit={handleSubmit} className="space-y-5">
-                    {!otpStep ? (
-                        <>
-                            <div>
-                                <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Email Address</label>
-                                <input
-                                    type="email"
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    className="w-full bg-[#111827]/80 border border-[#1e2d3d] focus:border-emerald-500/50 outline-none rounded-xl py-3.5 px-4 text-white transition-all placeholder-gray-600 shadow-inner"
-                                    placeholder="name@company.com"
-                                    required
-                                />
-                            </div>
-
-                            <div>
-                                <div className="flex items-center justify-between mb-2">
-                                    <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-widest">Password</label>
-                                    <Link to="/forgot-password" className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 transition-colors">
-                                        Forgot Password?
-                                    </Link>
-                                </div>
-                                <div className="relative">
-                                    <input
-                                        type={showPassword ? 'text' : 'password'}
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        className="w-full bg-[#111827]/80 border border-[#1e2d3d] focus:border-emerald-500/50 outline-none rounded-xl py-3.5 pl-4 pr-12 text-white transition-all placeholder-gray-600 shadow-inner"
-                                        placeholder="••••••••"
-                                        required
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowPassword(!showPassword)}
-                                        className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
-                                    >
-                                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                    </button>
-                                </div>
-                            </div>
-                        </>
-                    ) : (
+            <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+                {!otpStep ? (
+                    <>
                         <div>
-                            <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Email OTP Code</label>
-                            <input
-                                type="text"
-                                value={otpCode}
-                                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                                className="w-full bg-[#111827]/80 border border-[#1e2d3d] focus:border-emerald-500/50 outline-none rounded-xl py-3.5 px-4 text-white transition-all placeholder-gray-600 shadow-inner tracking-[0.4em] text-center text-lg"
-                                placeholder="------"
-                                required
-                            />
-                            <p className="text-xs text-gray-400 mt-2">Enter the 6-digit verification code sent to your email.</p>
-                            <div className="mt-3 flex items-center justify-between text-xs">
-                                <span className="text-gray-400">
-                                    {resendCooldown > 0 ? `You can resend in ${resendCooldown}s` : 'Did not receive the code?'}
-                                </span>
-                                <button
-                                    type="button"
-                                    onClick={handleResendOtp}
-                                    disabled={loading || resendCooldown > 0}
-                                    className="font-semibold text-emerald-400 hover:text-emerald-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    Resend OTP
+                            <label className={st.label}>Email address</label>
+                            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={st.input} placeholder="name@company.com" autoComplete="email" required />
+                        </div>
+                        <div>
+                            <div className="mb-1.5 flex items-center justify-between">
+                                <label className={`${st.label} !mb-0`}>Password</label>
+                                <Link to="/forgot-password" className={`text-xs ${st.link}`}>Forgot password?</Link>
+                            </div>
+                            <div className="relative">
+                                <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} className={`${st.input} pr-11`} placeholder="Your password" autoComplete="current-password" required />
+                                <button type="button" onClick={() => setShowPassword(!showPassword)} className={`absolute right-3.5 top-1/2 -translate-y-1/2 ${st.eye}`} aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                 </button>
                             </div>
                         </div>
-                    )}
+                    </>
+                ) : (
+                    <div>
+                        <label className={st.label}>Email OTP code</label>
+                        <input type="text" inputMode="numeric" value={otpCode} onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                            className={`${st.input} py-3.5 text-center text-xl font-semibold tracking-[0.5em]`} placeholder="------" required />
+                        <p className={`mt-2 text-xs ${st.muted}`}>Enter the 6-digit verification code sent to your email.</p>
+                        <div className="mt-3 flex items-center justify-between text-xs">
+                            <span className={st.muted}>{resendCooldown > 0 ? `You can resend in ${resendCooldown}s` : 'Did not receive the code?'}</span>
+                            <button type="button" onClick={handleResendOtp} disabled={loading || resendCooldown > 0} className={`${st.link} disabled:cursor-not-allowed disabled:opacity-50`}>Resend OTP</button>
+                        </div>
+                    </div>
+                )}
 
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full py-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-sm transition-all active:scale-[0.98] flex items-center justify-center shadow-[0_0_20px_rgba(16,185,129,0.2)] disabled:opacity-50 mt-4"
-                    >
-                        {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (otpStep ? 'Verify OTP & Sign In' : 'Sign In securely')}
-                    </button>
-                </form>
+                <button type="submit" disabled={loading} className={st.button}>
+                    {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : (otpStep ? 'Verify OTP and sign in' : 'Sign in securely')}
+                </button>
+            </form>
 
-                <div className="mt-8 text-center border-t border-[#1e2d3d] pt-6">
-                    {isAdminPortal ? (
-                        <p className="text-xs text-gray-500 flex items-center justify-center gap-2">
-                           
-                            Admin Login
-                        </p>
+            {isAdminPortal ? (
+                <StaffNotice />
+            ) : (
+                <div className={`mt-7 space-y-2 border-t pt-5 text-center text-sm ${st.dark ? 'border-[#1e2d3d]' : 'border-slate-100'}`}>
+                    {variant === 'otc' ? (
+                        <>
+                            <p className={st.muted}>New to Jasiri OTC? <Link to="/otc/signup" className={st.link}>Open an institutional account</Link></p>
+                            <p className={`text-xs ${st.muted}`}>Looking for personal use? <Link to="/login" className={st.link}>Retail sign-in</Link></p>
+                        </>
                     ) : (
                         <>
-                            <p className="text-sm text-gray-400">
-                                Don't have an account?{' '}
-                                <Link to="/signup" className="text-emerald-400 hover:text-emerald-300 font-bold transition-colors">
-                                    Create one now
-                                </Link>
-                            </p>
-                            <p className="text-xs text-gray-500 mt-2">
-                                Signing in as a business for OTC settlement?{' '}
-                                <Link to="/otc/signup" className="text-emerald-400 hover:text-emerald-300 font-semibold transition-colors">
-                                    Open an institutional account
-                                </Link>
-                            </p>
+                            <p className={st.muted}>Don't have an account? <Link to="/signup" className={st.link}>Create one now</Link></p>
+                            <p className={`text-xs ${st.muted}`}>Signing in for your business? <Link to="/login?portal=otc" className={st.link}>OTC desk sign-in</Link></p>
                         </>
                     )}
                 </div>
-            </div>
-        </div>
+            )}
+        </AuthShell>
     );
 }

@@ -3,6 +3,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { ShieldCheck, ArrowLeft, ArrowRight, LineChart, LockKeyhole } from 'lucide-react';
 import logo from './assets/jasiri-icon.png';
+import { AuthBackdrop } from '../components/auth/AuthShell';
 
 // Reserved for internal Jasiri staff only. Institutional/OTC partners are
 // external customers, not staff, so that audience now has its own gateway
@@ -15,17 +16,8 @@ import logo from './assets/jasiri-icon.png';
 // staff-specific auth flow to build, this page's only job is wayfinding.
 export default function StaffPortalPage() {
     return (
-        <div className="min-h-screen relative flex items-center justify-center p-4 py-16">
-            {/* Background — same visual family as Login.tsx/Signup.tsx */}
-            <div
-                className="absolute inset-0 z-0"
-                style={{
-                    backgroundImage: "url('/image_aaeaf7.jpg')",
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
-                }}
-            />
-            <div className="absolute inset-0 z-0 bg-[#0a0f1a]/90 backdrop-blur-sm" />
+        <div className="min-h-screen relative overflow-hidden bg-[#04101c] flex items-center justify-center p-4 py-16">
+            <AuthBackdrop variant="staff" />
 
             <div className="relative z-10 w-full max-w-lg">
                 <Link
