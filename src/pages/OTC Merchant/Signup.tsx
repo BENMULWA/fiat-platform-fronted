@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { RefreshCw, Eye, EyeOff, CheckCircle2, ArrowLeft } from 'lucide-react';
+import { RefreshCw, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { AuthBackdrop, AuthBrand } from '../../components/auth/AuthShell';
-import { DeskEmblem } from '../../components/auth/OtcArtwork';
+import { AuthBackdrop, AuthBrand, AuthAside, ASIDE_ITEMS } from '../../components/auth/AuthShell';
 
 const COUNTRIES: { name: string; dial: string }[] = [
     { name: 'Kenya', dial: '+254' }, { name: 'Uganda', dial: '+256' }, { name: 'Tanzania', dial: '+255' }, { name: 'Rwanda', dial: '+250' },
@@ -21,14 +20,6 @@ const BUSINESS_TYPES = [
 ];
 const VOLUMES = ['Under $50,000', '$50,000 - $250,000', '$250,000 - $1 million', '$1 million - $5 million', 'Above $5 million'];
 const HEARD = ['Search engine', 'Social media', 'Friend or colleague', 'Event or conference', 'Email', 'Other'];
-
-const BENEFITS = [
-    'An institutional OTC desk with a dedicated dealer, quoting from live market and central bank rates.',
-    'Multi-currency wallets across Kenya, Uganda, Nigeria and more, in one place.',
-    'Settle conversions into your Jasiri wallet, a bank account, or your own crypto wallet on the network you choose.',
-    'Pay your beneficiaries and suppliers from your balance, with every payout tracked.',
-    'Two-person treasury approvals and a full audit trail on every settlement.',
-];
 
 export default function OtcSignup() {
     const navigate = useNavigate();
@@ -55,7 +46,7 @@ export default function OtcSignup() {
     const [info, setInfo] = useState('');
     const [loading, setLoading] = useState(false);
 
-    const input = 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/15';
+    const input = 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-base text-slate-900 sm:py-2 sm:text-[13px] placeholder:text-slate-400 outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/15';
     const label = 'block text-[12.5px] font-semibold text-[#0b2a3b] mb-1';
     const star = <span className="text-rose-500">*</span>;
 
@@ -116,13 +107,13 @@ export default function OtcSignup() {
         <div className="relative min-h-screen overflow-hidden bg-[#04101c] font-sans">
             {/* Jasiri-themed backdrop: deep navy to teal, brand gold band, soft glows and a fine dot grid */}
             <div className="absolute inset-0 bg-[linear-gradient(135deg,#04101c_0%,#06263a_46%,#0a4a5a_100%)]" />
-            <AuthBackdrop variant="otc" />
+            <AuthBackdrop variant="otc" art={false} />
 
             <div className="relative mx-auto max-w-6xl px-4 sm:px-6 py-5">
                 <AuthBrand variant="otc" />
 
-                <div className="mt-5 grid items-start gap-6 lg:gap-10 lg:grid-cols-[minmax(0,640px)_1fr]">
-                    <div className="rounded-2xl bg-white p-5 sm:p-7 shadow-2xl shadow-black/40">
+                <div className="mx-auto mt-5 w-full max-w-2xl space-y-4 pb-6">
+                    <div className="auth-light rounded-3xl bg-white p-5 sm:p-7 shadow-2xl shadow-black/40">
                         {step === 'form' ? (
                             <>
                                 <h1 className="text-center text-xl sm:text-[22px] font-bold text-[#0b2a3b]">Create your Jasiri OTC account</h1>
@@ -252,27 +243,21 @@ export default function OtcSignup() {
                         </p>
                     </div>
 
-                    <aside className="relative rounded-2xl border border-white/10 bg-[#04101c]/80 p-6 text-white shadow-2xl shadow-black/40 backdrop-blur-md lg:mt-6 [text-shadow:0_1px_2px_rgba(0,0,0,0.45)]">
-                        <DeskEmblem className="absolute right-5 top-5 h-14 w-14 drop-shadow-[0_0_14px_rgba(94,234,212,0.35)]" />
-                        <h2 className="pr-20 text-lg font-bold">Your Jasiri OTC account gives you:</h2>
-                        <ul className="mt-5 space-y-4">
-                            {BENEFITS.map(b => (
-                                <li key={b} className="flex items-start gap-3 text-sm leading-relaxed text-white/95">
-                                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
-                                    <span>{b}</span>
-                                </li>
-                            ))}
-                        </ul>
-                        <div className="mt-7 rounded-xl border border-white/10 bg-black/25 p-4">
-                            <p className="text-sm font-semibold text-amber-300">What happens after you sign up</p>
-                            <ol className="mt-3 space-y-2 text-sm text-white/90">
+                    <AuthAside
+                        title="Your Jasiri OTC account gives you:"
+                        items={ASIDE_ITEMS.otc}
+                        emblem
+                        summary="Why Jasiri OTC? Learn more"
+                        footer={<>
+                            <p className="font-semibold text-amber-300">What happens after you sign up</p>
+                            <ol className="mt-3 space-y-2">
                                 <li><b>1.</b> Verify your email with a one-time code.</li>
                                 <li><b>2.</b> Complete KYB: company documents, directors and shareholders.</li>
                                 <li><b>3.</b> Our compliance team reviews and activates your account.</li>
                                 <li><b>4.</b> Fund your wallet and request your first quote.</li>
                             </ol>
-                        </div>
-                    </aside>
+                        </>}
+                    />
                 </div>
             </div>
         </div>

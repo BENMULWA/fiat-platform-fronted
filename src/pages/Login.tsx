@@ -4,7 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
 import { getFriendlyErrorMessage } from '../utils/errorMessages';
-import AuthShell, { AuthAside, ASIDE_ITEMS, StaffNotice, authStyles } from '../components/auth/AuthShell';
+import AuthShell, { AuthAside, AuthCardHeader, ASIDE_ITEMS, StaffNotice, authStyles } from '../components/auth/AuthShell';
 
 export default function Login() {
     const { requestLoginOtp, verifyLoginOtp, resendLoginOtp } = useAuth();
@@ -85,17 +85,16 @@ export default function Login() {
         }
     };
 
-    const heading = isAdminPortal ? 'Staff sign-in' : variant === 'otc' ? 'Sign in to Jasiri OTC' : 'Welcome back';
-    const sub = isAdminPortal ? 'Reserved for authorised Jasiri staff.' : variant === 'otc' ? 'Access your institutional desk, wallets and settlements.' : 'Log in to your Jasiri account.';
+    const heading = isAdminPortal ? 'Staff sign-in' : variant === 'otc' ? 'Sign in to your desk' : 'Welcome back';
+    const sub = isAdminPortal ? 'Reserved for authorised Jasiri staff.' : variant === 'otc' ? 'Quotes, wallets and settlements for your business.' : 'Sign in to your Jasiri account. We will email you a code to confirm it is you.';
 
     const aside = isAdminPortal ? null : variant === 'otc'
         ? <AuthAside title="Your Jasiri OTC desk" items={ASIDE_ITEMS.otc} emblem />
         : <AuthAside title="Welcome back to Jasiri" items={ASIDE_ITEMS.retail} />;
 
     return (
-        <AuthShell variant={variant} aside={aside} narrow backTo={{ to: '/', label: 'Back to Jasiri' }}>
-            <h1 className={`text-2xl font-bold ${st.title}`}>{heading}</h1>
-            <p className={`mt-1.5 text-sm ${st.muted}`}>{sub}</p>
+        <AuthShell variant={variant} aside={aside} narrow showArt={false} backTo={{ to: '/', label: 'Back to Jasiri' }}>
+            <AuthCardHeader variant={variant} kind="signin" title={heading} subtitle={sub} />
 
             {error && (
                 <div className={`mt-5 flex items-start gap-2.5 ${st.error}`}>
@@ -138,7 +137,7 @@ export default function Login() {
                 )}
 
                 <button type="submit" disabled={loading} className={st.button}>
-                    {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : (otpStep ? 'Verify OTP and sign in' : 'Sign in securely')}
+                    {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : (otpStep ? 'Verify and sign in' : 'Continue')}
                 </button>
             </form>
 

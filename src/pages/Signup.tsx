@@ -4,7 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Eye, EyeOff, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
 import { getFriendlyErrorMessage } from '../utils/errorMessages';
-import AuthShell, { AuthAside, ASIDE_ITEMS, authStyles } from '../components/auth/AuthShell';
+import AuthShell, { AuthAside, AuthCardHeader, ASIDE_ITEMS, authStyles } from '../components/auth/AuthShell';
 
 export default function Signup() {
     const navigate = useNavigate();
@@ -98,8 +98,7 @@ export default function Signup() {
                     <ArrowLeft className="h-3.5 w-3.5" /> Edit details
                 </button>
             )}
-            <h1 className={`text-2xl font-bold ${st.title}`}>{otpStep ? 'Verify your email' : 'Create your Jasiri account'}</h1>
-            <p className={`mt-1.5 text-sm ${st.muted}`}>{otpStep ? 'Enter the 6-digit code we emailed you.' : 'Start in minutes. Identity verification follows signup.'}</p>
+            <AuthCardHeader variant="retail" kind="signup" title={otpStep ? 'Verify your email' : 'Create your Jasiri account'} subtitle={otpStep ? 'Enter the 6-digit code we emailed you.' : 'Start in minutes. Identity verification follows signup.'} />
 
             {error && <div className={`mt-5 flex items-start gap-2.5 ${st.error}`}><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><p>{error}</p></div>}
             {successMessage && <div className={`mt-5 ${st.success}`}><p>{successMessage}</p></div>}

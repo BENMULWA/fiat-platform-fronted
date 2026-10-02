@@ -1,7 +1,7 @@
 //@ts-nocheck
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { User, Building2, ArrowRight, ArrowDownUp, Shield, Smartphone, Sun, Moon, Monitor, CheckCircle2, Zap, ChevronDown, Menu, Lock, Globe, X, Wallet, Link2, Network, Phone, Mail, MessageCircle, Twitter, Github, Linkedin, Instagram, Facebook, Music2, TrendingUp, TrendingDown, Clock, Coins } from 'lucide-react';
+import { Gift, User, Building2, ArrowRight, ArrowDownUp, Shield, Smartphone, Sun, Moon, Monitor, CheckCircle2, Zap, ChevronDown, Menu, Lock, Globe, X, Wallet, Link2, Network, Phone, Mail, MessageCircle, Twitter, Github, Linkedin, Instagram, Facebook, Music2, TrendingUp, TrendingDown, Clock, Coins } from 'lucide-react';
 import logo from '../pages/assets/jasiri-icon.png';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
@@ -102,6 +102,17 @@ const customStyles = `
       transition: none;
     }
   }
+
+  @keyframes giftShake {
+    0%, 3.6%, 100% { transform: rotate(0deg) scale(1); }
+    0.6% { transform: rotate(-16deg) scale(1.12); }
+    1.2% { transform: rotate(14deg) scale(1.12); }
+    1.8% { transform: rotate(-12deg) scale(1.1); }
+    2.4% { transform: rotate(9deg) scale(1.06); }
+    3% { transform: rotate(-4deg) scale(1.02); }
+  }
+  .gift-shake { animation: giftShake 60s ease-in-out infinite; transform-origin: 50% 85%; display: inline-block; }
+  @media (prefers-reduced-motion: reduce) { .gift-shake { animation: none; } }
 `;
 
 // Animated count-up that starts once when scrolled into view.
@@ -637,18 +648,21 @@ export default function LandingPage() {
               <div className={`p-8 sm:p-8 rounded-[2rem] border transition-colors duration-300 hover:-translate-y-1 hover:shadow-2xl ${current.card}`}>
                 {/* Who is this for? Quick Swap = individuals (the swap form below). OTC Desk = businesses settling bulk trades. */}
                 <nav aria-label="Choose your account type" className="mb-6">
-                  <div className={`grid grid-cols-2 gap-2 p-1.5 rounded-2xl ${theme === 'light' ? 'bg-slate-100' : 'bg-white/5'}`}>
-                    <div aria-current="page" className={`relative flex flex-col items-center gap-0.5 rounded-xl px-3 py-3 text-center ${theme === 'light' ? 'bg-white text-slate-900 shadow-md ring-1 ring-emerald-500/40' : 'bg-[#18181b] text-white shadow-md ring-1 ring-emerald-500/40'}`}>
-                      <span className="flex items-center gap-1.5 text-sm font-extrabold"><User className="w-4 h-4 text-emerald-500" /> Quick Swap</span>
-                      <span className="text-[11px] font-semibold text-emerald-500">For individuals</span>
-                      <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-emerald-500 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">You are here</span>
+                  <div className={`grid grid-cols-2 gap-1.5 sm:gap-2 p-1 sm:p-1.5 rounded-2xl ${theme === 'light' ? 'bg-slate-100' : 'bg-white/5'}`}>
+                    <div aria-current="page" className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-1.5 py-2.5 sm:px-3 sm:py-3 text-center ${theme === 'light' ? 'bg-white text-slate-900 shadow-md ring-1 ring-emerald-500/40' : 'bg-[#18181b] text-white shadow-md ring-1 ring-emerald-500/40'}`}>
+                      <span className="inline-flex max-w-full items-center rounded-full bg-emerald-500 px-2 py-0.5 text-[8.5px] sm:text-[9.5px] font-bold uppercase leading-none tracking-wide text-white whitespace-nowrap">You are here</span>
+                      <span className="flex max-w-full items-center justify-center gap-1 sm:gap-1.5 text-[13px] sm:text-sm font-extrabold leading-tight"><User className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0 text-emerald-500" /><span className="truncate">Quick Swap</span></span>
+                      <span className="text-[10px] sm:text-[11px] font-semibold leading-tight text-emerald-500">For individuals</span>
                     </div>
                     <Link
                       to={otcHref}
-                      className={`group flex flex-col items-center gap-0.5 rounded-xl px-3 py-3 text-center transition-all border border-transparent ${theme === 'light' ? 'text-slate-600 hover:bg-white hover:text-slate-900 hover:border-slate-200 hover:shadow-sm' : 'text-slate-300 hover:bg-[#18181b] hover:text-white hover:border-white/10'}`}
+                      className={`group flex min-w-0 flex-col items-center gap-1 rounded-xl border border-transparent px-1.5 py-2.5 sm:px-3 sm:py-3 text-center transition-all ${theme === 'light' ? 'text-slate-600 hover:bg-white hover:text-slate-900 hover:border-orange-200 hover:shadow-sm' : 'text-slate-300 hover:bg-[#18181b] hover:text-white hover:border-orange-500/30'}`}
                     >
-                      <span className="flex items-center gap-1.5 text-sm font-bold"><Building2 className="w-4 h-4 text-amber-500" /> OTC Desk <ArrowRight className="w-3.5 h-3.5 opacity-0 -ml-1 transition-all group-hover:opacity-100 group-hover:ml-0" /></span>
-                      <span className="text-[11px] font-semibold text-amber-500">For businesses</span>
+                      <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-orange-500 px-2 py-0.5 text-[8.5px] sm:text-[9.5px] font-bold uppercase leading-none tracking-wide text-white whitespace-nowrap shadow-sm shadow-orange-500/30">
+                        <Gift className="gift-shake h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0" aria-hidden="true" /> New
+                      </span>
+                      <span className="flex max-w-full items-center justify-center gap-1 sm:gap-1.5 text-[13px] sm:text-sm font-bold leading-tight"><Building2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0 text-orange-500" /><span className="truncate">OTC Desk</span><ArrowRight className="hidden sm:block h-3.5 w-3.5 shrink-0 opacity-0 -ml-1 transition-all group-hover:opacity-100 group-hover:ml-0" /></span>
+                      <span className="text-[10px] sm:text-[11px] font-semibold leading-tight text-orange-500">For businesses</span>
                     </Link>
                   </div>
                   <p className={`mt-2.5 text-center text-[11px] leading-snug ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
