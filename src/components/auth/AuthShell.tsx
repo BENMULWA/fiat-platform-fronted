@@ -1,8 +1,9 @@
 import { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckCircle2, ChevronDown, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ShieldCheck, Lock, UserPlus } from 'lucide-react';
 import logo from '../../pages/assets/jasiri-icon.png';
 import OtcArtwork, { DeskEmblem } from './OtcArtwork';
+import WorkspaceScene from './WorkspaceScene';
 
 export type AuthVariant = 'retail' | 'otc' | 'staff';
 
@@ -96,6 +97,34 @@ export function AuthBackdrop({ variant, art = true }: { variant: AuthVariant; ar
   );
 }
 
+
+// Light, friendly backdrop for the customer pages (retail and OTC): a pale tint with two soft brand-colour glows.
+export function LightBackdrop({ variant }: { variant: AuthVariant }) {
+  const a = variant === 'otc' ? 'bg-[radial-gradient(circle_at_40%_40%,rgba(20,184,166,0.45),transparent_70%)]' : 'bg-[radial-gradient(circle_at_40%_40%,rgba(22,163,106,0.42),transparent_70%)]';
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden bg-[linear-gradient(150deg,#f4f9fa_0%,#e8f3f4_100%)]" aria-hidden>
+      <style>{FLOAT_CSS}</style>
+      <div className="jasiri-drift absolute -right-32 -top-48 h-[420px] w-[420px] rounded-full bg-[radial-gradient(circle_at_40%_40%,rgba(245,184,61,0.5),transparent_70%)] opacity-60 sm:h-[560px] sm:w-[560px]" />
+      <div className={`jasiri-drift absolute -bottom-72 -left-52 h-[460px] w-[460px] rounded-full opacity-50 [animation-delay:-9s] sm:h-[620px] sm:w-[620px] ${a}`} />
+    </div>
+  );
+}
+
+export function LightBrand({ variant }: { variant: AuthVariant }) {
+  const [a, b, sub] = BRAND[variant];
+  return (
+    <Link to="/" className="inline-flex items-center gap-2.5">
+      <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <img src={logo} alt="Jasiri Capital" className="h-7 w-7 object-contain" />
+      </span>
+      <span className="leading-tight">
+        <span className="block text-[15px] font-extrabold tracking-tight text-[#0b2a3b]">{a}<span className={variant === 'otc' ? 'text-teal-600' : 'text-emerald-600'}>{b}</span></span>
+        <span className="block text-[9px] font-semibold uppercase tracking-[0.2em] text-slate-500">{sub}</span>
+      </span>
+    </Link>
+  );
+}
+
 const BRAND: Record<AuthVariant, [string, string, string]> = {
   retail: ['Jasiri', '', 'Capital'],
   otc: ['Jasiri ', 'OTC', 'Institutional desk'],
@@ -132,10 +161,10 @@ export function authStyles(variant: AuthVariant) {
       ? 'w-full rounded-xl border border-[#243449] bg-[#0a0f1a] px-3.5 py-3 text-base text-white sm:py-2.5 sm:text-[13.5px] placeholder:text-gray-500 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
       : `w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-base text-slate-900 sm:py-2.5 sm:text-[13.5px] placeholder:text-slate-400 outline-none transition focus:ring-2 ${variant === 'otc' ? 'focus:border-teal-600 focus:ring-teal-600/15' : 'focus:border-emerald-600 focus:ring-emerald-600/15'}`,
     button: variant === 'staff'
-      ? 'flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-6 py-3 text-[15px] font-semibold text-white shadow-sm transition hover:bg-blue-500 sm:text-sm disabled:cursor-not-allowed disabled:opacity-50'
+      ? 'flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-3 text-[15px] font-bold text-white shadow-lg shadow-blue-900/30 sm:text-sm transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50'
       : variant === 'otc'
-        ? 'flex w-full items-center justify-center gap-2 rounded-lg bg-teal-700 px-6 py-3 text-[15px] font-semibold text-white shadow-sm transition hover:bg-teal-600 sm:text-sm disabled:cursor-not-allowed disabled:opacity-50'
-        : 'flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 px-6 py-3 text-[15px] font-semibold text-white shadow-sm transition hover:bg-emerald-600 sm:text-sm disabled:cursor-not-allowed disabled:opacity-50',
+        ? 'flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-teal-700 to-emerald-600 px-6 py-3 text-[15px] font-bold text-white shadow-lg shadow-teal-900/20 sm:text-sm transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50'
+        : 'flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-6 py-3 text-[15px] font-bold text-white shadow-lg shadow-emerald-900/25 sm:text-sm transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50',
     link: dark ? 'font-semibold text-blue-300 hover:text-blue-200' : variant === 'otc' ? 'font-semibold text-teal-700 hover:text-teal-600' : 'font-semibold text-emerald-700 hover:text-emerald-600',
     error: dark ? 'rounded-lg border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-sm text-red-300' : 'rounded-lg border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm text-rose-600',
     success: dark ? 'rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-2.5 text-sm text-emerald-300' : 'rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-sm text-emerald-700',
@@ -145,39 +174,33 @@ export function authStyles(variant: AuthVariant) {
 
 export function AuthCardHeader({ variant, kind = 'signin', title, subtitle }: { variant: AuthVariant; kind?: 'signin' | 'signup'; title: string; subtitle?: string }) {
   const st = authStyles(variant);
-  const area = variant === 'staff' ? 'Staff access' : variant === 'otc' ? 'OTC desk' : 'Jasiri wallet';
-  const eyebrow = `${area} \u00b7 ${kind === 'signup' ? 'New account' : 'Sign in'}`;
-  const eyebrowColour = variant === 'staff' ? 'text-blue-400' : variant === 'otc' ? 'text-teal-700' : 'text-emerald-700';
+  const tone = variant === 'staff' ? 'from-blue-600 to-indigo-600 shadow-blue-900/30' : variant === 'otc' ? 'from-teal-600 to-emerald-500 shadow-teal-900/25' : 'from-emerald-600 to-teal-500 shadow-emerald-900/25';
+  const Icon = kind === 'signup' ? UserPlus : Lock;
   return (
-    <div className="mb-7 flex items-start justify-between gap-4">
-      <div className="min-w-0">
-        <p className={`flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] ${eyebrowColour}`}>
-          <span className={`h-0.5 w-6 rounded-full ${variant === 'staff' ? 'bg-blue-500' : 'bg-amber-400'}`} />{eyebrow}
-        </p>
-        <h1 className={`mt-3 text-[26px] font-semibold leading-tight tracking-tight ${st.title}`}>{title}</h1>
-        {subtitle && <p className={`mt-2 text-sm leading-relaxed ${st.muted}`}>{subtitle}</p>}
-      </div>
-      <DeskEmblem label={variant === 'otc' ? 'DESK' : ''} className="h-11 w-11 shrink-0" />
+    <div className="mb-7 flex flex-col items-center text-center">
+      <span className={`mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br text-white shadow-lg ${tone}`}><Icon className="h-6 w-6" /></span>
+      <h1 className={`text-2xl font-extrabold tracking-tight ${st.title}`}>{title}</h1>
+      {subtitle && <p className={`mt-1.5 max-w-xs text-sm leading-relaxed ${st.muted}`}>{subtitle}</p>}
     </div>
   );
 }
 
-export function AuthAside({ title, items, footer, emblem, summary = 'Why Jasiri? Learn more' }: { title: string; items: readonly string[]; footer?: ReactNode; emblem?: boolean; summary?: string }) {
+export function AuthAside({ title, items, footer, emblem, summary = 'Why Jasiri? Learn more', light = false }: { title: string; items: readonly string[]; footer?: ReactNode; emblem?: boolean; summary?: string; light?: boolean }) {
   const list = (
     <ul className="mt-5 space-y-4">
       {items.map(b => (
-        <li key={b} className="flex items-start gap-3 text-sm leading-relaxed text-white/95">
-          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+        <li key={b} className={`flex items-start gap-3 text-sm leading-relaxed ${light ? 'text-slate-700' : 'text-white/95'}`}>
+          <CheckCircle2 className={`mt-0.5 h-5 w-5 shrink-0 ${light ? 'text-amber-500' : 'text-amber-300'}`} />
           <span>{b}</span>
         </li>
       ))}
     </ul>
   );
-  const extra = footer ? <div className="mt-6 rounded-xl border border-white/10 bg-black/25 p-4 text-sm text-white/90">{footer}</div> : null;
+  const extra = footer ? <div className={`mt-6 rounded-xl border p-4 text-sm ${light ? 'border-slate-200 bg-slate-50 text-slate-700 [&_.text-amber-300]:!text-amber-600' : 'border-white/10 bg-black/25 text-white/90'}`}>{footer}</div> : null;
   return (
     <>
       {/* Collapsed under the form on every screen size, so the form stays centred and uncluttered until you ask for more */}
-      <details className="group overflow-hidden rounded-2xl border border-white/15 bg-[#04101c]/75 text-white backdrop-blur-md">
+      <details className={`group overflow-hidden rounded-2xl border backdrop-blur-md ${light ? 'border-slate-200 bg-white/80 text-[#0b2a3b] shadow-sm' : 'border-white/15 bg-[#04101c]/75 text-white'}`}>
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 text-sm font-semibold [&::-webkit-details-marker]:hidden">
           <span className="flex min-w-0 items-center gap-2.5">
             {emblem && <DeskEmblem className="h-8 w-8 shrink-0" />}
@@ -226,8 +249,40 @@ type ShellProps = { variant: AuthVariant; children: ReactNode; aside?: ReactNode
 export default function AuthShell({ variant, children, aside, narrow, backTo, showArt = true }: ShellProps) {
   const s = authStyles(variant);
   const single = !aside;
+
+  // Customer pages (retail and OTC): dark backdrop, animated workspace scene on the left, sign-in card on the right.
+  if (variant !== 'staff') {
+    const copy = variant === 'otc'
+      ? { title: 'Quotes, wallets and settlements in one place.', subtitle: 'Sign in to pick up where you left off.' }
+      : { title: 'Your money, in shillings and stablecoins.', subtitle: 'Deposit, swap and send in a few taps.' };
+    const bar = variant === 'otc' ? 'from-teal-500 via-emerald-400 to-amber-300' : 'from-emerald-500 via-teal-400 to-amber-300';
+    return (
+      <div className="relative flex min-h-screen flex-col overflow-hidden bg-[#04101c] font-sans">
+        <AuthBackdrop variant={variant} art={false} />
+        <div className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col px-4 py-5 sm:px-6">
+          <div className="flex items-center justify-between gap-4">
+            <AuthBrand variant={variant} />
+            {backTo && <Link to={backTo.to} className="text-sm font-semibold text-white/70 hover:text-white">{backTo.label}</Link>}
+          </div>
+          <main className="grid flex-1 items-center gap-6 py-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,440px)] lg:gap-12">
+            <div className="order-2 hidden h-[560px] lg:order-1 lg:block"><WorkspaceScene dark variant={variant} title={copy.title} subtitle={copy.subtitle} /></div>
+            <div className="order-1 mx-auto w-full max-w-md space-y-4 lg:order-2">
+              <div className={`${s.card} auth-light relative overflow-hidden`}>
+                <div className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${bar}`} />
+                {children}
+              </div>
+              {aside}
+            </div>
+          </main>
+        </div>
+      </div>
+    );
+  }
+
+  const bar = 'from-blue-500 via-indigo-500 to-blue-400';
   const card = (
     <div className={`${s.card} relative overflow-hidden ${s.dark ? 'auth-dark' : 'auth-light'}`}>
+      <div className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${bar}`} />
       {children}
     </div>
   );

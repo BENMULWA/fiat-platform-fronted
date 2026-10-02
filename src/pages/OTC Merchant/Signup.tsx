@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { RefreshCw, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { AuthBackdrop, AuthBrand, AuthAside, ASIDE_ITEMS } from '../../components/auth/AuthShell';
+import WorkspaceScene from '../../components/auth/WorkspaceScene';
 
 const COUNTRIES: { name: string; dial: string }[] = [
     { name: 'Kenya', dial: '+254' }, { name: 'Uganda', dial: '+256' }, { name: 'Tanzania', dial: '+255' }, { name: 'Rwanda', dial: '+250' },
@@ -112,7 +113,9 @@ export default function OtcSignup() {
             <div className="relative mx-auto max-w-6xl px-4 sm:px-6 py-5">
                 <AuthBrand variant="otc" />
 
-                <div className="mx-auto mt-5 w-full max-w-2xl space-y-4 pb-6">
+                <div className="mt-5 grid items-center gap-8 pb-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,660px)] xl:gap-10">
+                  <div className="hidden h-[560px] xl:block"><WorkspaceScene dark variant="otc" title="Open your institutional account." subtitle="Verify your email, complete KYB, and request your first quote." /></div>
+                  <div className="mx-auto w-full max-w-2xl space-y-4">
                     <div className="auth-light rounded-3xl bg-white p-5 sm:p-7 shadow-2xl shadow-black/40">
                         {step === 'form' ? (
                             <>
@@ -259,6 +262,7 @@ export default function OtcSignup() {
                         </>}
                     />
                 </div>
+                  </div>
             </div>
         </div>
     );

@@ -85,8 +85,8 @@ export default function Login() {
         }
     };
 
-    const heading = isAdminPortal ? 'Staff sign-in' : variant === 'otc' ? 'Sign in to your desk' : 'Welcome back';
-    const sub = isAdminPortal ? 'Reserved for authorised Jasiri staff.' : variant === 'otc' ? 'Quotes, wallets and settlements for your business.' : 'Sign in to your Jasiri account. We will email you a code to confirm it is you.';
+    const heading = isAdminPortal ? 'Staff sign-in' : variant === 'otc' ? 'Sign in to Jasiri OTC' : 'Welcome back';
+    const sub = isAdminPortal ? 'Reserved for authorised Jasiri staff.' : variant === 'otc' ? 'Access your institutional desk, wallets and settlements.' : 'Log in to your Jasiri account.';
 
     const aside = isAdminPortal ? null : variant === 'otc'
         ? <AuthAside title="Your Jasiri OTC desk" items={ASIDE_ITEMS.otc} emblem />
@@ -137,7 +137,7 @@ export default function Login() {
                 )}
 
                 <button type="submit" disabled={loading} className={st.button}>
-                    {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : (otpStep ? 'Verify and sign in' : 'Continue')}
+                    {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : (otpStep ? 'Verify OTP and sign in' : 'Sign in securely')}
                 </button>
             </form>
 

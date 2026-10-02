@@ -97,7 +97,7 @@ export default function OtcArtwork({ className = '' }: { className?: string }) {
 }
 
 // The Jasiri desk emblem on its own, so it can sit on top of panels where the background artwork is covered.
-export function DeskEmblem({ className = 'h-14 w-14', label = 'DESK' }: { className?: string; label?: string }) {
+export function DeskEmblem({ className = 'h-14 w-14' }: { className?: string }) {
   return (
     <svg viewBox="0 0 120 120" className={className} role="img" aria-label="Jasiri OTC desk">
       <defs>
@@ -108,8 +108,8 @@ export function DeskEmblem({ className = 'h-14 w-14', label = 'DESK' }: { classN
       <circle cx="60" cy="60" r="58" fill="url(#emGlow)" />
       <polygon points="60,10 103,35 103,85 60,110 17,85 17,35" fill="#06263a" fillOpacity="0.95" stroke="url(#emTeal)" strokeWidth="4" />
       <polygon points="60,24 91,42 91,78 60,96 29,78 29,42" fill="none" stroke="url(#emGold)" strokeWidth="2.4" />
-      <text x="60" y={label ? 64 : 72} textAnchor="middle" fontSize="38" fontWeight="800" fill="#ffffff" fontFamily="Inter, system-ui, sans-serif">J</text>
-      {label && <text x="60" y="84" textAnchor="middle" fontSize="11" fontWeight="700" letterSpacing="3" fill="#fcd34d" fontFamily="Inter, system-ui, sans-serif">{label}</text>}
+      <text x="60" y="64" textAnchor="middle" fontSize="38" fontWeight="800" fill="#ffffff" fontFamily="Inter, system-ui, sans-serif">J</text>
+      <text x="60" y="84" textAnchor="middle" fontSize="11" fontWeight="700" letterSpacing="3" fill="#fcd34d" fontFamily="Inter, system-ui, sans-serif">DESK</text>
     </svg>
   );
 }
