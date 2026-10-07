@@ -40,6 +40,22 @@ export function InstitutionalProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { refetch(); }, [refetch]);
 
+  // Until the merchant is approved, re-check when they come back to the tab and
+  // every 30s, so an admin's decision clears the banner even if the live push
+  // was missed. Stops polling once approved.
+  useEffect(() => {
+    if (onboardingStatus === 'approved') return;
+    const onVisible = () => { if (document.visibilityState === 'visible') refetch(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    const timer = window.setInterval(onVisible, 30000);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+      window.clearInterval(timer);
+    };
+  }, [onboardingStatus, refetch]);
+
   return (
     <InstitutionalContext.Provider value={{
       onboardingStatus,

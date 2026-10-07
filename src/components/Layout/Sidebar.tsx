@@ -128,9 +128,9 @@ interface SidebarProps {
 export default function Sidebar({ onClose }: SidebarProps) {
   const { user, logout, viewAsAdmin } = useAuth() // ← Removed toggleViewAsAdmin
   const { theme } = useTheme()
-  // Stays dark for the admin/treasury view regardless of the retail toggle
-  // — see the matching comment in AppLayout.tsx.
-  const isLight = !viewAsAdmin && theme === 'light'
+  // Admin shares the global toggle; its hardcoded dark nav classes are
+  // remapped by `.admin-light` (see AppLayout.tsx / src/admin-light.css).
+  const isLight = theme === 'light'
   const location = useLocation()
   const navigate = useNavigate()
 

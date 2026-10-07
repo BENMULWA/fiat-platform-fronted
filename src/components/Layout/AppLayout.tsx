@@ -7,6 +7,7 @@ import { Menu, Bell, User, LogOut, Settings, ChevronDown, FileText, ShieldCheck,
 import Sidebar from './Sidebar'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
+import ThemeToggle from '../ThemeToggle'
 import { getAdminNotifications, markAllAdminNotificationsRead, getRetailNotifications, markAllRetailNotificationsRead } from '../../api/client'
 import useWebsocket from '../../hooks/useWebsocket'
 import { fireEventNotification, getNotificationPermission, hasAskedForPermission, requestNotificationPermission } from '../../utils/pushNotifications'
@@ -16,13 +17,10 @@ export default function AppLayout() {
   const { theme, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  // The admin/treasury side (Market Maker, Dealer Workspace, etc.) stays
-  // permanently dark regardless of the retail light/dark toggle -- it's a
-  // different, unthemed page set (MarketMakerPage.tsx and friends are still
-  // hardcoded dark), so letting this shared shell go light while viewing
-  // admin would mismatch the sidebar/topbar against page content that never
-  // got a light variant.
-  const isLight = !viewAsAdmin && theme === 'light'
+  // The admin side shares the retail light/dark toggle. Admin pages hardcode
+  // dark colours, so the `admin-light` class on the root activates the
+  // remapping in src/admin-light.css when viewing admin in light mode.
+  const isLight = theme === 'light'
 
   // Dropdown States
   const [showUserMenu, setShowUserMenu] = useState(false)
@@ -151,7 +149,7 @@ export default function AppLayout() {
   }
 
   return (
-    <div className={`flex min-h-screen transition-colors duration-300 ${isLight ? 'bg-slate-50 text-slate-800' : 'bg-[#06090F] text-gray-200'}`}>
+    <div className={`flex min-h-screen transition-colors duration-300 ${viewAsAdmin && isLight ? 'admin-light ' : ''}${isLight ? 'bg-slate-50 text-slate-800' : 'bg-[#06090F] text-gray-200'}`}>
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
@@ -187,15 +185,7 @@ export default function AppLayout() {
 
             {/* Mobile Right Icons */}
             <div className="flex items-center gap-3">
-              {!viewAsAdmin && (
-                <button
-                  onClick={toggleTheme}
-                  aria-label="Toggle light/dark mode"
-                  className={`p-2 rounded-full border transition-colors ${isLight ? 'bg-white border-slate-200 text-amber-500' : 'bg-[#111827] border-[#1E2533] text-blue-400'}`}
-                >
-                  {isLight ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-                </button>
-              )}
+              <ThemeToggle />
               <button onClick={() => setShowNotifMenu(!showNotifMenu)} className="relative p-2">
                 <Bell className={`w-5 h-5 ${isLight ? 'text-slate-500' : 'text-gray-400'}`} />
                 {unreadCount > 0 && <span className={`absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full border ${isLight ? 'border-white' : 'border-[#06090F]'}`} />}
@@ -211,16 +201,8 @@ export default function AppLayout() {
 
             <div className="flex items-center gap-4 relative">
 
-              {/* 0. LIGHT / DARK TOGGLE (Retail only) */}
-              {!viewAsAdmin && (
-                <button
-                  onClick={toggleTheme}
-                  aria-label="Toggle light/dark mode"
-                  className={`p-2 rounded-full border transition-all ${isLight ? 'bg-white border-slate-200 text-amber-500 shadow-sm hover:bg-slate-50' : 'bg-[#111827] border-[#1E2533] text-blue-400 hover:bg-[#1A2533]'}`}
-                >
-                  {isLight ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-                </button>
-              )}
+              {/* 0. LIGHT / DARK TOGGLE */}
+              <ThemeToggle />
 
               {/* 1. NOTIFICATION BELL */}
               <div className="relative">
@@ -321,8 +303,8 @@ export default function AppLayout() {
                           <User className="w-4 h-4" /> My Profile
                         </button>
 
-                        {/* Retail-only light/dark toggle, mirrored inside the menu for discoverability */}
-                        {!viewAsAdmin && (
+                        {/* Light/dark toggle, mirrored inside the menu for discoverability */}
+                        {(
                           <button
                             onClick={() => { toggleTheme(); }}
                             className={`w-full text-left px-4 py-2.5 text-sm rounded-lg flex items-center gap-3 transition-colors mt-1 ${isLight ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-gray-300 hover:text-white hover:bg-[#1A2533]'}`}

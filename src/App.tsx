@@ -31,6 +31,7 @@ import OtcRfqDetail from './pages/OTC Merchant/RfqDetail'
 import OtcSettlements from './pages/OTC Merchant/Settlements'
 import OtcProfile from './pages/OTC Merchant/Profile'
 import OtcTransactionsHistory from './pages/OTC Merchant/TransactionsHistory'
+import InvestorImm from './pages/OTC Merchant/InvestorImm'
 
 // --- ADMIN PAGES ---
 import DashboardPage from './pages/DashboardPage'
@@ -177,6 +178,7 @@ function AppRoutes() {
         <Route path="/otc/settlements" element={<OtcSettlements />} />
         <Route path="/otc/profile" element={<OtcProfile />} />
         <Route path="/otc/transactions" element={<OtcTransactionsHistory />} />
+        <Route path="/otc/imm" element={<InvestorImm />} />
       </Route>
 
       {/* PROTECTED LAYOUT */}

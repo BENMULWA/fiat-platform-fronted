@@ -1,9 +1,12 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Search, RefreshCw, Download, FileText, XCircle, Eye, CheckCircle2 } from 'lucide-react';
 import { getAdminCustomers, freezeAdminCustomer, unfreezeAdminCustomer, getOtcRetailTransactions } from '../../api/client';
 
 export default function Customers() {
+    // /admin/customers/institutional lists only institutional merchants; the other customer routes exclude them.
+    const isInstitutionalView = useLocation().pathname.startsWith('/admin/customers/institutional');
     const [customers, setCustomers] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -292,7 +295,8 @@ export default function Customers() {
         const matchesSearch = safeName.toLowerCase().includes(search) || safeEmail.toLowerCase().includes(search);
         const matchesKyc = kycFilter === 'All' || (c?.kyc || 'unverified').toLowerCase() === kycFilter.toLowerCase();
         const matchesStatus = statusFilter === 'All' || (c?.status || 'active').toLowerCase() === statusFilter.toLowerCase();
-        return matchesSearch && matchesKyc && matchesStatus;
+        const matchesType = (c?.accountType === 'institutional') === isInstitutionalView;
+        return matchesSearch && matchesKyc && matchesStatus && matchesType;
     });
 
     return (
@@ -300,7 +304,7 @@ export default function Customers() {
 
             <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-8">
                 <div className="flex items-center gap-3">
-                    <h1 className="text-2xl font-bold text-white tracking-tight">Retail Customers</h1>
+                    <h1 className="text-2xl font-bold text-white tracking-tight">{isInstitutionalView ? 'Institutional Clients' : 'Retail Customers'}</h1>
                     <span className="bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">ADMIN</span>
                 </div>
 
@@ -497,7 +501,7 @@ export default function Customers() {
                 </div>
             </div>
             <div className="mt-6 text-center text-gray-500 text-sm">
-                Showing {filtered.length} of {customers.length} customers
+                Showing {filtered.length} of {customers.filter(c => (c?.accountType === 'institutional') === isInstitutionalView).length} customers
             </div>
             <div className="mt-6 text-center text-gray-500 text-sm">
                 <p className="text-md text-white mt-4"> @ 2026 All Rights Reserved</p>

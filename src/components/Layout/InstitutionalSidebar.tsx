@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import {
   ArrowLeftRight, ClipboardCheck, LayoutDashboard, Wallet, ArrowDownToLine,
-  ArrowUpFromLine, Repeat, HandCoins, UserCircle, History, LogOut, X, ChevronDown,
+  ArrowUpFromLine, Repeat, HandCoins, UserCircle, History, LogOut, X, ChevronDown, Activity,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
@@ -23,6 +23,7 @@ const groupedSections: { title: string; items: NavItem[] }[] = [
     title: 'Trading', items: [
       { to: '/otc/request', label: 'New Conversion', icon: Repeat },
       { to: '/otc/settlements', label: 'Settlements', icon: HandCoins },
+      { to: '/otc/imm', label: 'Market Maker (IMM)', icon: Activity },
     ]
   },
 ]
