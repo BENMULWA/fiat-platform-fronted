@@ -56,7 +56,7 @@ function Rates() {
   const editSpread = () => {
     const s = spread.data
     openModal({
-      title: 'Retail spread (USDA / KES)',
+      title: 'Retail spread (USDT / KES)',
       body: <p className="sm ink2">The bid is what retail users receive when they sell. The ask is what they pay. It applies to every retail quote straight away.</p>,
       fields: [
         { id: 'bid', label: 'Bid (KES)', type: 'number', value: s ? String(s.bid) : '', required: true },
@@ -115,7 +115,7 @@ function Rates() {
       </div>
 
       <div className="stack">
-        <Card title="Retail spread" sub="What retail users are quoted for USDA against KES." actions={canOperate && <button className="btn sm" onClick={editSpread}>Edit</button>}>
+        <Card title="Retail spread" sub="What retail users are quoted for USDT against KES." actions={canOperate && <button className="btn sm" onClick={editSpread}>Edit</button>}>
           {!spread.loaded ? <Loading what="the spread" /> : spread.data ? (
             <dl className="kv">
               <div><dt>Bid</dt><dd>{fx(spread.data.bid, 2)}</dd></div>

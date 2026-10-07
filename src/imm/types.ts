@@ -169,7 +169,7 @@ export interface RebalanceJob {
 
 export interface MintBooking {
   receipt: string
-  status: 'pending' | 'booked' | 'failed'
+  status: 'pending' | 'booked' | 'failed' | 'nothing'
   txHash?: string | null
   sendTxHash?: string | null
   treasury?: string | null
@@ -194,6 +194,21 @@ export interface MintJob {
             arrivedImc: number | null; treasury: string | null; deliveredTo: string | null; recovered: boolean; warning: string | null } | null
   error: string | null
 }
+
+export type HoldingsGroup = 'airtime' | 'mobile' | 'stable' | 'imc' | 'pool' | 'other' | 'sandbox'
+export interface HoldingsLine {
+  key: string
+  label: string
+  group: HoldingsGroup
+  unit: string
+  balance: number
+  usd: number | null
+  kes: boolean
+  source: 'live' | 'sandbox'
+  address: string | null
+  detail: { pair?: string; share: number; amounts: Record<string, number>; price: number | null; reserves: Record<string, number> } | null
+}
+export interface Holdings { lines: HoldingsLine[]; errors: { source: string; message: string }[]; gatewaySandbox: boolean; asOf: string | null }
 
 export interface CorridorRun {
   _id: string

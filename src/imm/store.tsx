@@ -4,7 +4,7 @@ import { buildCorridorViews, bookValue, activeRun } from './derive'
 import type { CorridorView, BookValue } from './derive'
 import type {
   Audience, BaseRateStatus, CometQuote, CorridorCfg, CorridorRun, HealthReport, ImmNode, InvestorCaps,
-  LedgerRow, Opportunity, SpreadCfg, TreasuryDashboard, ViewMode,
+  Holdings, LedgerRow, Opportunity, SpreadCfg, TreasuryDashboard, ViewMode,
 } from './types'
 
 export interface Resource<T> {
@@ -72,6 +72,7 @@ export interface ImmCtx {
   comet: Resource<CometQuote>
   spread: Resource<SpreadCfg>
   treasury: Resource<TreasuryDashboard>
+  holdings: Resource<Holdings>
   ledger: Resource<{ feed: LedgerRow[] }>
   runs: Resource<{ runs: CorridorRun[] }>
   killSwitch: Resource<{ active: boolean }>
@@ -117,6 +118,7 @@ export function ImmProvider({ audience, isAdmin, children }: { audience: Audienc
   const comet = useResource(A.getCometQuote, 20000)
   const spread = useResource(A.getSpread, 15000)
   const treasury = useResource(A.getTreasury, 20000)
+  const holdings = useResource(A.getHoldings, 30000)
   const ledger = useResource(() => A.getLedgerFeed(25), 8000)
   const runs = useResource(() => A.getRuns(25), 5000, operatorSurface)
   const killSwitch = useResource(A.getKillSwitch, 15000)
@@ -164,12 +166,12 @@ export function ImmProvider({ audience, isAdmin, children }: { audience: Audienc
   }
 
   const refreshAll = useCallback(() => {
-    for (const r of [nodes, corridors, health, opps, baseRate, comet, spread, treasury, ledger, runs, killSwitch]) void r.refresh()
-  }, [nodes, corridors, health, opps, baseRate, comet, spread, treasury, ledger, runs, killSwitch])
+    for (const r of [nodes, corridors, health, opps, baseRate, comet, spread, treasury, holdings, ledger, runs, killSwitch]) void r.refresh()
+  }, [nodes, corridors, health, opps, baseRate, comet, spread, treasury, holdings, ledger, runs, killSwitch])
 
   const value: ImmCtx = {
     audience, viewMode, setViewMode, canOperate, canExecute, executeBlockedReason,
-    nodes, corridors, health, opps, baseRate, comet, spread, treasury, ledger, runs, killSwitch, caps,
+    nodes, corridors, health, opps, baseRate, comet, spread, treasury, holdings, ledger, runs, killSwitch, caps,
     views, book, liveRun, refreshAll,
     go, tab, toast, toasts, openModal: setModal, closeModal: () => setModal(null), modal, lastKill, setLastKill, pick, setPick,
   }

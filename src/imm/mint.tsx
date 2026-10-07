@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as A from './api'
-import { ago, fx, num } from './format'
+import { ago, fx } from './format'
 import { useImm, useResource } from './store'
 import { Scan } from './run'
 import { Card, Loading, Pill } from './ui'
@@ -13,7 +13,6 @@ export default function MintCard() {
   const jobRes = useResource(A.getMintJob, 2000)
   const topups = useResource(() => A.getTopups(6), 20000)
   const [receipt, setReceipt] = useState('')
-  const [cash, setCash] = useState('')
   const [sendTo, setSendTo] = useState('')
   const job = jobRes.data?.job || null
   const running = job?.status === 'running'
@@ -31,8 +30,7 @@ export default function MintCard() {
     toast(job.status === 'done' ? 'IMC booked' : 'Booking stopped')
   }, [job?.id, job?.status]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const cashNum = num(cash)
-  const valid = receipt.trim().length >= 4 && (cash === '' || (cashNum != null && cashNum > 0))
+  const valid = receipt.trim().length >= 4
 
   const start = () => openModal({
     title: 'Mint IMC for this top-up',
@@ -42,14 +40,14 @@ export default function MintCard() {
       <div className="stack" style={{ gap: 12 }}>
         <div className="sumrows">
           <div><span>Receipt</span><b className="mono">{receipt.trim()}</b></div>
-          <div><span>Cash paid</span><b>{cashNum != null ? `${fx(cashNum, 2)} KES` : 'not given: Comet sizes it from the receipt'}</b></div>
-          <div><span>IMC goes to</span><b>{sendTo.trim() ? <Scan kind="address" id={sendTo.trim()} /> : s?.treasury ? <Scan kind="address" id={s.treasury} /> : 'the treasury wallet'}</b></div>
+          <div><span>Amount</span><b>All airtime in the float that is not yet IMC</b></div>
+          <div><span>IMC is sent to</span><b>{sendTo.trim() ? <Scan kind="address" id={sendTo.trim()} /> : s?.treasury ? <Scan kind="address" id={s.treasury} /> : 'your wallet'}</b></div>
         </div>
-        <p className="sm" style={{ color: 'var(--neg)' }}>This mints real IMC. Comet books each receipt <b>once, ever</b>, so make sure the receipt is the one for the top-up you want to mint. If the amount is wrong, it cannot be re-booked.</p>
+        <p className="sm" style={{ color: 'var(--neg)' }}>This mints real IMC. Comet sizes the mint from your float, not from the receipt, and books each receipt <b>once, ever</b>. If every KES in the float is already issued, it refuses and nothing is minted.</p>
       </div>
     ),
     onConfirm: async () => {
-      const r = await A.bookMint({ receipt: receipt.trim(), ...(cashNum != null ? { cash_kes: cashNum } : {}), ...(sendTo.trim() ? { deliver_to: sendTo.trim() } : {}) })
+      const r = await A.bookMint({ receipt: receipt.trim(), ...(sendTo.trim() ? { deliver_to: sendTo.trim() } : {}) })
       if (!r.ok) return r.error
       seen.current = ''
       void jobRes.refresh()
@@ -57,13 +55,37 @@ export default function MintCard() {
     },
   })
 
+  // A mint that landed in Comet's own treasury wallet: ask Comet to send it on to ours.
+  const deliver = (rcpt: string, imc: number | null) => openModal({
+    title: 'Send this IMC to your wallet',
+    confirm: 'Send it',
+    body: (
+      <div className="stack" style={{ gap: 12 }}>
+        <div className="sumrows">
+          <div><span>Receipt</span><b className="mono">{rcpt}</b></div>
+          <div><span>IMC minted</span><b>{imc != null ? `${fx(imc, 6)} IMC` : '—'}</b></div>
+          <div><span>Currently in</span><b>Comet's treasury wallet</b></div>
+          <div><span>Will go to</span><b>{s?.treasury ? <Scan kind="address" id={s.treasury} /> : 'your wallet'}</b></div>
+        </div>
+        <p className="sm">Nothing is minted again. This asks Comet to deliver the IMC the receipt already minted. If Comet refuses, the message will say so and the IMC stays where it is.</p>
+      </div>
+    ),
+    onConfirm: async () => {
+      const r = await A.bookMint({ receipt: rcpt })
+      if (!r.ok) return r.error
+      seen.current = ''
+      void jobRes.refresh()
+      toast('Delivery started')
+    },
+  })
+
   return (
-    <Card title="Mint IMC from a top-up" sub="After a top-up, paste its M-Pesa or ImpalaPay receipt. Comet verifies it and mints the IMC into your treasury wallet, so no admin has to do it by hand.">
+    <Card title="Mint IMC from a top-up" sub="After a top-up, paste its M-Pesa or ImpalaPay receipt. Comet mints IMC for all the airtime in your float that is not yet IMC, then sends it to your wallet. No admin has to do it by hand.">
       {!state.loaded ? <Loading what="the mint service" /> : state.error && !s ? <div className="note neg">{state.error}</div> : s && (
         <div className="stack" style={{ gap: 12 }}>
           {!s.configured && <div className="note neg">COMET_API_KEY and COMET_API_SECRET are not set on the server, so nothing can be minted.</div>}
           <div className="sumrows">
-            <div><span>Mints into</span><b><Scan kind="address" id={s.treasury} /></b></div>
+            <div><span>Sent to your wallet</span><b><Scan kind="address" id={s.treasury} /></b></div>
           </div>
 
           {credited.length > 0 && (
@@ -74,12 +96,9 @@ export default function MintCard() {
             <label className="field" htmlFor="mint-receipt"><span>M-Pesa / ImpalaPay receipt</span>
               <input id="mint-receipt" className="mono" autoComplete="off" placeholder="e.g. UJ7ABC1234" value={receipt} onChange={(e) => setReceipt(e.target.value.replace(/[^A-Za-z0-9._-]/g, '').slice(0, 128))} />
               <small>Exactly as in the message. It is the booking's one-time key.</small></label>
-            <label className="field" htmlFor="mint-cash"><span>Cash paid for it (KES, optional)</span>
-              <input id="mint-cash" className="num" inputMode="decimal" placeholder="e.g. 10" value={cash} onChange={(e) => setCash(e.target.value.replace(/[^0-9.]/g, ''))} />
-              <small>The amount you paid, not the float you got. Leave blank to let Comet size it from the receipt.</small></label>
-            <details className="how"><summary>Send the IMC to a different address</summary>
+            <details className="how"><summary>Send the IMC to a different wallet</summary>
               <label className="field" htmlFor="mint-to" style={{ marginTop: 8 }}><span>Delivery address (optional)</span>
-                <input id="mint-to" className="mono" autoComplete="off" placeholder="0x… (leave blank for the treasury wallet)" value={sendTo} onChange={(e) => setSendTo(e.target.value.replace(/[^0-9a-fA-Fx]/g, '').slice(0, 42))} /></label>
+                <input id="mint-to" className="mono" autoComplete="off" placeholder="0x… (leave blank for your wallet above)" value={sendTo} onChange={(e) => setSendTo(e.target.value.replace(/[^0-9a-fA-Fx]/g, '').slice(0, 42))} /></label>
             </details>
           </div>
           <div className="row"><button className="btn primary" disabled={!valid || running || !s.configured} onClick={start}>{running ? 'Working…' : 'Book and mint…'}</button></div>
@@ -106,10 +125,10 @@ export default function MintCard() {
               <tbody>{s.bookings.map((b) => (
                 <tr key={b.receipt} title={b.error || b.warning || ''}>
                   <td className="mono xs">{b.receipt}</td>
-                  <td>{b.status === 'booked' ? <Pill tone="pos">Booked</Pill> : b.status === 'pending' ? <Pill tone="gold">Pending</Pill> : <Pill tone="neg">Failed</Pill>}</td>
+                  <td>{b.status === 'booked' ? (b.arrivedImc != null ? <Pill tone="pos">Delivered</Pill> : <Pill tone="gold">Minted, not delivered</Pill>) : b.status === 'pending' ? <Pill tone="gold">Pending</Pill> : b.status === 'nothing' ? <Pill tone="neutral">Nothing to mint</Pill> : <Pill tone="neg">Failed</Pill>}</td>
                   <td className="r num">{b.arrivedImc != null ? fx(b.arrivedImc, 6) : b.imc != null ? fx(b.imc, 6) : '—'}</td>
                   <td className="mono xs"><Scan kind="tx" id={b.txHash} /></td>
-                  <td className="xs muted nowrap">{b.updatedAt ? ago(b.updatedAt) : ''}</td>
+                  <td className="xs muted nowrap">{b.updatedAt ? ago(b.updatedAt) : ''}{b.status === 'booked' && b.arrivedImc == null && !b.sendTxHash && <div><button className="btn sm primary" disabled={running} onClick={() => deliver(b.receipt, b.imc ?? null)}>Send to my wallet</button></div>}</td>
                 </tr>
               ))}</tbody></table></div>
           )}

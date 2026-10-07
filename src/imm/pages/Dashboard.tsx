@@ -1,19 +1,16 @@
-import { ageFromSeconds, ago, fx, pct, usd } from '../format'
-import { GROUP_COLOR, GROUP_LABEL, type VaultGroup } from '../derive'
+import { ageFromSeconds, ago, fx, pct } from '../format'
 import { useImm } from '../store'
 import { Card, DecisionPill, Empty, Flow, Loading, Meter, Pill, Unavailable } from '../ui'
 import { RunPanel } from '../run'
-
-const GROUPS: VaultGroup[] = ['airtime', 'mobile', 'stable', 'imc', 'card']
+import HoldingsPanel from '../holdings'
 
 export default function Dashboard() {
-  const { book, baseRate, comet, health, views, liveRun, ledger, treasury, go, runs, canOperate, audience } = useImm()
+  const { baseRate, comet, health, views, liveRun, ledger, go, runs, canOperate, audience } = useImm()
   const best = views.find((v) => v.opp && v.eligible && v.decision !== 'BLOCK') || null
   const rate = baseRate.data?.rate ?? null
   const cometRate = typeof comet.data?.rate === 'number' ? comet.data.rate : null
   const impliedKes = cometRate && cometRate > 0 ? 1 / cometRate : null
   const gap = impliedKes && rate ? impliedKes / rate - 1 : null
-  const stable = book.total && book.groups.stable ? book.groups.stable / book.total : null
   const recent = (ledger.data?.feed || []).slice(0, 6)
   const limits = (health.data?.nodes || []).filter((n) => (n.minBalance || n.exposureCapUsd) && n.balance != null)
   const unreachable = !baseRate.data && !!baseRate.error
@@ -31,35 +28,7 @@ export default function Dashboard() {
       <div className="grid g-3">
         <Card cls="lift">
           <div className="eyebrow">IMM value</div>
-          {!treasury.loaded ? <Loading what="vault balances" /> : !treasury.data || !Object.keys(treasury.data.vaults || {}).length ? (
-            <Empty>The treasury returned no vault balances{treasury.error ? `: ${treasury.error}` : '.'}</Empty>
-          ) : (
-            <>
-              <div className="row" style={{ alignItems: 'baseline', gap: 18, marginTop: 6 }}>
-                <div><span className="hero-n">{usd(book.total)}</span><div className="xs muted">Book value at the base rate</div></div>
-                <div><span className="big-n">{usd(book.groups.stable ?? 0)}</span><div className="xs muted">In stablecoins{stable != null ? ` · ${pct(stable, 0)} of the IMM` : ''}</div></div>
-              </div>
-              <p className="muted sm" style={{ margin: '10px 0 14px' }}>
-                Real balances from the Mam-laka paybill, the Cardano USDA vault, the Celo wallets and the ledger. Shilling vaults are converted at the base rate; dollar assets count at face. XLM and gold are not valued.
-              </p>
-              {book.total ? (
-                <>
-                  <div className="alloc" role="img" aria-label="Book value by type">
-                    {GROUPS.filter((g) => (book.groups[g] || 0) > 0).map((g) => <span key={g} style={{ flex: book.groups[g], background: GROUP_COLOR[g] }} title={`${GROUP_LABEL[g]}: ${usd(book.groups[g])}`} />)}
-                  </div>
-                  <div className="alegend">
-                    {GROUPS.filter((g) => (book.groups[g] || 0) > 0).map((g) => <div key={g}><i style={{ background: GROUP_COLOR[g] }} /><span>{GROUP_LABEL[g]}</span><b>{usd(book.groups[g], 0)}</b></div>)}
-                  </div>
-                </>
-              ) : book.needsRate ? <div className="note warn">Fix the base rate to value the shilling vaults.</div> : null}
-              <div className="scroll-x" style={{ marginTop: 16 }}>
-                <table className="t"><thead><tr><th>Vault</th><th className="r">Balance</th><th className="r">Value</th></tr></thead>
-                  <tbody>{book.lines.map((l) => (
-                    <tr key={l.key}><td>{l.label}</td><td className="r num">{fx(l.balance, 2)} <span className="muted xs">{l.unit}</span></td><td className="r num">{l.usd == null ? <span className="muted">not valued</span> : usd(l.usd)}</td></tr>
-                  ))}</tbody></table>
-              </div>
-            </>
-          )}
+          <HoldingsPanel />
         </Card>
 
         <Card cls="lift">

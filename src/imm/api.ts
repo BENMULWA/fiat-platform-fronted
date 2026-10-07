@@ -1,7 +1,7 @@
 import { api } from '../api/client'
 import type {
   BaseRateStatus, CometQuote, CorridorCfg, CorridorRun, FloatState, HealthReport, ImmNode,
-  ImcReceipt, InvestorCaps, LedgerRow, Opportunity, MintJob, MintState, PoolCheck, RebalanceJob, RebalancePreview, SpreadCfg, Topup, TreasuryDashboard,
+  ImcReceipt, InvestorCaps, LedgerRow, Opportunity, Holdings, MintJob, MintState, PoolCheck, RebalanceJob, RebalancePreview, SpreadCfg, Topup, TreasuryDashboard,
 } from './types'
 
 export type Res<T> =
@@ -48,6 +48,7 @@ export const getMint = () => call<MintState & { status: string }>('get', '/api/i
 export const getMintJob = () => call<{ status: string; job: MintJob | null }>('get', '/api/imm/mint/job')
 export const bookMint = (p: { receipt: string; cash_kes?: number; deliver_to?: string }) =>
   call<{ status: string; job: MintJob }>('post', '/api/imm/mint/book', { ...p, confirm: true })
+export const getHoldings = () => call<Holdings & { status: string }>('get', '/api/imm/holdings')
 export const getRuns = (limit = 25) => call<{ runs: CorridorRun[] }>('get', '/api/treasury/corridor/runs', undefined, { limit })
 export const cancelRun = (id: string) => call<{ status: string; run: CorridorRun }>('post', `/api/treasury/corridor/${encodeURIComponent(id)}/cancel`)
 export const getRun = (id: string) => call<CorridorRun>('get', `/api/treasury/corridor/${encodeURIComponent(id)}/status`)

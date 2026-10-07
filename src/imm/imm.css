@@ -435,3 +435,7 @@
 .imm .tl .tl-x a { text-decoration: underline; }
 .imm .proof { display: grid; gap: 6px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
 .imm .proof .sumrows b { font-size: 14px; }
+
+/* ---------- holdings panel ---------- */
+.imm .dotlive { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--pos); margin-right: 6px; vertical-align: middle; }
+.imm table.holdings tr.sect th { text-align: left; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding-top: 14px; border-bottom: 1px solid var(--line); background: transparent; }
