@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  AlertTriangle, ArrowLeft, CheckCircle2, Clock, Copy, CreditCard, Eye, EyeOff, Loader2,
+  AlertTriangle, ArrowLeft, CheckCircle2, Clock, CreditCard, Eye, Loader2,
   Plus, RefreshCw, Snowflake, Upload, Wallet,
 } from 'lucide-react';
 import {
@@ -9,6 +9,7 @@ import {
   submitCardKyc, unfreezeCard,
 } from '../../api/client';
 import StepUpModal, { StepUpFields } from '../../components/cards/StepUpModal';
+import VirtualCard, { CardSecrets } from '../../components/cards/VirtualCard';
 import useWebsocket from '../../hooks/useWebsocket';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -25,12 +26,12 @@ const errorText = (err: any): string => {
 };
 
 const kes = (v: string | number) => Number(v).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const groups = (n: string) => (n || '').replace(/\s+/g, '').replace(/(.{4})/g, '$1 ').trim();
 
 interface Status {
   enabled: boolean;
   kyc?: { status: string; approved: boolean; reason?: string | null };
   cards?: { cardNo: string; status: string; createdAt?: string }[];
+  holderName?: string | null;
   operations?: { id: string; kind: string; usd: string; chargedKes: string; status: string; cardNo?: string; reason?: string; createdAt: string }[];
   limits?: { minUsd: string; maxUsd: string; marginPct: string };
 }
@@ -55,7 +56,7 @@ export default function CardsPage() {
   const [status, setStatus] = useState<Status | null>(null);
   const [loadError, setLoadError] = useState('');
   const [stepUp, setStepUp] = useState<null | { title: string; description: string; label: string; run: (f: StepUpFields) => Promise<void> }>(null);
-  const [revealed, setRevealed] = useState<null | { cardNo: string; data: any }>(null);
+  const [revealed, setRevealed] = useState<null | { cardNo: string; data: CardSecrets; expiresAt: number }>(null);
   const [notice, setNotice] = useState('');
 
   const userId = (() => {
@@ -86,12 +87,15 @@ export default function CardsPage() {
   // Card details are shown briefly and then dropped from memory.
   useEffect(() => {
     if (!revealed) return;
-    const t = window.setTimeout(() => setRevealed(null), 45000);
+    const t = window.setTimeout(() => setRevealed(null), Math.max(0, revealed.expiresAt - Date.now()));
     return () => window.clearTimeout(t);
   }, [revealed]);
   useEffect(() => () => setRevealed(null), []);
 
   const states = status?.kyc?.status || 'none';
+  const holderName = status?.holderName || (() => {
+    try { return JSON.parse(localStorage.getItem('meshex_user') || 'null')?.name || ''; } catch { return ''; }
+  })();
   const cards = status?.cards || [];
 
   return (
@@ -144,7 +148,9 @@ export default function CardsPage() {
           )}
           {cards.map((c) => (
             <CardTile key={c.cardNo} card={c} limits={status.limits!} panel={panel} muted={muted} strong={strong} isLight={isLight}
-              askStepUp={setStepUp} onChanged={load} onReveal={(data: any) => setRevealed({ cardNo: c.cardNo, data })} />
+              holderName={holderName} secrets={revealed?.cardNo === c.cardNo ? revealed : null}
+              askStepUp={setStepUp} onChanged={load} onHide={() => setRevealed(null)}
+              onReveal={(data: CardSecrets) => setRevealed({ cardNo: c.cardNo, data, expiresAt: Date.now() + 45000 })} />
           ))}
         </>
       )}
@@ -174,7 +180,6 @@ export default function CardsPage() {
         onClose={() => setStepUp(null)}
         onConfirm={async (f) => { await stepUp!.run(f); setStepUp(null); }} />
 
-      {revealed && <RevealModal data={revealed.data} onClose={() => setRevealed(null)} isLight={isLight} />}
     </div>
   );
 }
@@ -381,14 +386,16 @@ function IssuePanel({ limits, panel, muted, strong, isLight, askStepUp, onTopUp,
 }
 
 // ---------------------------------------------------------------- one card
-function CardTile({ card, limits, panel, muted, strong, isLight, askStepUp, onChanged, onReveal }: any) {
+function CardTile({ card, limits, panel, muted, strong, isLight, holderName, secrets, askStepUp, onChanged, onReveal, onHide }: any) {
   const [balance, setBalance] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadOpen, setLoadOpen] = useState(false);
   const [usd, setUsd] = useState('10');
   const [error, setError] = useState('');
+  const [revealing, setRevealing] = useState(false);
   const fundKey = useRef<string | null>(null);
   const frozen = /freeze|frozen/i.test(card.status || '');
+  const label = frozen ? 'FROZEN' : (CARD_LABEL[(card.status || '').toLowerCase()] ?? (card.status || 'PENDING').toUpperCase());
 
   const refreshBalance = useCallback(async () => {
     try { const r = await getCardBalance(card.cardNo); setBalance(r.data?.balance != null ? Number(r.data.balance).toFixed(2) : null); } catch { /* shown as unavailable */ }
@@ -401,11 +408,14 @@ function CardTile({ card, limits, panel, muted, strong, isLight, askStepUp, onCh
     catch (err: any) { setError(errorText(err)); } finally { setLoading(false); }
   };
 
+  // The card number, expiry and CVV are only fetched after the step-up passes, and live in memory for 45 seconds.
   const reveal = () => askStepUp({
-    title: 'Show card details', description: 'For your security we need to confirm it is you. Details are shown for 45 seconds.', label: 'Show details',
+    title: 'Show card details', description: 'For your security we need to confirm it is you. Details are shown on the card for 45 seconds.', label: 'Show details',
     run: async (f: StepUpFields) => {
+      setRevealing(true);
       try { const r = await getCardDetails(card.cardNo, f); onReveal(r.data); }
       catch (err: any) { throw new Error(errorText(err)); }
+      finally { setRevealing(false); }
     },
   });
 
@@ -420,22 +430,11 @@ function CardTile({ card, limits, panel, muted, strong, isLight, askStepUp, onCh
 
   return (
     <div className={`p-6 rounded-2xl border space-y-5 ${panel}`}>
-      <div className={`relative rounded-2xl p-6 text-white overflow-hidden ${frozen ? 'bg-gradient-to-br from-slate-500 to-slate-700' : 'bg-gradient-to-br from-emerald-400 to-teal-600'}`}>
-        <div className="flex justify-between items-start">
-          <span className="text-xs font-bold tracking-widest opacity-90">VIRTUAL CARD</span>
-          <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-black/20">{frozen ? 'FROZEN' : (CARD_LABEL[(card.status || '').toLowerCase()] ?? (card.status || 'PENDING').toUpperCase())}</span>
-        </div>
-        <p className="mt-8 text-xl tracking-[0.25em] font-mono opacity-95">•••• •••• •••• ••••</p>
-        <div className="mt-6 flex items-end justify-between">
-          <div>
-            <p className="text-[10px] opacity-80">BALANCE</p>
-            <p className="text-2xl font-bold">{balance != null ? `$${balance}` : '—'}</p>
-          </div>
-          <span className="text-sm font-bold opacity-90">Mastercard</span>
-        </div>
-      </div>
+      <VirtualCard holderName={holderName} status={label} frozen={frozen} balance={balance}
+        secrets={secrets?.data ?? null} secretsExpireAt={secrets?.expiresAt ?? null} revealing={revealing}
+        onReveal={reveal} onHide={onHide} />
 
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-3 gap-2 max-w-[380px] mx-auto">
         <button type="button" onClick={() => setLoadOpen((v) => !v)} className={`py-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 ${isLight ? 'border-slate-200 text-slate-700' : 'border-[#2a3447] text-gray-200'}`}><Plus className="w-4 h-4" /> Load</button>
         <button type="button" onClick={reveal} className={`py-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 ${isLight ? 'border-slate-200 text-slate-700' : 'border-[#2a3447] text-gray-200'}`}><Eye className="w-4 h-4" /> Details</button>
         <button type="button" onClick={toggleFreeze} disabled={loading} className={`py-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50 ${isLight ? 'border-slate-200 text-slate-700' : 'border-[#2a3447] text-gray-200'}`}>
@@ -450,37 +449,7 @@ function CardTile({ card, limits, panel, muted, strong, isLight, askStepUp, onCh
         </div>
       )}
       {error && <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs">{error}</div>}
-      <button type="button" onClick={() => void refreshBalance()} className={`text-xs flex items-center gap-1 ${muted}`}><RefreshCw className="w-3 h-3" /> Refresh balance</button>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------- reveal (never persisted)
-function RevealModal({ data, onClose, isLight }: { data: any; onClose: () => void; isLight: boolean }) {
-  const [shown, setShown] = useState(false);
-  const [copied, setCopied] = useState('');
-  const copy = (label: string, value: string) => { navigator.clipboard?.writeText(value); setCopied(label); window.setTimeout(() => setCopied(''), 1500); };
-  const Row = ({ label, value, secret }: { label: string; value: string; secret?: boolean }) => (
-    <div className="flex items-center justify-between gap-3 py-2.5">
-      <div><p className="text-[10px] uppercase tracking-wider opacity-60">{label}</p><p className="font-mono text-base">{secret && !shown ? '•'.repeat(Math.max(3, value.length)) : value}</p></div>
-      <button type="button" onClick={() => copy(label, value)} className="text-xs flex items-center gap-1 text-emerald-500"><Copy className="w-3.5 h-3.5" />{copied === label ? 'Copied' : 'Copy'}</button>
-    </div>
-  );
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" role="dialog" aria-modal="true">
-      <div className={`w-full max-w-md rounded-2xl border p-6 ${isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#111827] border-[#1E2533] text-white'}`}>
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-lg font-bold">Card details</h3>
-          <button type="button" onClick={() => setShown((v) => !v)} className="text-xs flex items-center gap-1 opacity-80">{shown ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />} {shown ? 'Hide' : 'Show'}</button>
-        </div>
-        <div className="divide-y divide-slate-500/20">
-          <Row label="Card number" value={groups(data?.cardNumber)} secret />
-          <Row label="Expiry" value={data?.expireDate || ''} />
-          <Row label="CVV" value={data?.cvv || ''} secret />
-        </div>
-        <p className="text-xs opacity-60 mt-3">Keep these private. They disappear from this screen in 45 seconds.</p>
-        <button type="button" onClick={onClose} className="mt-4 w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-sm">Done</button>
-      </div>
+      <button type="button" onClick={() => void refreshBalance()} className={`text-xs flex items-center gap-1 mx-auto ${muted}`}><RefreshCw className="w-3 h-3" /> Refresh balance</button>
     </div>
   );
 }
