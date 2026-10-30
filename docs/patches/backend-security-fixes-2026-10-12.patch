@@ -1,0 +1,2378 @@
+diff --git a/Brain_Engine/celo_integrations.py b/Brain_Engine/celo_integrations.py
+index f061aaa..65171c1 100644
+--- a/Brain_Engine/celo_integrations.py
++++ b/Brain_Engine/celo_integrations.py
+@@ -9,6 +9,8 @@ from web3.middleware import ExtraDataToPOAMiddleware
+ from dotenv import load_dotenv
+ from eth_account import Account
+ 
++from celo_nonce import reserve_treasury_nonce
++
+ 
+ # load environment variables from .env file
+ load_dotenv()
+@@ -102,7 +104,7 @@ class CorridorIntegrations:
+         amount_base_units = int(amount_usd * (10 ** decimals))
+ 
+         # 4. Get the latest Nonce (Transaction count) to prevent replay attacks
+-        nonce = self.w3.eth.get_transaction_count(account.address)
++        nonce = reserve_treasury_nonce(self.w3, account.address)
+ 
+         print(f"   ↳ Building Smart Contract Payload...")
+ 
+diff --git a/config.py b/config.py
+index 7b7cacd..941aa3a 100644
+--- a/config.py
++++ b/config.py
+@@ -128,3 +128,31 @@ class Settings(BaseSettings):
+     )
+ 
+ settings = Settings()
++
++
++# ── Startup safety check ───────────────────────────────────────────────────
++# Every session token is signed with JWT_SECRET. If it is unset, the code
++# silently falls back to a string that is in this repository -- anyone who has
++# read the source can then mint a valid token for any user id, admin included.
++# Set APP_ENV=production on the deployed API to make this a hard startup
++# failure; in any other environment it is a loud warning.
++_KNOWN_DEFAULT_SECRETS = {
++    "changeme-super-secret-jwt-key-32chars",
++    "a-secure-32-character-fallback-key-string",
++}
++
++
++def _check_jwt_secret(s: "Settings") -> None:
++    weak = s.jwt_secret in _KNOWN_DEFAULT_SECRETS or len(s.jwt_secret) < 32
++    if not weak:
++        return
++    message = (
++        "JWT_SECRET is unset, a known default, or shorter than 32 characters. "
++        "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(48))\""
++    )
++    if os.getenv("APP_ENV", "development").strip().lower() in {"production", "prod"}:
++        raise RuntimeError(f"Refusing to start in production: {message}")
++    print(f"⚠️  SECURITY WARNING: {message}")
++
++
++_check_jwt_secret(settings)
+diff --git a/main.py b/main.py
+index 784ebb9..af24183 100644
+--- a/main.py
++++ b/main.py
+@@ -55,7 +55,7 @@ from routes import (
+     cardano, treasury, retail, otc_admin, otc_merchant, swap_engine, valora, stellar,
+     imm_control, base_rate, impala_float, imc_receipts, imc_booking, holdings
+ )
+-from routes import realtime
++from routes import realtime, admin_audit_view
+ 
+ @asynccontextmanager
+ async def lifespan(app: FastAPI):
+@@ -160,9 +160,42 @@ async def lifespan(app: FastAPI):
+             timeout_minutes = max(5, int(os.getenv("AIRTEL_PENDING_TIMEOUT_MINUTES", "15")))
+             while True:
+                 cutoff = datetime.utcnow() - timedelta(minutes=timeout_minutes)
++
++                # Withdrawals (direction "off") have ALREADY been debited. Marking
++                # one "failed" here without refunding strands the customer's money
++                # (and would hide a payout that actually went out). So never
++                # auto-fail them: flag for human review, leave the status alone so
++                # a late provider callback can still settle (pay out / refund) it.
++                await db["ramp_entries"].update_many(
++                    {
++                        "channel": "Mobile Money",
++                        "direction": "off",
++                        "status": {"$in": ["pending", "processing"]},
++                        "providerReference": {"$exists": True, "$ne": ""},
++                        "createdAt": {"$lte": cutoff},
++                        "needsReview": {"$ne": True},
++                    },
++                    {
++                        "$set": {
++                            "needsReview": True,
++                            "providerStatus": "NO_CALLBACK_TIMEOUT",
++                            "updatedAt": datetime.utcnow(),
++                        },
++                        "$push": {
++                            "statusHistory": {
++                                "state": "processing",
++                                "at": datetime.utcnow(),
++                                "source": "no_callback_flagged_for_review",
++                            }
++                        },
++                    },
++                )
++
++                # Deposits (direction "on") moved no money yet, so expiring them is safe.
+                 await db["ramp_entries"].update_many(
+                     {
+                         "channel": "Mobile Money",
++                        "direction": {"$ne": "off"},
+                         "status": {"$in": ["pending", "processing"]},
+                         "providerReference": {"$exists": True, "$ne": ""},
+                         "createdAt": {"$lte": cutoff},
+@@ -322,6 +355,7 @@ app.include_router(cardano.router)
+ app.include_router(treasury.router)
+ app.include_router(retail.router)
+ app.include_router(otc_admin.router)
++app.include_router(admin_audit_view.router)
+ app.include_router(otc_merchant.router)
+ app.include_router(swap_engine.router)
+ app.include_router(valora.router)
+diff --git a/routes/auth.py b/routes/auth.py
+index 730a2b4..de778d8 100644
+--- a/routes/auth.py
++++ b/routes/auth.py
+@@ -20,6 +20,7 @@ from bson import ObjectId
+ 
+ from database import get_db
+ from config import settings
++from rate_limit import rate_limit
+ from cardano.wallet import CardanoWallet, get_or_create_wallet_index
+ 
+ router = APIRouter(prefix="/api/auth", tags=["auth"])
+@@ -472,8 +473,21 @@ async def get_verified_current_user(
+ # --- Auth routes (signup / login) ------------------------------------------
+ 
+ 
+-@router.post("/signup")
++def _require_legacy_password_auth() -> None:
++    """POST /signup and POST /login hand out a session token on email+password
++    alone -- no email OTP. The app's real sign-in/sign-up (Login.tsx, Signup.tsx)
++    uses /login/request-otp + /login/verify-otp and /signup/request-otp +
++    /signup/verify-otp, so these two routes were a way around that second factor
++    (and /signup let anyone register an address they do not own). They are only
++    used by the unrouted legacy OnOffRampPage. Off by default; set
++    ALLOW_LEGACY_PASSWORD_AUTH=true to bring them back (dev/testing only)."""
++    if os.getenv("ALLOW_LEGACY_PASSWORD_AUTH", "false").strip().lower() != "true":
++        raise HTTPException(status_code=410, detail="This sign-in method is no longer available. Please use the verification-code sign-in.")
++
++
++@router.post("/signup", dependencies=[Depends(rate_limit("legacy_signup", 5, 600))])
+ async def signup(data: dict, request: Request, db=Depends(get_db)):
++    _require_legacy_password_auth()
+     email = data.get("email")
+     password = data.get("password")
+     display = data.get("displayName") or data.get("display") or email
+@@ -554,7 +568,7 @@ async def signup(data: dict, request: Request, db=Depends(get_db)):
+     }
+ 
+ 
+-@router.post("/signup/request-otp")
++@router.post("/signup/request-otp", dependencies=[Depends(rate_limit("signup_otp", 5, 600))])
+ async def signup_request_otp(data: dict, db=Depends(get_db)):
+     """
+     Start signup OTP challenge by validating input and emailing code.
+@@ -628,7 +642,7 @@ async def signup_request_otp(data: dict, db=Depends(get_db)):
+     }
+ 
+ 
+-@router.post("/signup/verify-otp")
++@router.post("/signup/verify-otp", dependencies=[Depends(rate_limit("signup_verify", 15, 600))])
+ async def signup_verify_otp(data: dict, request: Request, db=Depends(get_db)):
+     """Complete signup after OTP verification and issue token."""
+     session_id = data.get("otp_session_id")
+@@ -700,7 +714,7 @@ async def signup_verify_otp(data: dict, request: Request, db=Depends(get_db)):
+     return await issue_auth_payload(db, user_doc, request)
+ 
+ # Resend OTP routes for both signup and login, with cooldown and max resend limits enforced.
+-@router.post("/signup/resend-otp")
++@router.post("/signup/resend-otp", dependencies=[Depends(rate_limit("signup_resend", 5, 600))])
+ async def signup_resend_otp(data: dict, db=Depends(get_db)):
+     session_id = data.get("otp_session_id")
+     if not session_id:
+@@ -709,8 +723,9 @@ async def signup_resend_otp(data: dict, db=Depends(get_db)):
+     return await resend_otp_for_session(db, session_id, purpose="signup")
+ 
+ 
+-@router.post("/login")
++@router.post("/login", dependencies=[Depends(rate_limit("legacy_login", 10, 300))])
+ async def login(data: dict, request: Request, db=Depends(get_db)):
++    _require_legacy_password_auth()
+     email = data.get("email")
+     password = data.get("password")
+     if not email or not password:
+@@ -762,7 +777,7 @@ async def login(data: dict, request: Request, db=Depends(get_db)):
+     }
+ 
+ 
+-@router.post("/login/request-otp")
++@router.post("/login/request-otp", dependencies=[Depends(rate_limit("login_otp", 10, 300))])
+ async def login_request_otp(data: dict, db=Depends(get_db)):
+     """Start login OTP challenge after verifying password."""
+     email = normalize_email(data.get("email") or "")
+@@ -788,7 +803,7 @@ async def login_request_otp(data: dict, db=Depends(get_db)):
+     }
+ 
+ 
+-@router.post("/login/verify-otp")
++@router.post("/login/verify-otp", dependencies=[Depends(rate_limit("login_verify", 15, 300))])
+ async def login_verify_otp(data: dict, request: Request, db=Depends(get_db)):
+     """Complete login after OTP verification and issue token."""
+     session_id = data.get("otp_session_id")
+@@ -831,7 +846,7 @@ async def login_verify_otp(data: dict, request: Request, db=Depends(get_db)):
+     return await issue_auth_payload(db, user, request)
+ 
+ 
+-@router.post("/login/resend-otp")
++@router.post("/login/resend-otp", dependencies=[Depends(rate_limit("login_resend", 5, 600))])
+ async def login_resend_otp(data: dict, db=Depends(get_db)):
+     session_id = data.get("otp_session_id")
+     if not session_id:
+@@ -856,7 +871,7 @@ def _hash_reset_token(token: str) -> str:
+     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+ 
+ 
+-@router.post("/forgot-password")
++@router.post("/forgot-password", dependencies=[Depends(rate_limit("forgot_pw", 5, 600))])
+ async def forgot_password(data: dict, db=Depends(get_db)):
+     """Start a password-reset flow. Always returns the same generic response
+     whether or not the email matches an account — ForgotPasswordPage.tsx
+@@ -921,7 +936,7 @@ async def forgot_password(data: dict, db=Depends(get_db)):
+     return generic_response
+ 
+ 
+-@router.post("/reset-password")
++@router.post("/reset-password", dependencies=[Depends(rate_limit("reset_pw", 10, 600))])
+ async def reset_password(data: dict, db=Depends(get_db)):
+     """Complete a password reset using the token from the emailed link."""
+     token = str(data.get("token") or "").strip()
+@@ -1067,7 +1082,7 @@ async def admin_recovery_change_email(
+ # endpoint (ramp.py, cardano.py, valora.py, treasury.py) before any funds move.
+ #=============================================
+ 
+-@router.post("/withdrawal/request-otp")
++@router.post("/withdrawal/request-otp", dependencies=[Depends(rate_limit("withdraw_otp", 5, 600))])
+ async def withdrawal_request_otp(
+     current_user: dict = Depends(get_current_user_with_role),
+     db=Depends(get_db),
+diff --git a/routes/cardano.py b/routes/cardano.py
+index 8fbc69a..418c7e6 100644
+--- a/routes/cardano.py
++++ b/routes/cardano.py
+@@ -12,6 +12,7 @@ from routes.auth import get_current_user, get_current_user_with_role, get_verifi
+ from config import settings
+ from two_factor import verify_withdrawal_2fa
+ from wallet_utils import debit_wallet, credit_wallet
++from request_lock import single_flight
+ 
+ try:
+     from bson import ObjectId
+@@ -142,7 +143,7 @@ async def estimate_fee(body: FeeEstimateRequest = Body(...), db=Depends(get_db),
+         "estimated_fee_usd": fee_usd,
+         "network_fee_usda": standard_usda_fee
+     }
+-@router.post("/withdraw", status_code=201)
++@router.post("/withdraw", status_code=201, dependencies=[Depends(single_flight())])
+ async def withdraw_usda(body: WithdrawRequest, db=Depends(get_db), current_user=Depends(get_verified_current_user)):
+     # Verified before anything else touches the balance — a failed 2FA check
+     # must never have already moved funds.
+diff --git a/routes/general_ledger.py b/routes/general_ledger.py
+index 66bf813..1374ae4 100644
+--- a/routes/general_ledger.py
++++ b/routes/general_ledger.py
+@@ -1,38 +1,58 @@
+-from fastapi import APIRouter, Depends
++import re
++
++from fastapi import APIRouter, Depends, HTTPException
+ from database import get_db
++from routes.auth import get_current_user_with_role, is_admin_role
+ 
+ # This prefix matches exactly what React is looking for: /api/ledger
+ router = APIRouter(prefix="/api/ledger", tags=["General Ledger"])
+ 
++
++def _ensure_admin(current_user: dict):
++    if not is_admin_role(current_user.get("role")):
++        raise HTTPException(status_code=403, detail="Admin role required")
++
++
+ @router.get("/feed")
+-async def get_live_ledger_feed(limit: int = 50, search: str = None, db = Depends(get_db)):
++async def get_live_ledger_feed(
++    limit: int = 50,
++    search: str = None,
++    db=Depends(get_db),
++    current_user=Depends(get_current_user_with_role),
++):
+     """
+     Fetches the most recent transactions from the MongoDB Immutable Ledger.
+     Includes server-side searching to find old transactions that fell off the top 50.
+     """
++    _ensure_admin(current_user)
++    limit = max(1, min(int(limit or 50), 500))
+     query = {}
+     if search:
++        # re.escape: `search` is user-supplied and was previously passed to
++        # $regex raw, so a crafted pattern could be used for regex injection
++        # / catastrophic-backtracking against the ledger collection.
++        pattern = re.escape(search[:100])
+         # Search across multiple columns case-insensitively
+         query = {
+             "$or": [
+-                {"txn_id": {"$regex": search, "$options": "i"}},
+-                {"from_node": {"$regex": search, "$options": "i"}},
+-                {"to_node": {"$regex": search, "$options": "i"}},
+-                {"txn_type": {"$regex": search, "$options": "i"}}
++                {"txn_id": {"$regex": pattern, "$options": "i"}},
++                {"from_node": {"$regex": pattern, "$options": "i"}},
++                {"to_node": {"$regex": pattern, "$options": "i"}},
++                {"txn_type": {"$regex": pattern, "$options": "i"}}
+             ]
+         }
+ 
+     # Query MongoDB: Get top transactions matching query, sorted by newest first
+     cursor = db["transactions"].find(query).sort("timestamp", -1).limit(limit)
+     records = await cursor.to_list(length=limit)
+-    
++
+     formatted_feed = []
+     for r in records:
+         # 1. Determine the color of the text based on the transaction type
+         type_color = "text-blue-400"
+         # Handle both 'txn_type' and 'type' depending on how it was saved
+         txn_type = r.get("txn_type", r.get("type", "TRANSFER"))
+-        
++
+         if txn_type in ["MINT", "SYSTEM_FUND"]:
+             type_color = "text-emerald-400"
+         elif txn_type in ["LIQUIDATE", "PROCURE"]:
+@@ -43,7 +63,7 @@ async def get_live_ledger_feed(limit: int = 50, search: str = None, db = Depends
+         # 2. Format time safely
+         timestamp = r.get("timestamp")
+         time_str = timestamp.strftime("%H:%M:%S.%f")[:-3] if timestamp else "00:00:00"
+-        
++
+         # 3. Format value safely
+         int_val = r.get('internal_usd_value', 0)
+         amount_val = r.get('amount', 0)
+@@ -61,7 +81,7 @@ async def get_live_ledger_feed(limit: int = 50, search: str = None, db = Depends
+             "typeColor": type_color,
+             "externalRef": r.get("external_ref"),
+         })
+-        
++
+     return {"status": "success", "feed": formatted_feed}
+ 
+ # --- Legacy fallback routes to prevent other 404s ---
+@@ -71,4 +91,4 @@ async def get_ledger_summary():
+ 
+ @router.get("/entries")
+ async def get_ledger_entries(flow: str = None, search: str = None):
+-    return {"status": "success", "data": []}
+\ No newline at end of file
++    return {"status": "success", "data": []}
+diff --git a/routes/imm_control.py b/routes/imm_control.py
+index 2efc1ea..8a0a948 100644
+--- a/routes/imm_control.py
++++ b/routes/imm_control.py
+@@ -15,10 +15,17 @@ from Brain_Engine.node_registry import (
+ )
+ from Brain_Engine.state_engine import ImmutableLedger
+ from database import get_db, get_imm_switches_col
++from routes.auth import get_current_user_with_role, is_admin_role
++from admin_audit import log_admin_action
+ 
+ router = APIRouter(prefix="/api/imm", tags=["Internal Market Maker Control"])
+ 
+ 
++def _ensure_admin(current_user: dict):
++    if not is_admin_role(current_user.get("role")):
++        raise HTTPException(status_code=403, detail="Admin role required")
++
++
+ class ToggleRequest(BaseModel):
+     enabled: bool
+ 
+@@ -36,8 +43,9 @@ async def _persist_switch(kind: str, entity_id: str, enabled: bool) -> None:
+ 
+ 
+ @router.get("/nodes")
+-async def list_nodes():
++async def list_nodes(current_user=Depends(get_current_user_with_role)):
+     """Admin view of every node (N1-N10) and whether it's currently enabled."""
++    _ensure_admin(current_user)
+     return [
+         {
+             "id": node.id,
+@@ -52,19 +60,27 @@ async def list_nodes():
+ 
+ 
+ @router.post("/nodes/{node_id}/enabled")
+-async def toggle_node(node_id: str, body: ToggleRequest):
++async def toggle_node(
++    node_id: str,
++    body: ToggleRequest,
++    db=Depends(get_db),
++    current_user=Depends(get_current_user_with_role),
++):
+     """Admin pulls a node in/out of service without touching the registry."""
++    _ensure_admin(current_user)
+     try:
+         set_node_enabled(node_id, body.enabled)
+     except ValueError as exc:
+         raise HTTPException(status_code=404, detail=str(exc))
+     await _persist_switch("node", node_id, body.enabled)
++    await log_admin_action(db, current_user, "imm_node_toggled", nodeId=node_id, enabled=body.enabled)
+     return {"status": "success", "nodeId": node_id, "enabled": body.enabled}
+ 
+ 
+ @router.get("/corridors")
+-async def list_corridors():
++async def list_corridors(current_user=Depends(get_current_user_with_role)):
+     """Admin view of every IMM rollover strategy and whether it's eligible to run."""
++    _ensure_admin(current_user)
+     return [
+         {
+             "id": corridor_id,
+@@ -77,18 +93,25 @@ async def list_corridors():
+ 
+ 
+ @router.post("/corridors/{corridor_id}/enabled")
+-async def toggle_corridor(corridor_id: str, body: ToggleRequest):
++async def toggle_corridor(
++    corridor_id: str,
++    body: ToggleRequest,
++    db=Depends(get_db),
++    current_user=Depends(get_current_user_with_role),
++):
+     """Admin parks/resumes a whole strategy (e.g. disable TELKOM, keep AIRTEL_LIVE)."""
++    _ensure_admin(current_user)
+     try:
+         set_corridor_enabled(corridor_id, body.enabled)
+     except ValueError as exc:
+         raise HTTPException(status_code=404, detail=str(exc))
+     await _persist_switch("corridor", corridor_id, body.enabled)
++    await log_admin_action(db, current_user, "imm_corridor_toggled", corridorId=corridor_id, enabled=body.enabled)
+     return {"status": "success", "corridorId": corridor_id, "enabled": body.enabled}
+ 
+ 
+ @router.get("/health")
+-async def get_node_health(db=Depends(get_db)):
++async def get_node_health(db=Depends(get_db), current_user=Depends(get_current_user_with_role)):
+     """Read-only node health report — same spirit as Comet IMM's
+     rebalance/check: it tells you which nodes have breached their floor or
+     exposure cap, it never moves anything on its own. Every balance here is
+@@ -97,6 +120,7 @@ async def get_node_health(db=Depends(get_db)):
+     A node with no entry in NODE_LEDGER_ASSET (N8, N10 today) has never
+     been credited/debited by any code path — reported with
+     balance: null, not a fabricated 0."""
++    _ensure_admin(current_user)
+     ledger = ImmutableLedger(db_collection=db["transactions"])
+ 
+     nodes_report = []
+diff --git a/routes/market_maker.py b/routes/market_maker.py
+index 0a2a58c..db111c3 100644
+--- a/routes/market_maker.py
++++ b/routes/market_maker.py
+@@ -1,4 +1,5 @@
+ import asyncio
++import math
+ import uuid
+ from datetime import datetime, timezone
+ 
+@@ -13,6 +14,7 @@ from services.comet_client import CometClient
+ from routes.auth import get_current_user_with_role, is_admin_role
+ from routes.treasury import _read_celo_usdc_balance_sync
+ from database import get_db
++from admin_audit import log_admin_action
+ 
+ 
+ router = APIRouter(prefix="/api/market-maker", tags=["Market Maker API"])
+@@ -51,8 +53,25 @@ async def get_spread_config():
+     }
+ 
+ @router.post("/spread")
+-async def update_spread_config(config: SpreadUpdate):
++async def update_spread_config(
++    config: SpreadUpdate,
++    db=Depends(get_db),
++    current_user=Depends(get_current_user_with_role),
++):
+     """Admin updates the spread. Instantly applied to all retail quotes."""
++    _ensure_admin(current_user)
++    if not (math.isfinite(config.bid) and math.isfinite(config.ask)) or config.bid <= 0 or config.ask <= 0:
++        raise HTTPException(status_code=400, detail="Bid and ask must be positive numbers.")
++    if config.bid >= config.ask:
++        raise HTTPException(status_code=400, detail="Bid must be lower than ask.")
++    await log_admin_action(
++        db, current_user, "spread_updated",
++        active=config.active, autoPeg=config.autoPeg, bid=config.bid, ask=config.ask,
++        previous={
++            "bid": memory_cache.get("spread:usda_kes:bid"),
++            "ask": memory_cache.get("spread:usda_kes:ask"),
++        },
++    )
+     memory_cache.set("spread:usda_kes:active", config.active)
+     memory_cache.set("spread:usda_kes:auto_peg", config.autoPeg)
+     memory_cache.set("spread:usda_kes:bid", config.bid)
+@@ -63,7 +82,7 @@ async def update_spread_config(config: SpreadUpdate):
+ 
+ 
+ @router.get("/spread/comet")
+-async def get_comet_spread(base: str = "KES", quote: str = "IMC", amount_in: float = 1.0):
++async def get_comet_spread(base: str = "KES", quote: str = "IMC", amount_in: float = 1.0, current_user=Depends(get_current_user_with_role)):
+     """Live KES/IMC pricing sourced from Comet Engine's IMM (docs.mamlakapsp.com)
+     instead of an admin-typed number — this is real-time market making, not a
+     static spread. Comet enforces its own 60-minute rate-staleness rule and
+@@ -71,6 +90,7 @@ async def get_comet_spread(base: str = "KES", quote: str = "IMC", amount_in: flo
+     recently; we surface that error as-is rather than silently falling back,
+     since a fallback here would hide exactly the staleness Comet is designed
+     to catch."""
++    _ensure_admin(current_user)
+     result = comet.get_imm_quote(base, quote, amount_in)
+     if result["status"] == "error":
+         raise HTTPException(status_code=502, detail=f"Comet IMM quote failed: {result['message']}")
+@@ -78,10 +98,11 @@ async def get_comet_spread(base: str = "KES", quote: str = "IMC", amount_in: flo
+ 
+ 
+ @router.get("/exposure/comet")
+-async def get_comet_exposure(chain: str = "celo", asset: str = "IMC"):
++async def get_comet_exposure(chain: str = "celo", asset: str = "IMC", current_user=Depends(get_current_user_with_role)):
+     """Live vault-backed vs. synthetic exposure for one Comet-tracked asset —
+     the risk picture your own node_registry.py exposure_cap_usd fields don't
+     have today, since they only bound your local ledger, not real reserves."""
++    _ensure_admin(current_user)
+     result = comet.get_exposure(chain, asset)
+     if result["status"] == "error":
+         raise HTTPException(status_code=502, detail=f"Comet exposure check failed: {result['message']}")
+@@ -89,7 +110,7 @@ async def get_comet_exposure(chain: str = "celo", asset: str = "IMC"):
+ 
+ 
+ @router.get("/n9-reference/comet")
+-async def get_n9_comet_reference(to_symbol: str = "USDT"):
++async def get_n9_comet_reference(to_symbol: str = "USDT", current_user=Depends(get_current_user_with_role)):
+     """Read-only reference price for the corridor's real Celo exit leg
+     (node_registry.py's N9 — 'Celo Exit', live=True — same real balance as
+     treasury.py's CELO_USDC, NOT the frontend's separate 'N9' Stellar
+@@ -98,6 +119,7 @@ async def get_n9_comet_reference(to_symbol: str = "USDT"):
+     This is the join point we scoped: N9 already produces a real
+     Comet-registered asset (USDC), so it's the one place Comet's pricing
+     is meaningful today without re-platforming anything else."""
++    _ensure_admin(current_user)
+     try:
+         usdc_balance = await asyncio.wait_for(asyncio.to_thread(_read_celo_usdc_balance_sync), timeout=20)
+     except Exception as exc:
+diff --git a/routes/otc_admin.py b/routes/otc_admin.py
+index 14babf0..810e328 100644
+--- a/routes/otc_admin.py
++++ b/routes/otc_admin.py
+@@ -19,6 +19,7 @@ from database import get_db, get_client
+ from dealer_engine.analysis import AnalysisEngine
+ from dealer_engine.positions import TreasuryPositionEngine
+ from routes.auth import get_current_user_with_role, is_admin_role
++from admin_audit import log_admin_action
+ 
+ try:
+     from bson import ObjectId
+@@ -387,7 +388,8 @@ async def _build_risk_alerts(db):
+     return alerts[:20]
+ 
+ @router.get("/operations-overview")
+-async def get_operations_overview(days: int = 7, scope: str = "retail", db=Depends(get_db)):
++async def get_operations_overview(days: int = 7, scope: str = "retail", db=Depends(get_db), current_user: dict = Depends(get_current_user_with_role)):
++    ensure_admin(current_user)
+     now = datetime.utcnow()
+     days = max(1, min(int(days or 7), 90))
+     start_date = now - timedelta(days=days)
+@@ -1713,7 +1715,8 @@ async def get_dealer_clients(db=Depends(get_db), current_user: dict = Depends(ge
+     return {"status": "success", "clients": clients}
+ 
+ @router.get("/analytics/chart-data")
+-async def get_chart_analytics(days: int = 7, scope: str = "retail", db=Depends(get_db)):
++async def get_chart_analytics(days: int = 7, scope: str = "retail", db=Depends(get_db), current_user: dict = Depends(get_current_user_with_role)):
++    ensure_admin(current_user)
+     days = max(1, min(int(days or 7), 90))
+     now = datetime.utcnow()
+     start_date = now - timedelta(days=days)
+@@ -1824,6 +1827,9 @@ async def moderate_transaction(tx_id: str, payload: TxStatusUpdate, db=Depends(g
+     if not is_admin_role(current_user.get("role")):
+         raise HTTPException(status_code=403, detail="Admin role required.")
+ 
++    # Who changed which customer transaction to what, recorded before the change applies.
++    await log_admin_action(db, current_user, "retail_tx_status_change", txId=tx_id, requestedStatus=payload.status)
++
+     query = {"_id": tx_id}
+     try:
+         from bson import ObjectId
+diff --git a/routes/ramp.py b/routes/ramp.py
+index f0d37c3..770eb5c 100644
+--- a/routes/ramp.py
++++ b/routes/ramp.py
+@@ -19,12 +19,15 @@ from database import get_db
+ from services.safaricom_daraja import DarajaService
+ from services.zigram_client import ZigramClient, ZigramError, is_clear_status, is_zigram_configured, resolve_screening_leg
+ from routes.auth import get_current_user, get_current_user_with_role, get_verified_current_user, is_admin_role
+-from routes.treasury import get_or_create_rate_book, compute_swap_quote_from_book, DEFAULT_USD_BASE_RATES
++from routes.treasury import get_or_create_rate_book, compute_swap_quote_from_book, assert_rate_book_fresh, DEFAULT_USD_BASE_RATES
++from routes.retail import SUPPORTED_ASSETS
+ from routes.swap_engine import settle_crypto_on_celo
+ from broadcast import broadcast_manager
+ from notifications import notify_user
+ from two_factor import verify_withdrawal_2fa
+ from wallet_utils import debit_wallet, credit_wallet
++from request_lock import acquire_user_lock, release_user_lock, MONEY_OUT
++from rate_limit import rate_limit_user
+ from cardano.airt import burn_airt, mint_airt, receipt_hash
+ from cardano.client import get_blockfrost_api
+ from cardano.wallet import CardanoWallet, get_or_create_wallet_index
+@@ -418,6 +421,11 @@ class RampExecute(BaseModel):
+     otp_session_id: str = ""
+     otp_code: str = ""
+     totp_code: str = ""
++    # Slippage guard for swaps: the smallest to-asset amount the customer will
++    # accept (the quote they were shown, less any tolerance). The server always
++    # re-prices from the rate book, so without this a rate-book change between
++    # "quote" and "confirm" silently executed at the new, worse price.
++    min_receive: float | None = None
+ 
+ 
+ class ReconcileDepositsRequest(BaseModel):
+@@ -511,6 +519,22 @@ async def _extract_callback_payload(request: Request) -> tuple[dict, str]:
+     return payload, raw_text
+ 
+ 
++def _is_production() -> bool:
++    return os.environ.get("APP_ENV", "development").strip().lower() in {"production", "prod"}
++
++
++def _with_callback_token(url: str | None) -> str | None:
++    """Append the shared callback token to the URL handed to the gateway.
++
++    Only ever applied to the copy sent to the gateway -- never to the value
++    stored on ramp_entries or returned to the customer, which would hand the
++    secret to exactly the person it is meant to keep out."""
++    token = os.environ.get("AIRTEL_CALLBACK_TOKEN", "").strip()
++    if not url or not token:
++        return url
++    return f"{url}{'&' if '?' in url else '?'}token={token}"
++
++
+ def _verify_airtel_callback_signature(request: Request, raw_text: str) -> dict[str, Any]:
+     """Verify an HMAC callback signature only when direct-callback verification is enabled."""
+     enabled = os.environ.get("AIRTEL_CALLBACK_AUTH_ENABLED", "false").strip().lower() == "true"
+@@ -523,6 +547,23 @@ def _verify_airtel_callback_signature(request: Request, raw_text: str) -> dict[s
+         "signaturePresent": bool(signature),
+         "valid": None,
+     }
++
++    # Second, independent mechanism for gateways that can't sign the body: a
++    # shared secret the gateway echoes back (X-Callback-Token header, or the
++    # ?token= we append to the callback URL we hand it -- see
++    # _with_callback_token). Without ANY of HMAC / token, these endpoints
++    # accept a forged "TS" from anyone who knows a providerReference -- and
++    # that reference is returned to the customer in the deposit response.
++    token_secret = os.environ.get("AIRTEL_CALLBACK_TOKEN", "").strip()
++    auth["tokenConfigured"] = bool(token_secret)
++    auth["tokenValid"] = None
++    if token_secret:
++        provided_token = (request.headers.get("X-Callback-Token") or request.query_params.get("token") or "").strip()
++        auth["tokenValid"] = hmac.compare_digest(provided_token, token_secret)
++
++    # In production, refuse to run with callbacks unauthenticated.
++    auth["failClosed"] = _is_production() and not enabled and not token_secret
++
+     if not enabled:
+         return auth
+ 
+@@ -568,7 +609,11 @@ async def _handle_airtel_callback(request: Request, db, source: str):
+     }
+     await db["airtel_callback_events"].insert_one(callback_event)
+ 
+-    if callback_auth["enabled"] and callback_auth["valid"] is not True:
++    if (
++        callback_auth.get("failClosed")
++        or (callback_auth["enabled"] and callback_auth["valid"] is not True)
++        or (callback_auth.get("tokenConfigured") and callback_auth.get("tokenValid") is not True)
++    ):
+         await db["airtel_callback_events"].update_one(
+             {"_id": event_id},
+             {"$set": {"error": "Callback authentication failed", "processedAt": datetime.utcnow()}},
+@@ -732,12 +777,103 @@ def _resolve_airtel_callback_base_url() -> str:
+ 
+     return legacy.rstrip("/")
+ 
+-@router.post("/execute", status_code=201)
++_RAMP_DIRECTIONS = {"on", "off", "swap"}
++# Hard sanity ceiling on a single request, in the asset's own units. Real
++# per-user/per-day limits belong in a policy layer; this only exists so an
++# absurd value (1e300, inf) can never reach balance arithmetic.
++_RAMP_MAX_AMOUNT = float(os.getenv("RAMP_MAX_AMOUNT_PER_REQUEST", "10000000"))
++
++
++def _validate_ramp_request(body: "RampExecute") -> None:
++    """Reject malformed money requests before anything touches a balance.
++
++    Previously RampExecute.amount was never checked: a negative amount made
++    debit_wallet() *credit* the from-asset ($inc by a positive number, and
++    its `$gte: negative` guard always passes), and the matching credit on the
++    to-asset side went negative -- a user could mint balance in one asset at
++    the expense of an unchecked negative balance in another, then withdraw the
++    positive side as real crypto. from_asset/to_asset were also used straight
++    as MongoDB field names, so any string created a new wallet field.
++    """
++    if body.direction not in _RAMP_DIRECTIONS:
++        raise HTTPException(status_code=400, detail=f"Unsupported direction: {body.direction!r}")
++
++    for name, value in (("amount", body.amount), ("rate", body.rate), ("fee", body.fee)):
++        if not isinstance(value, (int, float)) or not math.isfinite(value):
++            raise HTTPException(status_code=400, detail=f"Invalid {name}.")
++    if body.min_receive is not None and (not math.isfinite(body.min_receive) or body.min_receive < 0):
++        raise HTTPException(status_code=400, detail="Invalid min_receive.")
++    if body.amount <= 0:
++        raise HTTPException(status_code=400, detail="Amount must be greater than zero.")
++    if body.amount > _RAMP_MAX_AMOUNT:
++        raise HTTPException(status_code=400, detail="Amount exceeds the maximum allowed per request.")
++
++    for name, asset in (("from_asset", body.from_asset), ("to_asset", body.to_asset)):
++        if asset not in SUPPORTED_ASSETS:
++            raise HTTPException(status_code=400, detail=f"Unsupported asset in {name}: {asset!r}")
++
++    if body.direction == "swap" and body.from_asset == body.to_asset:
++        raise HTTPException(status_code=400, detail="Cannot swap an asset for itself.")
++
++    # Mobile-money rails take whole shillings (int(amount) is sent to the gateway).
++    if body.channel == "Mobile Money" and body.amount < 1:
++        raise HTTPException(status_code=400, detail="Minimum mobile-money amount is 1 KES.")
++
++
++@router.post("/execute", status_code=201, dependencies=[Depends(rate_limit_user("ramp_execute", 30, 60))])
+ async def execute_ramp(body: RampExecute, db=Depends(get_db), current_user=Depends(get_verified_current_user)):
++    """Validate, serialise per user, and leave an audit trail around the real work.
++
++    * one in-flight ramp request per user -- a double-click or retry gets a 429
++      instead of racing the first one past the balance check;
++    * a `ramp_intents` row is written BEFORE any balance moves and closed with
++      the outcome afterwards. A row stuck in "started" is the only trace of a
++      request that died mid-flight (after a debit, before a credit/refund), so
++      the admin audit view lists exactly those for reconciliation.
++    """
++    _validate_ramp_request(body)
++    user_key = str(current_user["_id"])
++    lock_token = await acquire_user_lock(db, user_key, MONEY_OUT)
++    trade_id = f"TRADE_{uuid.uuid4().hex[:8].upper()}"
++    started_at = datetime.utcnow()
++    try:
++        await db["ramp_intents"].insert_one({
++            "_id": trade_id, "status": "started", "userId": user_key,
++            "direction": body.direction, "channel": body.channel,
++            "fromAsset": body.from_asset, "toAsset": body.to_asset, "amount": body.amount,
++            "createdAt": started_at,
++        })
++    except Exception as exc:
++        # Never block trading on the audit write, but make the gap visible.
++        print(f"⚠️ ramp_intents insert failed for {trade_id}: {exc}")
++
++    async def _close(status: str, **fields):
++        try:
++            await db["ramp_intents"].update_one(
++                {"_id": trade_id}, {"$set": {"status": status, "finishedAt": datetime.utcnow(), **fields}}
++            )
++        except Exception:
++            pass
++
++    try:
++        result = await _execute_ramp_impl(body, db, current_user, trade_id)
++        await _close("finished", resultStatus=(result or {}).get("status") if isinstance(result, dict) else None)
++        return result
++    except HTTPException as exc:
++        # 4xx = refused before/without lasting effect; 5xx = failed mid-flight.
++        await _close("rejected" if exc.status_code < 500 else "failed", httpStatus=exc.status_code, detail=str(exc.detail)[:500])
++        raise
++    except Exception as exc:
++        await _close("error", detail=str(exc)[:500])
++        raise
++    finally:
++        await release_user_lock(db, user_key, MONEY_OUT, lock_token)
++
++
++async def _execute_ramp_impl(body: RampExecute, db, current_user, trade_id: str):
+     user_id_raw = current_user["_id"]
+     user_id = safe_object_id(user_id_raw)
+     user_id_candidates = build_user_id_candidates(user_id_raw)
+-    trade_id = f"TRADE_{uuid.uuid4().hex[:8].upper()}"
+     provider_reference = f"LIVE-{uuid.uuid4().hex[:8].upper()}"
+ 
+     if body.direction in ("on", "off") and body.channel == "Mobile Money":
+@@ -769,9 +905,15 @@ async def execute_ramp(body: RampExecute, db=Depends(get_db), current_user=Depen
+         rate_book = await get_or_create_rate_book(db)
+         if not bool(rate_book.get("active", True)):
+             raise HTTPException(status_code=503, detail="Trading is currently paused by treasury.")
++        assert_rate_book_fresh(rate_book)
+ 
+         live_swap_quote = compute_swap_quote_from_book(body.from_asset, body.to_asset, body.amount, rate_book)
+         receive = live_swap_quote["receive_amount"]
++        if body.min_receive is not None and receive < body.min_receive:
++            raise HTTPException(
++                status_code=409,
++                detail=f"The price changed. You would now receive {receive:g} {body.to_asset}, below your minimum of {body.min_receive:g}. Please review the new quote.",
++            )
+         profit_amount = live_swap_quote["fee_amount"]
+         profit_currency = live_swap_quote.get("fee_currency", body.to_asset)
+ 
+@@ -809,33 +951,46 @@ async def execute_ramp(body: RampExecute, db=Depends(get_db), current_user=Depen
+         if current_balance < debit_amount:
+             raise HTTPException(status_code=400, detail=f"Insufficient {body.from_asset} balance. You need {debit_amount:.4f}; you have {current_balance:.4f}.")
+ 
+-        user_doc = await db["users"].find_one({"_id": safe_object_id(user_id_raw)})
++        # A swap is a custodial LEDGER move: the customer's from-asset is debited
++        # and their to-asset is credited on the internal ledger (and the customer
++        # takes it out later through the 2FA-gated withdraw endpoints). The
++        # on-chain leg below is therefore a platform-internal movement and must
++        # NEVER be pointed at an address the customer controls.
++        #
++        # It used to honour body.destination_address (and the user's saved
++        # wallet address): a verified user calling the API directly could name
++        # their own address, receive the real crypto on-chain AND the same
++        # amount on their ledger, then withdraw the ledger balance again --
++        # being paid twice. The retail UI never sends destination_address, so
++        # normal customers are unaffected; only the destination is changed here.
+         destination_address = None
+         if body.to_asset.upper() in {"CUSD", "USDC", "USDT", "USD"}:
+             try:
+-                destination_address = resolve_crypto_destination_address(body.destination_address or user_doc.get("walletAddress") if user_doc else body.destination_address, user_doc)
++                # No candidate address, no user doc -> platform-owned
++                # CELO_HOT_WALLET_ADDRESS / CELO_EXIT_ADDRESS only.
++                destination_address = resolve_crypto_destination_address(None, None)
+             except ValueError as exc:
+                 raise HTTPException(status_code=400, detail=str(exc)) from exc
+         elif body.to_asset.upper() == "USDA":
+-            # Resolve Cardano destination address from user document or provided address
+-            if body.destination_address and body.destination_address.strip():
+-                destination_address = body.destination_address.strip()
+-            elif user_doc and user_doc.get("cardanoAddress"):
+-                destination_address = user_doc.get("cardanoAddress").strip()
+-            else:
+-                # Generate a new Cardano address for the user if not present
+-                try:
+-                    idx = await get_or_create_wallet_index(db, current_user.get("workspaceId", "demo_workspace"))
+-                    cardano_wallet = CardanoWallet(idx)
+-                    destination_address = cardano_wallet.address_str
+-                except Exception as exc:
+-                    raise HTTPException(status_code=400, detail=f"Unable to resolve Cardano address: {exc}") from exc
++            try:
++                destination_address = (
++                    os.getenv("MASTER_WALLET_ADDRESS", "").strip()
++                    or CardanoWallet(0).address_str
++                )
++            except Exception as exc:
++                raise HTTPException(status_code=400, detail=f"Unable to resolve Cardano treasury address: {exc}") from exc
+ 
+         if body.from_asset.upper() == "KES" and body.to_asset.upper() == "AIRT":
+             wallet_owner_id = wallet.get("userId") if wallet else user_id
+             receive_amount = math.floor(receive_amount)
+             if receive_amount <= 0:
+                 raise HTTPException(status_code=400, detail="KES amount is too small to mint whole AIRT units.")
++            # Only whole AIRT can be minted, so charge for exactly that many:
++            # re-price on the whole amount instead of debiting the fractional
++            # KES the customer typed and minting fewer tokens than they paid for.
++            whole_quote = compute_swap_quote_from_book("KES", "AIRT", receive_amount, rate_book)
++            debit_amount = float(whole_quote["debit_amount"])
++            profit_amount = whole_quote["fee_amount"]
+             reserve_snapshot = await _get_airtime_reserve_snapshot(db)
+             available_before = max(
+                 reserve_snapshot["providerBalanceSnapshot"] - reserve_snapshot["circulatingAirt"],
+@@ -921,6 +1076,12 @@ async def execute_ramp(body: RampExecute, db=Depends(get_db), current_user=Depen
+             burn_amount = math.floor(body.amount) # Round down to whole AIRT units for burn
+             if burn_amount <= 0:
+                 raise HTTPException(status_code=400, detail="AIRT redemption must be at least 1 whole token.")
++            # receive_amount was priced on the full (possibly fractional) amount
++            # but only floor(amount) tokens are burned -- the customer was being
++            # paid KES for a fraction of a token that was never taken from them.
++            burn_quote = compute_swap_quote_from_book("AIRT", "KES", burn_amount, rate_book)
++            receive_amount = float(burn_quote["receive_amount"])
++            profit_amount = burn_quote["fee_amount"]
+             custody_balance = await _get_custody_airt_balance()
+             if custody_balance < burn_amount:
+                 raise HTTPException(
+@@ -1140,7 +1301,7 @@ async def execute_ramp(body: RampExecute, db=Depends(get_db), current_user=Depen
+                 if use_portal_callback else ""
+             )
+             if collection_callback or portal_callback:
+-                payload["callbackUrl"] = portal_callback or collection_callback
++                payload["callbackUrl"] = _with_callback_token(portal_callback or collection_callback)
+ 
+             # 3. Authenticate to Mamlaka, then request the Airtel STK push.
+             async with httpx.AsyncClient() as client:
+@@ -1404,6 +1565,30 @@ async def execute_ramp(body: RampExecute, db=Depends(get_db), current_user=Depen
+             "createdAt": datetime.utcnow(),
+         })
+ 
++        # Refund bookkeeping. Every path that returns the customer's KES must
++        # ALSO move this row to a terminal "failed" state. Previously a
++        # synchronous refund left the row "processing", so a later provider
++        # failure callback refunded the same withdrawal a second time
++        # (_apply_wallet_delta_once's marker is separate from credit_wallet).
++        payout_post_started = False
++        refunded = False
++
++        async def _refund_and_fail(reason: str, source: str):
++            nonlocal refunded
++            if refunded:
++                return
++            refunded = True
++            await credit_wallet(db, wallet_owner_id, "KES", body.amount)
++            await db["ramp_entries"].update_one(
++                {"_id": trade_id, "status": {"$in": ["pending", "processing"]}},
++                {
++                    "$set": {"status": "failed", "error_reason": reason[:500], "refundedAt": datetime.utcnow(),
++                             "updatedAt": datetime.utcnow()},
++                    "$addToSet": {"appliedRampRefunds": "sync"},
++                    "$push": {"statusHistory": {"state": "failed", "at": datetime.utcnow(), "source": source}},
++                },
++            )
++
+         try:
+             # --- MAMLAKA SANDBOX GATEWAY INTEGRATION ---
+             gateway_url = os.environ.get("AIRTEL_API_BASE_URL", "").rstrip("/")
+@@ -1448,8 +1633,8 @@ async def execute_ramp(body: RampExecute, db=Depends(get_db), current_user=Depen
+                 if callback_base_url else None
+             )
+             if disburse_callback:
+-                payload["callback_url"] = disburse_callback
+-                payload["callbackUrl"] = disburse_callback
++                payload["callback_url"] = _with_callback_token(disburse_callback)
++                payload["callbackUrl"] = _with_callback_token(disburse_callback)
+ 
+             async with httpx.AsyncClient() as client:
+                 auth_response = await client.get(f"{gateway_url}/", auth=(api_username, api_password), timeout=15.0)
+@@ -1459,12 +1644,19 @@ async def execute_ramp(body: RampExecute, db=Depends(get_db), current_user=Depen
+                 if not access_token:
+                     raise HTTPException(status_code=502, detail="Airtel sandbox authentication response did not include a token.")
+                 headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
++                # From here on the provider may act on the request even if we never
++                # see a response -- a failure after this point is NOT a safe refund.
++                payout_post_started = True
+                 response = await client.post(payout_url, json=payload, headers=headers, timeout=15.0)
+                 if response.is_error:
+                     response_text = response.text
+                     print(f"Airtel Gateway Rejected: {response_text}")
+-                    await credit_wallet(db, wallet_owner_id, "KES", body.amount)
+-                    raise HTTPException(status_code=400, detail=response_text)
++                    if 400 <= response.status_code < 500:
++                        # A definite refusal: the payout did not happen.
++                        await _refund_and_fail(f"Provider rejected payout ({response.status_code}): {response_text}", "provider_rejected")
++                        raise HTTPException(status_code=400, detail="The payment provider rejected this payout. Your funds were returned.")
++                    # 5xx: the provider may have forwarded it before failing.
++                    raise RuntimeError(f"ambiguous provider error {response.status_code}")
+                 response.raise_for_status()
+ 
+                 # Some gateways return HTTP 200 but business failure in body.status.success=false.
+@@ -1477,15 +1669,41 @@ async def execute_ramp(body: RampExecute, db=Depends(get_db), current_user=Depen
+                     status_success = _is_success_from_status_object(status_obj)
+                     if status_success is False:
+                         response_text = response.text
+-                        await credit_wallet(db, wallet_owner_id, "KES", body.amount)
+-                        raise HTTPException(status_code=400, detail=f"Airtel gateway business rejection: {response_text}")
++                        await _refund_and_fail(f"Provider business rejection: {response_text}", "provider_business_rejection")
++                        raise HTTPException(status_code=400, detail="The payment provider declined this payout. Your funds were returned.")
+ 
+         except HTTPException:
++            # Raised before the payout request was sent (bad number, missing
++            # credentials, no auth token): nothing was paid out, but the KES was
++            # already debited above. This path used to just re-raise and leave
++            # the customer's money debited with no refund -- e.g. a mistyped
++            # phone number cost the user the full amount.
++            if not payout_post_started:
++                await _refund_and_fail("Withdrawal could not be submitted to the provider.", "pre_send_failure")
+             raise
+         except Exception as e:
+             print(f"Gateway Connection Error: {e}")
+-            await credit_wallet(db, wallet_owner_id, "KES", body.amount)
+-            raise HTTPException(status_code=502, detail="Failed to connect to Airtel Gateway. Funds refunded.")
++            if not payout_post_started:
++                # Never reached the payout call (e.g. auth/connection failure): safe to refund.
++                await _refund_and_fail(f"Gateway unreachable before payout: {e}", "pre_send_failure")
++                raise HTTPException(status_code=502, detail="Could not reach the payment provider. Your funds were returned.")
++
++            # The payout request was (or may have been) sent and we don't know
++            # the outcome (timeout, dropped connection, provider 5xx). Refunding
++            # here can pay the customer twice if the money did go out, so keep
++            # the funds held, flag the row, and let the provider callback or an
++            # admin reconciliation settle it.
++            await db["ramp_entries"].update_one(
++                {"_id": trade_id},
++                {
++                    "$set": {"ambiguousProvider": True, "ambiguousReason": str(e)[:500], "updatedAt": datetime.utcnow()},
++                    "$push": {"statusHistory": {"state": "processing", "at": datetime.utcnow(), "source": "provider_outcome_unknown"}},
++                },
++            )
++            raise HTTPException(
++                status_code=202,
++                detail=f"We could not confirm this payout yet. Your funds are on hold, please do not retry. Reference {trade_id}.",
++            )
+ 
+         # The callback may already have completed this row. Only enrich it
+         # with provider request metadata and preserve its current status.
+diff --git a/routes/realtime.py b/routes/realtime.py
+index edfce8a..4bb0952 100644
+--- a/routes/realtime.py
++++ b/routes/realtime.py
+@@ -1,16 +1,61 @@
+ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
++from jose import jwt
++from jose.exceptions import JWTError
++
+ from broadcast import broadcast_manager
++from database import get_db
++from routes.auth import SECRET_KEY, ALGORITHM
+ 
+ router = APIRouter()
+ 
++# WebSocket close code (4000-4999 is the app-defined range) for "not authenticated".
++WS_UNAUTHORIZED = 4401
++
++
++async def _authenticate_ws(token: str | None, claimed_user_id: str | None) -> str | None:
++    """Return the user id proven by `token`, or None if it can't be trusted.
++
++    The browser WebSocket API can't set an Authorization header, so the JWT
++    travels as ?token=. The server-side identity always comes from the
++    token's own `sub` -- a client-supplied ?userId= is only accepted if it
++    matches, and is otherwise ignored, so one user can no longer subscribe
++    to another user's wallet/deposit/withdrawal events.
++    """
++    if not token:
++        return None
++    try:
++        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
++    except JWTError:
++        return None
++    user_id = payload.get("sub")
++    if not user_id:
++        return None
++    if claimed_user_id and claimed_user_id != str(user_id):
++        return None
++
++    # Honour "sign out this device" the same way HTTP routes do.
++    session_id = payload.get("sid")
++    if session_id:
++        session = await get_db().sessions.find_one({"_id": session_id}, {"revoked": 1})
++        if session and session.get("revoked"):
++            return None
++    return str(user_id)
++
+ 
+ @router.websocket("/ws/dashboard")
+-async def ws_dashboard(websocket: WebSocket, userId: str | None = None):
+-    """Simple WebSocket endpoint for real-time dashboard updates.
++async def ws_dashboard(websocket: WebSocket, userId: str | None = None, token: str | None = None):
++    """WebSocket endpoint for real-time, user-scoped dashboard updates.
+ 
+-    Clients should connect with ?userId=<user id> so server can send user-scoped updates.
+-    This is intentionally minimal; in production authenticate via token and map to user id.
++    Connect with ?token=<JWT> (and optionally ?userId=<same id>). Unauthenticated
++    or mismatched connections are closed before any events are delivered.
+     """
++    user_id = await _authenticate_ws(token, userId)
++    if not user_id:
++        # Must accept-then-close or close before accept; closing before accept
++        # makes Starlette reject the handshake with HTTP 403.
++        await websocket.close(code=WS_UNAUTHORIZED)
++        return
++
+     await websocket.accept()
+ 
+     # wrapper that sends JSON to the websocket
+@@ -20,19 +65,13 @@ async def ws_dashboard(websocket: WebSocket, userId: str | None = None):
+         except Exception:
+             pass
+ 
+-    if not userId:
+-        # If no userId provided, accept but don't register for user-scoped messages
+-        try:
+-            while True:
+-                await websocket.receive_text()
+-        except WebSocketDisconnect:
+-            return
+-
+-    await broadcast_manager.connect(userId, ws_send)
++    await broadcast_manager.connect(user_id, ws_send)
+ 
+     try:
+         while True:
+             # keep connection alive; ignore incoming messages
+             await websocket.receive_text()
+     except WebSocketDisconnect:
+-        await broadcast_manager.disconnect(userId, ws_send)
++        pass
++    finally:
++        await broadcast_manager.disconnect(user_id, ws_send)
+diff --git a/routes/retail.py b/routes/retail.py
+index 67f822e..2eada15 100644
+--- a/routes/retail.py
++++ b/routes/retail.py
+@@ -74,10 +74,13 @@ def _send_admin_kyc_email(subject: str, body: str) -> None:
+         pass
+ 
+ # Import shared JWT config and auth helper
+-from routes.auth import get_current_user
++from routes.auth import get_current_user, get_verified_current_user
+ from database import get_db
++from request_lock import single_flight
++from rate_limit import rate_limit_user
+ from typing import Optional
+ from celo_wallet import get_onchain_celo_snapshot
++import math
+ import uuid
+ 
+ router = APIRouter(prefix="/api/retail", tags=["Retail User"])
+@@ -484,7 +487,28 @@ def _mask_display_name(name: str) -> str:
+ # "confirm recipient name" screen on a bank's own-bank transfer flow. Returns
+ # only a masked display name, never the full name/phone, so a sender can't
+ # use this to enumerate account holder details from a bare email guess.
+-@router.get("/transfer/lookup")
++async def _resolve_user_email(db, current_user: dict) -> str:
++    """The logged-in user's email, read from the user document.
++
++    get_current_user only decodes the JWT and returns {_id, workspaceId,
++    sessionId} -- there is no "email" key. The transfer endpoints used to call
++    current_user.get("email") and silently got "" every time, which (a) made
++    the "can't transfer to yourself" check never trigger, (b) stored
++    senderEmail="" on every transfer, and (c) made GET /transfers match
++    {"senderEmail": ""} -- i.e. return EVERY transfer in the system (other
++    people's recipient emails, assets and amounts) to any logged-in user.
++    """
++    email = (current_user.get("email") or "").strip().lower()
++    if email:
++        return email
++    doc = await db["users"].find_one({"_id": safe_object_id(str(current_user.get("_id")))}, {"email": 1})
++    return ((doc or {}).get("email") or "").strip().lower()
++
++
++_CANONICAL_ASSETS = {a.upper(): a for a in SUPPORTED_ASSETS}
++
++
++@router.get("/transfer/lookup", dependencies=[Depends(rate_limit_user("transfer_lookup", 20, 60))])
+ async def lookup_transfer_recipient(
+     email: str,
+     db=Depends(get_db),
+@@ -494,7 +518,7 @@ async def lookup_transfer_recipient(
+     if not recipient_email:
+         raise HTTPException(status_code=400, detail="Email is required.")
+ 
+-    sender_email = (current_user.get("email") or "").strip().lower()
++    sender_email = await _resolve_user_email(db, current_user)
+     if recipient_email == sender_email:
+         return {"status": "success", "found": False, "isSelf": True}
+ 
+@@ -518,11 +542,14 @@ async def lookup_transfer_recipient(
+ # two_factor.verify_withdrawal_2fa) because it moves funds out of an account
+ # just as irreversibly from the sender's point of view, even though nothing
+ # touches a chain.
+-@router.post("/transfer")
++@router.post("/transfer", dependencies=[Depends(single_flight())])
+ async def transfer_to_user(
+     payload: InternalTransferRequest,
+     db=Depends(get_db),
+-    current_user=Depends(get_current_user),
++    # Verified (approved-KYC) users only. This route used get_current_user, so
++    # the KYC requirement existed only as a frontend route guard that a direct
++    # API call bypasses -- unlike deposit/withdraw/swap, which already use this.
++    current_user=Depends(get_verified_current_user),
+ ):
+     # Imported locally, not at module load: wallet_utils imports
+     # build_user_id_candidates from this module, so importing wallet_utils at
+@@ -530,17 +557,20 @@ async def transfer_to_user(
+     from wallet_utils import debit_wallet, credit_wallet
+     from two_factor import verify_withdrawal_2fa
+ 
+-    asset = payload.asset.strip().upper()
+-    if asset not in SUPPORTED_ASSETS:
+-        raise HTTPException(status_code=400, detail=f"Unsupported asset: {asset}")
+-    if payload.amount <= 0:
++    # Case-insensitive match onto the canonical ticker: .upper() alone turned
++    # "cUSD" into "CUSD", which is not in SUPPORTED_ASSETS (so cUSD transfers
++    # could never succeed).
++    asset = _CANONICAL_ASSETS.get((payload.asset or "").strip().upper())
++    if asset is None:
++        raise HTTPException(status_code=400, detail=f"Unsupported asset: {payload.asset}")
++    if not math.isfinite(payload.amount) or payload.amount <= 0:
+         raise HTTPException(status_code=400, detail="Transfer amount must be greater than zero.")
+ 
+     recipient_email = (payload.recipient_email or "").strip().lower()
+     if not recipient_email:
+         raise HTTPException(status_code=400, detail="Recipient email is required.")
+ 
+-    sender_email = (current_user.get("email") or "").strip().lower()
++    sender_email = await _resolve_user_email(db, current_user)
+     if recipient_email == sender_email:
+         raise HTTPException(status_code=400, detail="You can't transfer to your own account.")
+ 
+@@ -553,20 +583,17 @@ async def transfer_to_user(
+ 
+     sender_id = current_user.get("_id")
+     recipient_id = recipient_doc["_id"]
++    if str(sender_id) == str(recipient_id):
++        raise HTTPException(status_code=400, detail="You can't transfer to your own account.")
+ 
+-    await debit_wallet(db, sender_id, asset, payload.amount)
+-    try:
+-        await credit_wallet(db, recipient_id, asset, payload.amount)
+-    except Exception as exc:
+-        # Credit failed after the debit succeeded — reverse it immediately so
+-        # the sender's funds aren't stranded in limbo.
+-        await credit_wallet(db, sender_id, asset, payload.amount)
+-        raise HTTPException(status_code=502, detail=f"Transfer failed and was reversed: {exc}")
+-
++    # Write the intent BEFORE any balance moves. If the process dies between
++    # the debit and the credit, this row (status "started") is the only trace
++    # that funds are in flight -- it is what an admin reconciles from.
+     now = datetime.utcnow()
+     transfer_id = str(uuid.uuid4())
+     await db["internal_transfers"].insert_one({
+         "_id": transfer_id,
++        "status": "started",
+         "asset": asset,
+         "amount": payload.amount,
+         "senderId": sender_id,
+@@ -577,6 +604,30 @@ async def transfer_to_user(
+         "createdAt": now,
+     })
+ 
++    await debit_wallet(db, sender_id, asset, payload.amount)
++    try:
++        await credit_wallet(db, recipient_id, asset, payload.amount)
++    except Exception as exc:
++        # Credit failed after the debit succeeded — reverse it immediately so
++        # the sender's funds aren't stranded in limbo.
++        try:
++            await credit_wallet(db, sender_id, asset, payload.amount)
++            await db["internal_transfers"].update_one(
++                {"_id": transfer_id}, {"$set": {"status": "reversed", "error": str(exc), "finishedAt": datetime.utcnow()}}
++            )
++        except Exception as reverse_exc:
++            # Both legs failed: money is in limbo. Leave a loud, queryable marker.
++            await db["internal_transfers"].update_one(
++                {"_id": transfer_id},
++                {"$set": {"status": "needs_reconciliation", "error": str(exc),
++                          "reverseError": str(reverse_exc), "finishedAt": datetime.utcnow()}},
++            )
++        raise HTTPException(status_code=502, detail="Transfer failed. If your balance looks wrong, contact support with reference " + transfer_id)
++
++    await db["internal_transfers"].update_one(
++        {"_id": transfer_id}, {"$set": {"status": "completed", "finishedAt": datetime.utcnow()}}
++    )
++
+     return {
+         "status": "success",
+         "id": transfer_id,
+@@ -590,19 +641,39 @@ async def transfer_to_user(
+ @router.get("/transfers")
+ async def get_transfer_history(db=Depends(get_db), current_user=Depends(get_current_user)):
+     """Sent and received internal transfers for the logged-in user, newest first."""
+-    email = (current_user.get("email") or "").strip().lower()
+-    records = await db["internal_transfers"].find(
+-        {"$or": [{"senderEmail": email}, {"recipientEmail": email}]}
+-    ).sort("createdAt", -1).limit(100).to_list(100)
++    # Match on the user's id (string or ObjectId), never on email: earlier
++    # transfers were stored with senderEmail="" (see _resolve_user_email), and
++    # an email filter of "" returned every user's transfers to every caller.
++    # Only completed transfers are shown; legacy rows have no status field.
++    ids = build_user_id_candidates(current_user.get("_id"))
++    records = await db["internal_transfers"].find({
++        "$and": [
++            {"$or": [{"senderId": {"$in": ids}}, {"recipientId": {"$in": ids}}]},
++            {"$or": [{"status": "completed"}, {"status": {"$exists": False}}]},
++        ]
++    }).sort("createdAt", -1).limit(100).to_list(100)
++
++    me = {str(i) for i in ids}
++
++    # Legacy rows lack a sender email; resolve it from the user document.
++    missing = {str(r.get("senderId")) for r in records if not r.get("senderEmail") and r.get("senderId") is not None}
++    email_by_id = {}
++    if missing:
++        docs = await db["users"].find(
++            {"_id": {"$in": [safe_object_id(m) for m in missing]}}, {"email": 1}
++        ).to_list(len(missing))
++        email_by_id = {str(d["_id"]): d.get("email") for d in docs}
+ 
+     transfers = []
+     for r in records:
++        sent = str(r.get("senderId")) in me
++        sender_email = r.get("senderEmail") or email_by_id.get(str(r.get("senderId"))) or ""
+         transfers.append({
+             "id": r.get("_id"),
+             "asset": r.get("asset"),
+             "amount": r.get("amount"),
+-            "direction": "sent" if r.get("senderEmail") == email else "received",
+-            "counterparty": r.get("recipientEmail") if r.get("senderEmail") == email else r.get("senderEmail"),
++            "direction": "sent" if sent else "received",
++            "counterparty": r.get("recipientEmail") if sent else sender_email,
+             "note": r.get("note", ""),
+             "createdAt": r.get("createdAt").isoformat() + "Z" if r.get("createdAt") else None,
+         })
+diff --git a/routes/swap_engine.py b/routes/swap_engine.py
+index 1032571..05261a4 100644
+--- a/routes/swap_engine.py
++++ b/routes/swap_engine.py
+@@ -8,6 +8,7 @@ from typing import Optional
+ from database import get_db
+ from routes.auth import get_verified_current_user
+ from notifications import notify_user
++from celo_nonce import reserve_treasury_nonce
+ from web3 import Web3
+ from web3.middleware import ExtraDataToPOAMiddleware
+ from dotenv import load_dotenv
+@@ -112,7 +113,7 @@ async def settle_crypto_on_celo(to_address: str, asset: str, amount: float) -> d
+         
+         # Build and execute transfer
+         contract = w3_celo.eth.contract(address=CELO_ASSET_CONTRACTS[asset], abi=CELO_ERC20_ABI)
+-        nonce = w3_celo.eth.get_transaction_count(account.address)
++        nonce = reserve_treasury_nonce(w3_celo, account.address)
+         
+         tx = contract.functions.transfer(to_address, amount_base).build_transaction({
+             'chainId': CELO_CHAIN_ID,
+diff --git a/routes/treasury.py b/routes/treasury.py
+index ad5586f..d1f0b2a 100644
+--- a/routes/treasury.py
++++ b/routes/treasury.py
+@@ -1,6 +1,7 @@
+ from fastapi import APIRouter, Depends, HTTPException
+ from pydantic import BaseModel
+ import asyncio
++import math
+ import traceback
+ from datetime import datetime, timedelta
+ import uuid
+@@ -27,6 +28,8 @@ from workers.stellar_deposit_watcher import (
+     USDC_ISSUER as STELLAR_USDC_ISSUER,
+ )
+ from stellar_audit import log_stellar_audit_event
++from admin_audit import log_admin_action
++from request_lock import single_flight
+ from notifications import notify_user
+ from two_factor import verify_withdrawal_2fa
+ from wallet_utils import debit_wallet, credit_wallet
+@@ -235,6 +238,36 @@ async def get_or_create_rate_book(db):
+     return doc
+ 
+ 
++def assert_rate_book_fresh(rate_book: dict) -> None:
++    """Refuse to price swaps off a rate book nobody has confirmed recently.
++
++    The book is a static, admin-typed table (no market feed behind it) seeded
++    with hardcoded defaults (e.g. KES 130.50, BTC $64k). `refresh_interval_hours`
++    was only a label -- nothing ever enforced it -- so a stale or never-set book
++    kept quoting indefinitely and anyone watching the real market could trade
++    against it. Enforced when APP_ENV=production (or RATE_BOOK_ENFORCE_FRESHNESS=true):
++      * the book must have been saved by an admin at least once (updatedBy set),
++        i.e. it is not still the seeded defaults;
++      * it must be younger than RATE_BOOK_MAX_AGE_HOURS (default 2x its own
++        refresh_interval_hours).
++    """
++    enforce = (
++        os.getenv("APP_ENV", "development").strip().lower() in {"production", "prod"}
++        or os.getenv("RATE_BOOK_ENFORCE_FRESHNESS", "false").strip().lower() == "true"
++    )
++    if not enforce:
++        return
++    if not rate_book.get("updatedBy"):
++        raise HTTPException(status_code=503, detail="Swap rates have not been set by treasury yet. Trading is paused.")
++    updated_at = rate_book.get("updatedAt")
++    if not isinstance(updated_at, datetime):
++        raise HTTPException(status_code=503, detail="Swap rates have no valid timestamp. Trading is paused.")
++    refresh_hours = float(rate_book.get("refresh_interval_hours", 3) or 3)
++    max_age_hours = float(os.getenv("RATE_BOOK_MAX_AGE_HOURS") or refresh_hours * 2)
++    if datetime.utcnow() - updated_at > timedelta(hours=max_age_hours):
++        raise HTTPException(status_code=503, detail="Swap rates are out of date. Trading is paused until treasury refreshes them.")
++
++
+ def compute_swap_quote_from_book(from_asset: str, to_asset: str, amount: float, rate_book: dict) -> dict:
+     rates = deepcopy(DEFAULT_USD_BASE_RATES)
+     rates.update(rate_book.get("usd_base_rates", {}))
+@@ -322,9 +355,12 @@ async def update_treasury_rate_book(payload: TreasuryRateBookUpdate, db=Depends(
+ 
+ @router.get("/swap-quote")
+ async def get_swap_quote(from_asset: str, to_asset: str, amount: float = 1.0, db=Depends(get_db), current_user=Depends(get_current_user)):
+-    if amount < 0:
+-        raise HTTPException(status_code=400, detail="Amount must not be negative")
++    if not math.isfinite(amount) or amount < 0:
++        raise HTTPException(status_code=400, detail="Amount must be a non-negative number")
+     rate_book = await get_or_create_rate_book(db)
++    # Same gate the swap itself applies, so the UI shows "paused" instead of
++    # quoting a price that execution would refuse (or, worse, honour while stale).
++    assert_rate_book_fresh(rate_book)
+     quote = compute_swap_quote_from_book(from_asset, to_asset, amount, rate_book)
+     return {
+         "status": "success",
+@@ -555,7 +591,8 @@ async def list_hft_corridor_runs(
+ 
+ 
+ @router.get("/dashboard")
+-async def get_treasury_dashboard(db=Depends(get_db)):
++async def get_treasury_dashboard(db=Depends(get_db), current_user=Depends(get_current_user_with_role)):
++    ensure_admin(current_user)
+     try:
+         cursor = db["transactions"].find().sort("timestamp", -1).limit(10)
+         records = await cursor.to_list(length=10)
+@@ -684,8 +721,9 @@ async def get_celo_master_wallet_balance(current_user=Depends(get_current_user_w
+ 
+ 
+ @router.get("/positions")
+-async def get_treasury_positions(db=Depends(get_db)):
++async def get_treasury_positions(db=Depends(get_db), current_user=Depends(get_current_user_with_role)):
+     """Return master-wallet balances, with retail-wallet fallback where needed."""
++    ensure_admin(current_user)
+     try:
+         wallets = await db["retail_wallets"].find({}, {asset: 1 for asset in SUPPORTED_ASSETS}).to_list(length=None)
+         retail_balances = {asset: 0.0 for asset in SUPPORTED_ASSETS}
+@@ -817,7 +855,13 @@ async def get_treasury_positions(db=Depends(get_db)):
+         }
+ 
+ @router.post("/reset-sandbox")
+-async def reset_treasury_sandbox(db=Depends(get_db)):
++async def reset_treasury_sandbox(db=Depends(get_db), current_user=Depends(get_current_user_with_role)):
++    ensure_admin(current_user)
++    # Wipes the whole `transactions` ledger -- never reachable in production
++    # unless someone deliberately sets ALLOW_SANDBOX_RESET=true on that host.
++    if os.getenv("ALLOW_SANDBOX_RESET", "false").strip().lower() != "true":
++        raise HTTPException(status_code=403, detail="Sandbox reset is disabled on this deployment.")
++    await log_admin_action(db, current_user, "sandbox_reset")
+     await db["transactions"].delete_many({})
+     genesis_entries = [
+         {"txn_id": "GENESIS-01", "timestamp": datetime.utcnow(), "from_node": "EXTERNAL", "to_node": "N7_USDA", "asset": "USDA", "amount": 50000.00, "internal_usd_value": 50000.00, "txn_type": "SYSTEM_FUND", "cycle": 0},
+@@ -832,17 +876,21 @@ async def reset_treasury_sandbox(db=Depends(get_db)):
+     return {"status": "success", "message": "Sandbox reset to Genesis. Kill switch lifted."}
+ 
+ @router.post("/kill-switch")
+-async def toggle_kill_switch(req: dict):
++async def toggle_kill_switch(req: dict, db=Depends(get_db), current_user=Depends(get_current_user_with_role)):
++    ensure_admin(current_user)
++    active = bool(req.get("active", False))
+     try:
+         from Brain_Engine.cache import memory_cache
+-        memory_cache.set("system:kill_switch", req.get("active", False))
++        memory_cache.set("system:kill_switch", active)
+     except:
+         pass
++    await log_admin_action(db, current_user, "kill_switch_set", active=active)
+     return {"status": "success"}
+ 
+ 
+ @router.get("/mpesa/balances")
+-async def get_mpesa_balances():
++async def get_mpesa_balances(current_user=Depends(get_current_user_with_role)):
++    ensure_admin(current_user)
+     """Mock endpoint for M-Pesa B2C and C2B float balances."""
+     return {
+         "status": "success",
+@@ -854,8 +902,9 @@ async def get_mpesa_balances():
+ # 🟢 CORPORATE REVENUE ENDPOINTS
+ # ======================================================================
+ @router.get("/revenue")
+-async def get_corporate_revenue(db=Depends(get_db)):
++async def get_corporate_revenue(db=Depends(get_db), current_user=Depends(get_current_user_with_role)):
+     """Fetches the accumulated profit separated from user liquidity."""
++    ensure_admin(current_user)
+     revenue = await db["company_revenue"].find_one({"_id": "corporate_treasury"})
+     if not revenue:
+         return {
+@@ -876,19 +925,25 @@ class RevenueWithdrawal(BaseModel):
+     destination: str
+ 
+ @router.post("/revenue/withdraw")
+-async def withdraw_corporate_revenue(payload: RevenueWithdrawal, db=Depends(get_db)):
++async def withdraw_corporate_revenue(payload: RevenueWithdrawal, db=Depends(get_db), current_user=Depends(get_current_user_with_role)):
+     """Allows the Admin to cash out accumulated company profits."""
+-    # 1. Check Revenue Balance
+-    revenue = await db["company_revenue"].find_one({"_id": "corporate_treasury"})
+-    current_balance = float(revenue.get(payload.asset, 0.0)) if revenue else 0.0
+-    
+-    if payload.amount > current_balance:
++    ensure_admin(current_user)
++    if payload.asset not in SUPPORTED_ASSETS:
++        raise HTTPException(status_code=400, detail=f"Unsupported asset: {payload.asset}")
++    if not math.isfinite(payload.amount) or payload.amount <= 0:
++        raise HTTPException(status_code=400, detail="Withdrawal amount must be a positive number.")
++
++    # 1+2. Check balance and lock funds in ONE atomic, guarded update -- the
++    # old read-then-$inc let two concurrent requests both pass the check.
++    locked = await db["company_revenue"].update_one(
++        {"_id": "corporate_treasury", payload.asset: {"$gte": payload.amount}},
++        {"$inc": {payload.asset: -payload.amount}},
++    )
++    if locked.modified_count != 1:
+         raise HTTPException(status_code=400, detail=f"Insufficient {payload.asset} in Corporate Revenue Account.")
+-
+-    # 2. Safely Lock Funds in Database
+-    await db["company_revenue"].update_one(
+-        {"_id": "corporate_treasury"},
+-        {"$inc": {payload.asset: -payload.amount}}
++    await log_admin_action(
++        db, current_user, "revenue_withdraw_requested",
++        asset=payload.asset, amount=payload.amount, destination=payload.destination,
+     )
+ 
+     # 3. Execute the Admin Withdrawal (M-Pesa B2C for KES)
+@@ -927,7 +982,8 @@ class SimSwapReq(BaseModel):
+     amount: float
+ 
+ @router.post("/simulate-swap")
+-async def simulate_swap(req: SimSwapReq, db=Depends(get_db)):
++async def simulate_swap(req: SimSwapReq, db=Depends(get_db), current_user=Depends(get_current_user_with_role)):
++    ensure_admin(current_user)
+     from routes.ramp import execute_internal_swap
+     return await execute_internal_swap(req, db)
+ 
+@@ -1044,7 +1100,7 @@ class StellarWithdrawRequest(BaseModel):
+         return dest.strip()
+ 
+ 
+-@router.post("/stellar/withdraw", status_code=201)
++@router.post("/stellar/withdraw", status_code=201, dependencies=[Depends(single_flight())])
+ async def withdraw_stellar_usdc(
+     body: StellarWithdrawRequest,
+     db=Depends(get_db),
+diff --git a/routes/valora.py b/routes/valora.py
+index d74f01d..6736d4e 100644
+--- a/routes/valora.py
++++ b/routes/valora.py
+@@ -13,6 +13,8 @@ from database import get_db
+ from routes.auth import get_current_user, get_verified_current_user
+ from celo_wallet import derive_celo_account, get_or_create_celo_wallet_index
+ from celo_audit import log_celo_audit_event
++from celo_nonce import reserve_treasury_nonce
++from request_lock import single_flight
+ from flutterwave_payouts import list_banks, settle_bank_transfer
+ from fiat_payout_audit import log_fiat_payout_audit_event
+ from notifications import notify_user
+@@ -283,7 +285,7 @@ async def verify_valora_deposit(req: VerifyRequest, db=Depends(get_db), current_
+     })
+     
+     return {"status": "success", "message": f"{req.amount} {req.asset} verified and credited!"}
+-@router.post("/withdraw")
++@router.post("/withdraw", dependencies=[Depends(single_flight())])
+ async def withdraw_from_valora(req: WithdrawReq, db=Depends(get_db), current_user=Depends(get_verified_current_user)):
+     import asyncio
+     # Verified before anything else touches the balance.
+@@ -400,7 +402,7 @@ async def withdraw_from_valora(req: WithdrawReq, db=Depends(get_db), current_use
+         await asyncio.to_thread(check_token_balance)
+ 
+         def execute_tx():
+-            nonce = w3.eth.get_transaction_count(account.address)
++            nonce = reserve_treasury_nonce(w3, account.address)
+             tx = contract.functions.transfer(target_address, amount_base).build_transaction({
+                 'chainId': 42220, # Hardcoded chain ID from earlier to ensure safety
+                 'gas': 150000,
+diff --git a/two_factor.py b/two_factor.py
+index ac80da0..0ea2f82 100644
+--- a/two_factor.py
++++ b/two_factor.py
+@@ -12,9 +12,12 @@ authenticator app configured cannot withdraw at all. Both the request-otp
+ endpoint (routes/auth.py) and this function enforce that, so it can't be
+ bypassed by calling either API directly.
+ """
+-from datetime import datetime
++import os
++import time
++from datetime import datetime, timedelta
+ 
+ import pyotp
++from pymongo import ReturnDocument
+ 
+ from fastapi import HTTPException
+ 
+@@ -24,6 +27,10 @@ except ImportError:
+     ObjectId = None
+ 
+ 
++TOTP_MAX_FAILED_ATTEMPTS = int(os.getenv("TOTP_MAX_FAILED_ATTEMPTS", "5"))
++TOTP_LOCKOUT_MINUTES = int(os.getenv("TOTP_LOCKOUT_MINUTES", "15"))
++
++
+ def safe_object_id(val):
+     if ObjectId and isinstance(val, str) and len(val) == 24:
+         try:
+@@ -57,7 +64,10 @@ async def verify_withdrawal_2fa(
+         raise HTTPException(status_code=400, detail="Email verification code is required for withdrawals.")
+ 
+     user_id = safe_object_id(str(current_user.get("_id")))
+-    user_doc = await db["users"].find_one({"_id": user_id}, {"totpEnabled": 1, "totpSecret": 1})
++    user_doc = await db["users"].find_one(
++        {"_id": user_id},
++        {"totpEnabled": 1, "totpSecret": 1, "totpFailedAttempts": 1, "totpLockedUntil": 1, "totpLastUsedStep": 1},
++    )
+ 
+     if not user_doc or not user_doc.get("totpEnabled") or not user_doc.get("totpSecret"):
+         # 428 (not 400/403) so the frontend can distinguish "you haven't set
+@@ -72,10 +82,46 @@ async def verify_withdrawal_2fa(
+ 
+     if not totp_code:
+         raise HTTPException(status_code=400, detail="Authenticator app code is required for withdrawals.")
++    now = datetime.utcnow()
++
++    # Brute-force lockout. A 6-digit code has 1,000,000 values and, with the old
++    # +/-2 step window and no attempt counter, an attacker holding a stolen
++    # session could keep guessing indefinitely.
++    locked_until = user_doc.get("totpLockedUntil")
++    if locked_until and locked_until > now:
++        minutes = max(1, int((locked_until - now).total_seconds() // 60) + 1)
++        raise HTTPException(status_code=429, detail=f"Too many incorrect authenticator codes. Try again in about {minutes} minute(s).")
++
++    # Accept the current 30s step and one step either side (clock drift), and
++    # remember WHICH step matched so the same code can't be replayed.
+     totp = pyotp.TOTP(user_doc["totpSecret"])
+-    if not totp.verify(str(totp_code).strip(), valid_window=2):
++    code = str(totp_code).strip()
++    current_step = int(time.time() // 30)
++    matched_step = next(
++        (s for s in (current_step - 1, current_step, current_step + 1) if totp.verify(code, for_time=s * 30, valid_window=0)),
++        None,
++    )
++
++    if matched_step is None:
++        updated = await db["users"].find_one_and_update(
++            {"_id": user_id}, {"$inc": {"totpFailedAttempts": 1}}, return_document=ReturnDocument.AFTER,
++        )
++        if updated and int(updated.get("totpFailedAttempts", 0)) >= TOTP_MAX_FAILED_ATTEMPTS:
++            await db["users"].update_one(
++                {"_id": user_id},
++                {"$set": {"totpLockedUntil": now + timedelta(minutes=TOTP_LOCKOUT_MINUTES), "totpFailedAttempts": 0}},
++            )
+         raise HTTPException(status_code=400, detail="Invalid authenticator code.")
+ 
++    # Replay guard: a step may be used once. The conditional update makes
++    # "check and mark used" atomic, so two parallel requests can't both pass.
++    claimed = await db["users"].update_one(
++        {"_id": user_id, "$or": [{"totpLastUsedStep": {"$exists": False}}, {"totpLastUsedStep": {"$lt": matched_step}}]},
++        {"$set": {"totpLastUsedStep": matched_step, "totpFailedAttempts": 0}, "$unset": {"totpLockedUntil": ""}},
++    )
++    if claimed.modified_count != 1:
++        raise HTTPException(status_code=400, detail="That authenticator code was already used. Wait for the next one.")
++
+     # Consume the OTP session only after every check passes, mirroring the
+     # login/signup OTP flows in routes/auth.py — a session must stay usable
+     # if the TOTP step that follows it fails, so the user isn't forced to
+diff --git a/wallet_utils.py b/wallet_utils.py
+index 36a098f..f903b10 100644
+--- a/wallet_utils.py
++++ b/wallet_utils.py
+@@ -9,11 +9,23 @@ plain find_one — looking at only one row — so a user could see "1.5177 USDC"
+ on screen and still get rejected with "you have 0.0177" at withdrawal time.
+ These helpers make the check and the debit agree with what's displayed.
+ """
++import math
++
+ from fastapi import HTTPException
+ 
+ from routes.retail import build_user_id_candidates
+ 
+ 
++def _require_valid_amount(amount, *, allow_zero: bool = False) -> None:
++    """Last line of defence for every balance mutation. A negative amount
++    through $inc + a `$gte: <negative>` guard silently flips a debit into a
++    credit (and vice versa), so the wallet primitives refuse it themselves
++    instead of trusting every caller to have validated first."""
++    ok = isinstance(amount, (int, float)) and math.isfinite(amount) and (amount >= 0 if allow_zero else amount > 0)
++    if not ok:
++        raise HTTPException(status_code=400, detail="Invalid amount.")
++
++
+ async def get_summed_balance(db, user_id_raw, asset: str) -> float:
+     """Total balance for `asset` across every retail_wallets row matching any
+     representation of this user's id — the same computation GET /wallet uses."""
+@@ -28,6 +40,7 @@ async def debit_wallet(db, user_id_raw, asset: str, amount: float) -> None:
+     is insufficient. Must be called before any provider/on-chain call — the
+     debit happening first is what lets a failed send be safely refunded.
+     """
++    _require_valid_amount(amount)
+     candidates = build_user_id_candidates(user_id_raw)
+     wallets = await db["retail_wallets"].find({"userId": {"$in": candidates}}).to_list(length=100)
+ 
+@@ -83,6 +96,9 @@ async def credit_wallet(db, user_id_raw, asset: str, amount: float) -> None:
+     """Refund/credit `amount` back onto whichever row already represents this
+     user, to undo a debit_wallet() call after a downstream failure. Prefers
+     an existing row over creating a new one, matching how debit reads rows."""
++    _require_valid_amount(amount, allow_zero=True)
++    if amount == 0:
++        return
+     candidates = build_user_id_candidates(user_id_raw)
+     result = await db["retail_wallets"].update_one(
+         {"userId": {"$in": candidates}},
+diff --git a/workers/celo_deposit_watcher.py b/workers/celo_deposit_watcher.py
+index 15b0fea..357bd7c 100644
+--- a/workers/celo_deposit_watcher.py
++++ b/workers/celo_deposit_watcher.py
+@@ -38,6 +38,7 @@ from pymongo.errors import DuplicateKeyError
+ from broadcast import broadcast_manager
+ from notifications import notify_user
+ from celo_audit import log_celo_audit_event
++from celo_nonce import reserve_treasury_nonce
+ from celo_wallet import derive_celo_account
+ 
+ logger = logging.getLogger("celo.deposit_watcher")
+@@ -194,7 +195,7 @@ def _sweep_deposit_sync(w3: Web3, asset: str, wallet_index: int) -> dict:
+             "from": treasury.address,
+             "to": deposit_account.address,
+             "value": topup_wei,
+-            "nonce": w3.eth.get_transaction_count(treasury.address),
++            "nonce": reserve_treasury_nonce(w3, treasury.address),
+             "gas": 21000,
+             "gasPrice": gas_price,
+             "chainId": w3.eth.chain_id,
+diff --git a/admin_audit.py b/admin_audit.py
+new file mode 100644
+index 0000000..83eb75c
+--- /dev/null
++++ b/admin_audit.py
+@@ -0,0 +1,29 @@
++"""Append-only audit log for privileged admin/operator actions — who did what,
++to what, and when. Sibling of celo_audit.py / stellar_audit.py /
++fiat_payout_audit.py, which record what was *signed on a chain or sent to a
++payout rail*; this one records the *human decision* behind it (kill switch
++flipped, spread changed, revenue cashed out, sandbox reset, ...), so an
++incident review can answer "who changed that" and not just "what moved".
++
++Never raises: an audit-write failure must not block the admin action itself,
++but it is a visibility gap worth alerting on separately.
++"""
++import uuid
++from datetime import datetime
++
++
++async def log_admin_action(db, current_user: dict | None, action: str, **fields) -> dict:
++    doc = {
++        "_id": f"ADMIN_{uuid.uuid4().hex[:12].upper()}",
++        "action": action,
++        "actorId": str((current_user or {}).get("_id") or ""),
++        "actorEmail": (current_user or {}).get("email"),
++        "actorRole": (current_user or {}).get("role"),
++        "createdAt": datetime.utcnow(),
++        **fields,
++    }
++    try:
++        await db["admin_audit_log"].insert_one(doc)
++    except Exception:
++        pass
++    return doc
+diff --git a/request_lock.py b/request_lock.py
+new file mode 100644
+index 0000000..cb07889
+--- /dev/null
++++ b/request_lock.py
+@@ -0,0 +1,82 @@
++"""Per-user, per-operation mutual exclusion backed by MongoDB.
++
++Why: /ramp/execute, withdrawals and transfers read a balance, call a provider
++or a chain, then write results -- none of it inside a database transaction. Two
++overlapping requests from one user (a double-click, a retry on a slow
++connection, a scripted burst) both pass the balance check and both execute.
++Holding this lock for the duration of the request makes the second one fail
++fast with 429 instead of racing the first.
++
++A MongoDB document (not an in-process asyncio.Lock) so it also holds across
++multiple workers/instances. A lock that is never released (process killed
++mid-request) expires after `ttl_seconds` and can then be taken over.
++"""
++import uuid
++from datetime import datetime, timedelta
++
++from fastapi import HTTPException
++from pymongo.errors import DuplicateKeyError
++
++_COLLECTION = "request_locks"
++
++
++async def acquire_user_lock(db, user_id, name: str, ttl_seconds: int = 300) -> str:
++    """Take the lock or raise HTTP 429. Returns a token to pass to release."""
++    lock_id = f"{name}:{user_id}"
++    token = uuid.uuid4().hex
++    now = datetime.utcnow()
++    doc = {"_id": lock_id, "token": token, "acquiredAt": now, "expiresAt": now + timedelta(seconds=ttl_seconds)}
++    try:
++        await db[_COLLECTION].insert_one(doc)
++        return token
++    except DuplicateKeyError:
++        pass
++
++    # Someone holds it. Take over only if their lock has expired (crashed holder).
++    taken = await db[_COLLECTION].find_one_and_update(
++        {"_id": lock_id, "expiresAt": {"$lt": now}},
++        {"$set": {k: v for k, v in doc.items() if k != "_id"}},
++    )
++    if taken:
++        return token
++    raise HTTPException(
++        status_code=429,
++        detail="Another transaction on your account is still in progress. Please wait a moment and try again.",
++    )
++
++
++async def release_user_lock(db, user_id, name: str, token: str) -> None:
++    """Release only if we still own it (token match). Never raises."""
++    try:
++        await db[_COLLECTION].delete_one({"_id": f"{name}:{user_id}", "token": token})
++    except Exception:
++        pass
++
++
++# ---------------------------------------------------------------------------
++# FastAPI dependency: one money-moving request per user at a time
++# ---------------------------------------------------------------------------
++# Imported lazily inside the function so this module stays importable without
++# routes.auth (and so there can never be an import cycle with it).
++MONEY_OUT = "money_out"
++
++
++def single_flight(name: str = MONEY_OUT):
++    """Use as `@router.post(..., dependencies=[Depends(single_flight())])`.
++
++    Every route that moves value out of a user's balance shares the same lock
++    name by default, so a user also can't run a withdrawal, a transfer and a swap
++    in parallel to get several requests past the same balance check."""
++    from fastapi import Depends
++    from database import get_db
++    from routes.auth import get_current_user
++
++    async def _dep(db=Depends(get_db), current_user=Depends(get_current_user)):
++        user_key = str(current_user["_id"])
++        token = await acquire_user_lock(db, user_key, name)
++        try:
++            yield
++        finally:
++            await release_user_lock(db, user_key, name, token)
++
++    return _dep
+diff --git a/rate_limit.py b/rate_limit.py
+new file mode 100644
+index 0000000..55e62e2
+--- /dev/null
++++ b/rate_limit.py
+@@ -0,0 +1,76 @@
++"""Small in-process sliding-window rate limiter, usable as a FastAPI dependency.
++
++    @router.post("/login/request-otp", dependencies=[Depends(rate_limit("login_otp", 10, 300))])
++
++There was no rate limiting anywhere in the API: password guessing, OTP
++guessing/flooding (each OTP request sends an email), password-reset spam and
++account enumeration through /retail/transfer/lookup were all unbounded.
++
++Scope and limits (be honest about them):
++  * State is per process. With N worker processes the effective limit is N times
++    higher, and a restart clears it. That still stops scripted bursts, which is
++    what matters here; for a multi-instance deployment move the counters to
++    Redis (same interface).
++  * Keyed by client IP, or by user id for authenticated routes (`by="user"`).
++    Behind a proxy the client IP is the RIGHT-most X-Forwarded-For entry (the one
++    the platform's own proxy appended); entries to its left are client-supplied
++    and spoofable, so they are ignored.
++
++Set RATE_LIMIT_DISABLED=true to switch it off (local load tests).
++"""
++import os
++import time
++from collections import defaultdict, deque
++
++from fastapi import HTTPException, Request
++
++_hits: dict[tuple[str, str], deque] = defaultdict(deque)
++_MAX_KEYS = 50_000
++
++
++def client_ip(request: Request) -> str:
++    forwarded = request.headers.get("x-forwarded-for", "")
++    if forwarded:
++        last = forwarded.split(",")[-1].strip()
++        if last:
++            return last
++    return request.client.host if request.client else "unknown"
++
++
++def _check(name: str, key: str, limit: int, window_seconds: int) -> None:
++    if os.getenv("RATE_LIMIT_DISABLED", "false").strip().lower() == "true":
++        return
++    now = time.monotonic()
++    bucket = _hits[(name, key)]
++    while bucket and now - bucket[0] > window_seconds:
++        bucket.popleft()
++    if len(bucket) >= limit:
++        retry_after = max(1, int(window_seconds - (now - bucket[0])))
++        raise HTTPException(
++            status_code=429,
++            detail="Too many requests. Please wait a moment and try again.",
++            headers={"Retry-After": str(retry_after)},
++        )
++    bucket.append(now)
++
++    # Bound memory: drop empty/old buckets if the table grows large.
++    if len(_hits) > _MAX_KEYS:
++        for k in [k for k, v in _hits.items() if not v or now - v[-1] > window_seconds]:
++            _hits.pop(k, None)
++
++
++def rate_limit(name: str, limit: int, window_seconds: int):
++    """Dependency factory: at most `limit` calls per `window_seconds` per client IP."""
++    async def _dep(request: Request):
++        _check(name, client_ip(request), limit, window_seconds)
++    return _dep
++
++
++def rate_limit_user(name: str, limit: int, window_seconds: int):
++    """Same, keyed by the authenticated user id (falls back to IP)."""
++    from fastapi import Depends
++    from routes.auth import get_current_user
++
++    async def _dep(request: Request, current_user=Depends(get_current_user)):
++        _check(name, str((current_user or {}).get("_id") or client_ip(request)), limit, window_seconds)
++    return _dep
+diff --git a/celo_nonce.py b/celo_nonce.py
+new file mode 100644
+index 0000000..3012033
+--- /dev/null
++++ b/celo_nonce.py
+@@ -0,0 +1,43 @@
++"""Collision-free nonces for transactions signed with the shared Celo treasury key.
++
++Four independent code paths sign with the SAME treasury key -- customer
++withdrawals (routes/valora.py), swap settlement (routes/swap_engine.py), deposit
++gas top-ups (workers/celo_deposit_watcher.py) and the corridor exit
++(Brain_Engine/celo_integrations.py). Each used `get_transaction_count(addr)`,
++which counts only MINED transactions. Two of them signing within the same block
++interval received the same nonce: one transaction replaced the other or was
++rejected ("nonce too low" / "replacement underpriced"), surfacing as a random
++failed withdrawal or a swap whose on-chain leg silently never happened.
++
++reserve_treasury_nonce():
++  * asks the node for the PENDING count (includes unmined txs the node knows about);
++  * never returns a nonce at or below one this process already handed out in the
++    last NONCE_CACHE_SECONDS, which covers the window before the node has seen
++    our previous broadcast;
++  * is serialised by a lock, so concurrent threads/requests get distinct values.
++
++The cache expires so that a nonce reserved but never broadcast (build/sign error)
++cannot leave a permanent gap: after the window the node's pending count is used
++again and the gap is filled.
++
++Limit: this protects ONE process. Running several API instances against the same
++treasury key needs a shared signer (a queue/service) instead.
++"""
++import threading
++import time
++
++NONCE_CACHE_SECONDS = 120
++
++_lock = threading.Lock()
++_last: dict[str, tuple[int, float]] = {}
++
++
++def reserve_treasury_nonce(w3, address: str) -> int:
++    with _lock:
++        chain_pending = w3.eth.get_transaction_count(address, "pending")
++        nonce = chain_pending
++        cached = _last.get(address)
++        if cached and (time.monotonic() - cached[1]) < NONCE_CACHE_SECONDS:
++            nonce = max(chain_pending, cached[0] + 1)
++        _last[address] = (nonce, time.monotonic())
++        return nonce
+diff --git a/routes/admin_audit_view.py b/routes/admin_audit_view.py
+new file mode 100644
+index 0000000..de8587c
+--- /dev/null
++++ b/routes/admin_audit_view.py
+@@ -0,0 +1,147 @@
++"""Admin-only read access to the platform's audit trails and "stuck money" queue.
++
++Before this existed the audit collections (celo_audit_log, stellar_audit_log,
++fiat_payout_audit_log, compliance_checks, airtel_callback_events,
++internal_transfers) could only be read by querying MongoDB directly, internal
++transfers did not appear in the admin dashboard at all, and nothing surfaced a
++request that died halfway (debited but never credited/refunded).
++
++  GET /api/admin/audit/events   one feed per source, newest first, with search + paging
++  GET /api/admin/audit/stuck    everything that needs a human: stuck intents,
++                                unconfirmed/ambiguous payouts, transfers needing
++                                reconciliation, compliance holds, failed swaps
++  GET /api/admin/audit/summary  counts for the dashboard badge
++"""
++import re
++from datetime import datetime, timedelta
++from typing import Any
++
++from fastapi import APIRouter, Depends, HTTPException
++
++from database import get_db
++from routes.auth import get_current_user_with_role, is_admin_role
++
++router = APIRouter(prefix="/api/admin/audit", tags=["Admin Audit"])
++
++# source key -> (collection, field used for ordering, fields never sent to the browser)
++SOURCES: dict[str, tuple[str, str, set[str]]] = {
++    "admin_actions": ("admin_audit_log", "createdAt", set()),
++    "ramp_intents": ("ramp_intents", "createdAt", set()),
++    "transfers": ("internal_transfers", "createdAt", set()),
++    "celo": ("celo_audit_log", "createdAt", set()),
++    "stellar": ("stellar_audit_log", "createdAt", set()),
++    "payouts": ("fiat_payout_audit_log", "createdAt", set()),
++    "compliance": ("compliance_checks", "created_at", {"raw_response"}),
++    # Raw bodies and request headers can contain provider secrets/PII; the
++    # parsed payload + auth verdict is what an investigation needs.
++    "callbacks": ("airtel_callback_events", "receivedAt", {"rawBody", "headers"}),
++}
++
++STUCK_INTENT_MINUTES = 5
++
++
++def _ensure_admin(current_user: dict) -> None:
++    if not is_admin_role(current_user.get("role")):
++        raise HTTPException(status_code=403, detail="Admin role required")
++
++
++def _jsonable(value: Any) -> Any:
++    """Make a Mongo document safe for JSON (ObjectId, datetime, nested)."""
++    if isinstance(value, datetime):
++        return value.isoformat() + "Z"
++    if isinstance(value, dict):
++        return {str(k): _jsonable(v) for k, v in value.items()}
++    if isinstance(value, (list, tuple, set)):
++        return [_jsonable(v) for v in value]
++    if isinstance(value, (str, int, float, bool)) or value is None:
++        return value
++    return str(value)
++
++
++def _clean(doc: dict, hidden: set[str]) -> dict:
++    return _jsonable({k: v for k, v in doc.items() if k not in hidden})
++
++
++@router.get("/events")
++async def audit_events(
++    source: str = "admin_actions",
++    q: str | None = None,
++    limit: int = 50,
++    skip: int = 0,
++    db=Depends(get_db),
++    current_user=Depends(get_current_user_with_role),
++):
++    _ensure_admin(current_user)
++    if source not in SOURCES:
++        raise HTTPException(status_code=400, detail=f"Unknown source. Choose one of: {', '.join(SOURCES)}")
++    collection, order_field, hidden = SOURCES[source]
++    limit = max(1, min(int(limit or 50), 200))
++    skip = max(0, int(skip or 0))
++
++    query: dict = {}
++    if q:
++        # Escaped: this value is user-typed and goes into a $regex.
++        pattern = re.escape(q.strip()[:100])
++        text_fields = ["_id", "action", "event", "status", "userId", "actorEmail", "asset", "txId",
++                       "senderEmail", "recipientEmail", "trade_id", "user_id", "outcome", "path"]
++        query = {"$or": [{f: {"$regex": pattern, "$options": "i"}} for f in text_fields]}
++
++    cursor = db[collection].find(query).sort(order_field, -1).skip(skip).limit(limit)
++    docs = await cursor.to_list(length=limit)
++    total = await db[collection].count_documents(query)
++    return {
++        "status": "success", "source": source, "total": total, "skip": skip, "limit": limit,
++        "events": [_clean(d, hidden) for d in docs],
++    }
++
++
++async def _collect_stuck(db) -> dict:
++    now = datetime.utcnow()
++    stale = now - timedelta(minutes=STUCK_INTENT_MINUTES)
++    hour_ago = now - timedelta(hours=1)
++
++    async def fetch(collection: str, query: dict, order: str = "createdAt", hidden: set[str] | None = None, n: int = 100):
++        docs = await db[collection].find(query).sort(order, -1).limit(n).to_list(length=n)
++        return [_clean(d, hidden or set()) for d in docs]
++
++    return {
++        # Request began, never finished: the process died or hung after a debit.
++        "stuckIntents": await fetch("ramp_intents", {"status": "started", "createdAt": {"$lte": stale}}),
++        # Withdrawal sent to the provider with no confirmation either way.
++        "unconfirmedPayouts": await fetch(
++            "ramp_entries",
++            {"direction": "off", "status": {"$in": ["pending", "processing"]},
++             "$or": [{"needsReview": True}, {"ambiguousProvider": True}]},
++            hidden={"providerReport", "gatewayResponse", "gatewayResponseText"},
++        ),
++        # Internal transfer where the debit happened but credit/reversal didn't complete.
++        "transfersNeedingReconciliation": await fetch(
++            "internal_transfers",
++            {"$or": [{"status": "needs_reconciliation"}, {"status": "started", "createdAt": {"$lte": stale}}]},
++        ),
++        # Held for compliance and not yet released.
++        "complianceHolds": await fetch("ramp_entries", {"status": "pending_compliance_review"}),
++        # Money-moving requests that failed in the last hour (5xx = failed mid-flight).
++        "recentFailures": await fetch("ramp_intents", {"status": {"$in": ["failed", "error"]}, "createdAt": {"$gte": hour_ago}}),
++        # Callbacks that were rejected or that blew up while processing.
++        "badCallbacks": await fetch(
++            "airtel_callback_events",
++            {"receivedAt": {"$gte": hour_ago}, "$or": [{"error": {"$exists": True}}, {"processed": False}]},
++            order="receivedAt", hidden={"rawBody", "headers"}, n=50,
++        ),
++    }
++
++
++@router.get("/stuck")
++async def stuck_items(db=Depends(get_db), current_user=Depends(get_current_user_with_role)):
++    _ensure_admin(current_user)
++    data = await _collect_stuck(db)
++    return {"status": "success", "counts": {k: len(v) for k, v in data.items()}, **data}
++
++
++@router.get("/summary")
++async def audit_summary(db=Depends(get_db), current_user=Depends(get_current_user_with_role)):
++    _ensure_admin(current_user)
++    data = await _collect_stuck(db)
++    counts = {k: len(v) for k, v in data.items()}
++    return {"status": "success", "counts": counts, "needsAttention": sum(counts.values())}
+diff --git a/tests/test_security_fixes.py b/tests/test_security_fixes.py
+new file mode 100644
+index 0000000..21e43de
+--- /dev/null
++++ b/tests/test_security_fixes.py
+@@ -0,0 +1,249 @@
++"""Regression tests for the 2026-10-12 retail go-live fixes.
++
++Run from backend/ with the project venv (no pytest or database needed):
++
++    python -m unittest tests.test_security_fixes -v
++
++Each test names the bug it guards. They exercise the real functions; the only
++fake is a tiny in-memory collection for the lock test.
++"""
++import asyncio
++import os
++import sys
++import unittest
++from datetime import datetime, timedelta
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++os.environ.setdefault("RATE_LIMIT_DISABLED", "false")
++
++from fastapi import HTTPException  # noqa: E402
++from pymongo.errors import DuplicateKeyError  # noqa: E402
++
++
++def run(coro):
++    return asyncio.get_event_loop_policy().new_event_loop().run_until_complete(coro)
++
++
++class RampValidation(unittest.TestCase):
++    """Negative / NaN / unknown-asset amounts used to reach balance arithmetic."""
++
++    def setUp(self):
++        from routes.ramp import RampExecute, _validate_ramp_request
++        self.Body, self.validate = RampExecute, _validate_ramp_request
++
++    def body(self, **kw):
++        d = dict(direction="swap", channel="Internal Ledger", from_asset="KES", to_asset="USDT",
++                 amount=100.0, rate=1.0, fee=0.0, counterparty="")
++        d.update(kw)
++        return self.Body(**d)
++
++    def test_rejects_bad_requests(self):
++        for label, kw in {
++            "negative": dict(amount=-5), "zero": dict(amount=0), "nan": dict(amount=float("nan")),
++            "inf": dict(amount=float("inf")), "huge": dict(amount=1e12), "unknown asset": dict(to_asset="$where"),
++            "self swap": dict(to_asset="KES"), "bad direction": dict(direction="sideways"),
++            "bad min_receive": dict(min_receive=float("nan")),
++        }.items():
++            with self.subTest(label), self.assertRaises(HTTPException):
++                self.validate(self.body(**kw))
++
++    def test_accepts_normal_requests(self):
++        self.validate(self.body())
++        self.validate(self.body(min_receive=1.0))
++
++
++class WalletGuards(unittest.TestCase):
++    def test_debit_and_credit_reject_bad_amounts(self):
++        import wallet_utils
++        for bad in (-1, 0, float("nan"), float("inf")):
++            with self.subTest(bad), self.assertRaises(HTTPException):
++                run(wallet_utils.debit_wallet(None, "u", "KES", bad))
++        for bad in (-1, float("nan")):
++            with self.subTest(bad), self.assertRaises(HTTPException):
++                run(wallet_utils.credit_wallet(None, "u", "KES", bad))
++        run(wallet_utils.credit_wallet(None, "u", "KES", 0))  # zero is a no-op, must not touch db
++
++
++class CallbackAuth(unittest.TestCase):
++    """A forged provider callback could credit a deposit that was never paid."""
++
++    class Req:
++        def __init__(self, h=None, q=None):
++            self.headers, self.query_params = h or {}, q or {}
++
++    def setUp(self):
++        self._env = {k: os.environ.pop(k, None) for k in ("AIRTEL_CALLBACK_AUTH_ENABLED", "AIRTEL_CALLBACK_TOKEN", "APP_ENV")}
++        from routes import ramp
++        self.ramp = ramp
++
++    def tearDown(self):
++        for k, v in self._env.items():
++            os.environ.pop(k, None)
++            if v is not None:
++                os.environ[k] = v
++
++    def test_production_without_any_auth_fails_closed(self):
++        os.environ["APP_ENV"] = "production"
++        self.assertTrue(self.ramp._verify_airtel_callback_signature(self.Req(), "")["failClosed"])
++
++    def test_development_is_permissive(self):
++        self.assertFalse(self.ramp._verify_airtel_callback_signature(self.Req(), "")["failClosed"])
++
++    def test_token_must_match(self):
++        os.environ["AIRTEL_CALLBACK_TOKEN"] = "s3cret"
++        v = self.ramp._verify_airtel_callback_signature
++        self.assertFalse(v(self.Req(), "")["tokenValid"])
++        self.assertFalse(v(self.Req(q={"token": "nope"}), "")["tokenValid"])
++        self.assertTrue(v(self.Req(q={"token": "s3cret"}), "")["tokenValid"])
++        self.assertTrue(v(self.Req(h={"X-Callback-Token": "s3cret"}), "")["tokenValid"])
++
++    def test_token_is_only_added_to_the_gateway_copy_of_the_url(self):
++        os.environ["AIRTEL_CALLBACK_TOKEN"] = "s3cret"
++        self.assertEqual(self.ramp._with_callback_token("https://x/cb"), "https://x/cb?token=s3cret")
++        os.environ.pop("AIRTEL_CALLBACK_TOKEN")
++        self.assertEqual(self.ramp._with_callback_token("https://x/cb"), "https://x/cb")
++
++
++class RateBookFreshness(unittest.TestCase):
++    """The rate book is an admin-typed table; a stale one must not keep quoting."""
++
++    def setUp(self):
++        self._env = {k: os.environ.pop(k, None) for k in ("APP_ENV", "RATE_BOOK_ENFORCE_FRESHNESS", "RATE_BOOK_MAX_AGE_HOURS")}
++        from routes.treasury import assert_rate_book_fresh
++        self.check = assert_rate_book_fresh
++
++    def tearDown(self):
++        for k, v in self._env.items():
++            os.environ.pop(k, None)
++            if v is not None:
++                os.environ[k] = v
++
++    def book(self, age_hours, by="admin1"):
++        return {"updatedBy": by, "updatedAt": datetime.utcnow() - timedelta(hours=age_hours), "refresh_interval_hours": 3}
++
++    def test_not_enforced_outside_production(self):
++        self.check(self.book(999, by=None))
++
++    def test_enforced_in_production(self):
++        os.environ["APP_ENV"] = "production"
++        self.check(self.book(1))                      # fresh: ok
++        with self.assertRaises(HTTPException):
++            self.check(self.book(7))                  # older than 2x refresh (6h)
++        with self.assertRaises(HTTPException):
++            self.check(self.book(0, by=None))         # never set by an admin: still the seeded defaults
++
++
++class RateLimiter(unittest.TestCase):
++    def test_blocks_after_limit_and_is_per_key(self):
++        import rate_limit
++        os.environ["RATE_LIMIT_DISABLED"] = "false"
++        rate_limit._hits.clear()
++        for _ in range(3):
++            rate_limit._check("t", "1.2.3.4", 3, 60)
++        with self.assertRaises(HTTPException) as ctx:
++            rate_limit._check("t", "1.2.3.4", 3, 60)
++        self.assertEqual(ctx.exception.status_code, 429)
++        rate_limit._check("t", "5.6.7.8", 3, 60)      # a different client is unaffected
++
++    def test_client_ip_uses_rightmost_forwarded_entry(self):
++        import rate_limit
++
++        class R:
++            headers = {"x-forwarded-for": "6.6.6.6, 9.9.9.9"}
++            client = None
++        self.assertEqual(rate_limit.client_ip(R()), "9.9.9.9")   # left entries are client-supplied
++
++
++class TreasuryNonce(unittest.TestCase):
++    """Two signers on the shared treasury key were handed the same nonce."""
++
++    def test_consecutive_reservations_are_distinct_even_if_node_lags(self):
++        import celo_nonce
++        celo_nonce._last.clear()
++
++        class Eth:
++            def get_transaction_count(self, addr, block):
++                assert block == "pending"
++                return 7                                  # node hasn't seen our broadcasts yet
++
++        class W3:
++            eth = Eth()
++
++        got = [celo_nonce.reserve_treasury_nonce(W3(), "0xabc") for _ in range(3)]
++        self.assertEqual(got, [7, 8, 9])
++
++
++class _Col:
++    """Just enough of a Motor collection for request_lock."""
++    def __init__(self):
++        self.docs = {}
++
++    async def insert_one(self, d):
++        if d["_id"] in self.docs:
++            raise DuplicateKeyError("dup")
++        self.docs[d["_id"]] = dict(d)
++
++    async def find_one_and_update(self, filt, upd):
++        d = self.docs.get(filt["_id"])
++        if d and d["expiresAt"] < filt["expiresAt"]["$lt"]:
++            d.update(upd["$set"])
++            return dict(d)
++        return None
++
++    async def delete_one(self, filt):
++        d = self.docs.get(filt["_id"])
++        if d and d["token"] == filt["token"]:
++            del self.docs[filt["_id"]]
++
++
++class RequestLock(unittest.TestCase):
++    def test_second_request_is_refused_until_release_or_expiry(self):
++        from request_lock import acquire_user_lock, release_user_lock
++        db = {"request_locks": _Col()}
++
++        async def scenario():
++            t1 = await acquire_user_lock(db, "u1", "money_out")
++            with self.assertRaises(HTTPException) as ctx:
++                await acquire_user_lock(db, "u1", "money_out")          # double-click
++            self.assertEqual(ctx.exception.status_code, 429)
++            await acquire_user_lock(db, "u2", "money_out")              # other users unaffected
++            await release_user_lock(db, "u1", "money_out", "wrong-token")
++            with self.assertRaises(HTTPException):                      # wrong token can't release
++                await acquire_user_lock(db, "u1", "money_out")
++            await release_user_lock(db, "u1", "money_out", t1)
++            await acquire_user_lock(db, "u1", "money_out")              # free again
++            # a crashed holder's lock expires and can be taken over
++            db["request_locks"].docs["money_out:u3"] = {
++                "_id": "money_out:u3", "token": "dead", "expiresAt": datetime.utcnow() - timedelta(seconds=1)}
++            await acquire_user_lock(db, "u3", "money_out")
++
++        run(scenario())
++
++
++class WebsocketAuth(unittest.TestCase):
++    def test_identity_comes_from_the_token(self):
++        from routes.auth import create_access_token
++        from routes.realtime import _authenticate_ws
++        tok = create_access_token({"sub": "user123", "workspaceId": "w"})
++        self.assertEqual(run(_authenticate_ws(tok, None)), "user123")
++        self.assertEqual(run(_authenticate_ws(tok, "user123")), "user123")
++        self.assertIsNone(run(_authenticate_ws(tok, "someone-else")))   # can't subscribe as another user
++        self.assertIsNone(run(_authenticate_ws("garbage", None)))
++        self.assertIsNone(run(_authenticate_ws(None, "user123")))
++
++
++class AuditSerialisation(unittest.TestCase):
++    def test_documents_are_json_safe_and_secrets_stripped(self):
++        from bson import ObjectId
++        from routes.admin_audit_view import _clean
++        doc = {"_id": ObjectId(), "at": datetime(2026, 1, 2, 3, 4, 5), "rawBody": "secret", "nested": {"o": ObjectId()}}
++        out = _clean(doc, {"rawBody"})
++        self.assertNotIn("rawBody", out)
++        self.assertIsInstance(out["_id"], str)
++        self.assertEqual(out["at"], "2026-01-02T03:04:05Z")
++        self.assertIsInstance(out["nested"]["o"], str)
++
++
++if __name__ == "__main__":
++    unittest.main()

@@ -236,6 +236,15 @@ export const getHftCorridorStatus = (runId: string) =>
   api.get(`/api/treasury/corridor/${runId}/status`);
 
 // ==========================================
+// ADMIN AUDIT & "NEEDS ATTENTION" QUEUE — routes/admin_audit_view.py
+// ==========================================
+
+export const getAuditEvents = (params: { source: string; q?: string; limit?: number; skip?: number }) =>
+  api.get('/api/admin/audit/events', { params });
+export const getAuditStuck = () => api.get('/api/admin/audit/stuck');
+export const getAuditSummary = () => api.get('/api/admin/audit/summary');
+
+// ==========================================
 // BASE RATE (KES/USD) — services/rate_feed.py
 // ==========================================
 
@@ -498,3 +507,25 @@ export const uploadSettlementEvidence = (id: string, data: { filename: string; d
   api.post(`/api/admin/dealer/settlements/${id}/evidence`, data);
 export const getSettlementEvidence = (id: string, evidenceId: string) =>
   api.get(`/api/admin/dealer/settlements/${id}/evidence/${evidenceId}`);
+
+// ==========================================
+// VIRTUAL CARDS (Deposits -> Virtual Card). The partner API key lives on the server only.
+// ==========================================
+
+const idem = (key: string) => ({ 'Idempotency-Key': key });
+
+export const getCardStatus = () => api.get('/api/cards/status');
+export const getCardQuote = (kind: 'issue' | 'fund', usd: string) => api.get('/api/cards/quote', { params: { kind, usd } });
+export const submitCardKyc = (form: FormData, key: string) =>
+  api.post('/api/cards/kyc', form, { headers: { ...idem(key), 'Content-Type': 'multipart/form-data' } });
+export const issueCard = (data: any, key: string) => api.post('/api/cards/issue', data, { headers: idem(key) });
+export const fundCard = (cardNo: string, data: any, key: string) =>
+  api.post(`/api/cards/${encodeURIComponent(cardNo)}/fund`, data, { headers: idem(key) });
+export const freezeCard = (cardNo: string, key: string) =>
+  api.post(`/api/cards/${encodeURIComponent(cardNo)}/freeze`, {}, { headers: idem(key) });
+export const unfreezeCard = (cardNo: string, key: string) =>
+  api.post(`/api/cards/${encodeURIComponent(cardNo)}/unfreeze`, {}, { headers: idem(key) });
+export const getCardBalance = (cardNo: string) => api.get(`/api/cards/${encodeURIComponent(cardNo)}/balance`);
+// Sensitive: full number / expiry / CVV. Needs the same step-up as a withdrawal. Never store the response.
+export const getCardDetails = (cardNo: string, data: any) =>
+  api.post(`/api/cards/${encodeURIComponent(cardNo)}/details`, data);

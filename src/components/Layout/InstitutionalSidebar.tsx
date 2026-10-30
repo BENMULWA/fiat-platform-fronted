@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import {
   ArrowLeftRight, ClipboardCheck, LayoutDashboard, Wallet, ArrowDownToLine,
-  ArrowUpFromLine, Repeat, HandCoins, UserCircle, History, LogOut, X, ChevronDown, Activity,
+  ArrowUpFromLine, Repeat, HandCoins, UserCircle, History, LogOut, X, ChevronDown,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
@@ -23,7 +23,6 @@ const groupedSections: { title: string; items: NavItem[] }[] = [
     title: 'Trading', items: [
       { to: '/otc/request', label: 'New Conversion', icon: Repeat },
       { to: '/otc/settlements', label: 'Settlements', icon: HandCoins },
-      { to: '/otc/imm', label: 'Market Maker (IMM)', icon: Activity },
     ]
   },
 ]
@@ -168,8 +167,7 @@ export default function InstitutionalSidebar({ onClose }: InstitutionalSidebarPr
       <div className={`px-4 pb-6 pt-4 border-t space-y-3 shrink-0 shadow-[0_-4px_20px_rgba(0,0,0,0.2)] ${isLight ? 'bg-white border-slate-200' : 'bg-[#050b14] border-[#1a2a40]'}`}>
         <button
           onClick={logout}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 text-sm font-bold transition-colors"
-        >
+          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 text-sm font-bold transition-colors">
           <LogOut className="w-4 h-4" strokeWidth={2.5} />
           Sign out
         </button>

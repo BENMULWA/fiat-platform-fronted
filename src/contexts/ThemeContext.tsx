@@ -9,7 +9,7 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined)
 
-const STORAGE_KEY = 'jasiri_theme'
+const STORAGE_KEY = 'jasiri_theme' // localStorage key for storing the user's theme preference based on the device 
 
 function getSystemTheme(): Theme {
   try {
@@ -34,7 +34,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // app matches what the user already has their phone/laptop set to.
   // Once they use the in-app toggle, that explicit choice is remembered
   // and takes over from the OS setting.
-  const [theme, setTheme] = useState<Theme>(() => getStoredTheme() ?? getSystemTheme())
+  const [theme, setTheme] = useState<Theme>(() => getStoredTheme() ?? getSystemTheme()) // stores the current theme, either 'light' or 'dark'
   const [hasExplicitChoice, setHasExplicitChoice] = useState<boolean>(() => getStoredTheme() !== null)
 
   useEffect(() => {

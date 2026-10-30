@@ -1,0 +1,346 @@
+diff --git a/src/App.tsx b/src/App.tsx
+index 2841f1f..3b0d780 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -43,6 +43,7 @@ import AdministrationPage from './pages/SystemAdminRoles'
+ // --- NEW OTC DASHBOARD PAGES ---
+ import DashboardOverview from './pages/OTC Dashboard/DashboardOverview';
+ import { RetailTransactionsPage } from './pages/OTC Dashboard/RetailTransactions';
++import { AuditLogPage } from './pages/OTC Dashboard/AuditLog';
+ import PaymentsPage from './pages/OTC Dashboard/Payments';
+ import { TreasuryPage } from './pages/OTC Dashboard/Treasury';
+ import { TreasurySettlementsPage } from './pages/OTC Dashboard/TreasurySettlements';
+@@ -209,6 +210,7 @@ function AppRoutes() {
+         <Route path="admin/dashboard" element={<DashboardOverview />} />
+         <Route path="admin/retail-transactions" element={<RetailTransactionsPage />} />
+         <Route path="admin/retail-orders" element={<RetailTransactionsPage />} />
++        <Route path="admin/audit-log" element={<AuditLogPage />} />
+         <Route path="admin/payments" element={<PaymentsPage />} />
+         <Route path="admin/treasury" element={<TreasuryPage />} />
+         <Route path="admin/positions" element={<TreasuryPage />} />
+diff --git a/src/api/client.ts b/src/api/client.ts
+index 8ad6d18..b5ce87b 100644
+--- a/src/api/client.ts
++++ b/src/api/client.ts
+@@ -235,6 +235,15 @@ export const startHftCorridor = (data: { amount: number; corridor_id: string; cu
+ export const getHftCorridorStatus = (runId: string) =>
+   api.get(`/api/treasury/corridor/${runId}/status`);
+ 
++// ==========================================
++// ADMIN AUDIT & "NEEDS ATTENTION" QUEUE — routes/admin_audit_view.py
++// ==========================================
++
++export const getAuditEvents = (params: { source: string; q?: string; limit?: number; skip?: number }) =>
++  api.get('/api/admin/audit/events', { params });
++export const getAuditStuck = () => api.get('/api/admin/audit/stuck');
++export const getAuditSummary = () => api.get('/api/admin/audit/summary');
++
+ // ==========================================
+ // BASE RATE (KES/USD) — services/rate_feed.py
+ // ==========================================
+diff --git a/src/components/Layout/Sidebar.tsx b/src/components/Layout/Sidebar.tsx
+index 852f20e..4441dcd 100644
+--- a/src/components/Layout/Sidebar.tsx
++++ b/src/components/Layout/Sidebar.tsx
+@@ -106,7 +106,8 @@ const otcSections = [
+   {
+     title: 'COMPLIANCE',
+     items: [
+-      { id: 'kyc-aml-risk', path: '/admin/compliance', label: 'KYC / AML / Risk', icon: ShieldCheck }
++      { id: 'kyc-aml-risk', path: '/admin/compliance', label: 'KYC / AML / Risk', icon: ShieldCheck },
++      { id: 'audit-log', path: '/admin/audit-log', label: 'Audit Log & Alerts', icon: ShieldAlert }
+     ]
+   },
+   {
+diff --git a/src/hooks/useWebsocket.ts b/src/hooks/useWebsocket.ts
+index d3f3c95..c469128 100644
+--- a/src/hooks/useWebsocket.ts
++++ b/src/hooks/useWebsocket.ts
+@@ -9,6 +9,16 @@ export default function useWebsocket(path: string, userId: string | null, onMess
+   useEffect(() => {
+     if (!path) return;
+ 
++    // The backend now authenticates /ws/dashboard with the same JWT the REST
++    // calls use, and takes the user identity from the token itself. No token
++    // (logged out) means nothing to subscribe to, so don't open a socket.
++    let token: string | null = null;
++    try { token = localStorage.getItem('meshex_token'); } catch (e) { /* storage blocked */ }
++    if (!token) return;
++
++    let disposed = false;
++    let reconnectTimer: number | undefined;
++
+     const buildUrl = () => {
+       const envUrl = (import.meta as any).env?.VITE_API_URL || '';
+       let base = envUrl || window.location.origin;
+@@ -17,23 +27,26 @@ export default function useWebsocket(path: string, userId: string | null, onMess
+       const wsProto = base.startsWith('https') ? 'wss' : 'ws';
+       // strip protocol
+       base = base.replace(/^https?:\/\//, '');
+-      return `${wsProto}://${base}${path}?userId=${encodeURIComponent(userId || '')}`;
++      return `${wsProto}://${base}${path}?token=${encodeURIComponent(token)}`;
+     };
+ 
+-    let wsUrl = buildUrl();
++    const wsUrl = buildUrl();
+ 
+     const connect = () => {
++      if (disposed) return;
+       try {
+         wsRef.current = new WebSocket(wsUrl);
+         wsRef.current.onopen = () => {
+-          // console.log('WS connected', wsUrl);
++          reconnectRef.current = 0;
+         };
+         wsRef.current.onmessage = (ev) => {
+           try { onMessage(JSON.parse(ev.data)); } catch (e) { onMessage(ev.data); }
+         };
+-        wsRef.current.onclose = () => {
+-          // attempt reconnect
+-          const id = window.setTimeout(() => connect(), Math.min(30000, 1000 * (reconnectRef.current + 1)));
++        wsRef.current.onclose = (ev) => {
++          // 4401 = the server rejected our token. Retrying with the same
++          // token can never succeed, so stop instead of hammering the server.
++          if (disposed || ev.code === 4401) return;
++          reconnectTimer = window.setTimeout(connect, Math.min(30000, 1000 * (reconnectRef.current + 1)));
+           reconnectRef.current += 1;
+         };
+         wsRef.current.onerror = () => {
+@@ -47,6 +60,8 @@ export default function useWebsocket(path: string, userId: string | null, onMess
+     connect();
+ 
+     return () => {
++      disposed = true;
++      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+       if (wsRef.current) {
+         try { wsRef.current.close(); } catch (e) {}
+       }
+diff --git a/src/pages/DashboardPage.tsx b/src/pages/DashboardPage.tsx
+index 53a642d..e170407 100644
+--- a/src/pages/DashboardPage.tsx
++++ b/src/pages/DashboardPage.tsx
+@@ -90,7 +90,9 @@ export default function MarketMakerPage() {
+       try {
+         const [cardanoRes, mpesaRes, revRes] = await Promise.allSettled([
+           getMasterWalletBalance(),
+-          fetch('/api/treasury/mpesa/balances').then(res => res.json()),
++          // Was a bare fetch() with no Authorization header; the endpoint is now
++          // admin-only, so go through the authenticated axios client.
++          api.get('/api/treasury/mpesa/balances').then(res => res.data),
+           api.get('/api/treasury/revenue') // 🟢 FETCH REVENUE
+         ]);
+ 
+diff --git a/src/pages/retail/TradePage.tsx b/src/pages/retail/TradePage.tsx
+index 5d20925..38a3ee5 100644
+--- a/src/pages/retail/TradePage.tsx
++++ b/src/pages/retail/TradePage.tsx
+@@ -310,9 +310,16 @@ export default function TradePage() {
+         setSubmitting(true); setToastError('')
+ 
+         try {
++            // Slippage guard: refuse to execute if the server's price has moved
++            // more than 0.5% below the quote the customer is looking at. AIRT
++            // swaps are skipped because the server rounds them to whole tokens,
++            // so their executed amount legitimately differs from the displayed one.
++            const involvesAirt = from === 'AIRT' || to === 'AIRT'
++            const minReceive = !involvesAirt && receiveAmount > 0 ? Number((receiveAmount * 0.995).toFixed(6)) : undefined
+             await executeRamp({
+                 direction: 'swap', channel: 'Internal Ledger', from_asset: from, to_asset: to,
+                 amount: parsedAmount, rate, fee: feeCaptured, counterparty: 'Internal Wallet',
++                ...(minReceive !== undefined ? { min_receive: minReceive } : {}),
+             })
+             setShowSuccessModal(true); setAmount(''); loadHistory(); loadWallet()
+         } catch (error: any) {
+diff --git a/src/pages/OTC Dashboard/AuditLog.tsx b/src/pages/OTC Dashboard/AuditLog.tsx
+new file mode 100644
+index 0000000..01ec71e
+--- /dev/null
++++ b/src/pages/OTC Dashboard/AuditLog.tsx	
+@@ -0,0 +1,187 @@
++// @ts-nocheck
++import React, { useCallback, useEffect, useState } from 'react';
++import { AlertTriangle, RefreshCw, Search, ChevronLeft, ChevronRight, ShieldCheck } from 'lucide-react';
++import { getAuditEvents, getAuditStuck } from '../../api/client';
++
++// "Needs attention" is the queue of things a human must act on; the rest are
++// the raw, append-only trails. Keys match SOURCES in backend routes/admin_audit_view.py.
++const TABS = [
++    { key: 'attention', label: 'Needs attention' },
++    { key: 'admin_actions', label: 'Admin actions' },
++    { key: 'ramp_intents', label: 'Money requests' },
++    { key: 'transfers', label: 'Internal transfers' },
++    { key: 'payouts', label: 'Fiat payouts' },
++    { key: 'celo', label: 'Celo' },
++    { key: 'stellar', label: 'Stellar' },
++    { key: 'compliance', label: 'Compliance' },
++    { key: 'callbacks', label: 'Provider callbacks' },
++];
++
++const ATTENTION_SECTIONS = [
++    { key: 'stuckIntents', title: 'Requests that never finished', help: 'A money request started and never closed. The customer may be debited with nothing delivered. Reconcile before anything else.' },
++    { key: 'unconfirmedPayouts', title: 'Withdrawals with no provider confirmation', help: 'Sent to the payment provider, outcome unknown. Funds are held. Confirm with the provider, then complete or refund.' },
++    { key: 'transfersNeedingReconciliation', title: 'Internal transfers needing reconciliation', help: 'A debit may have happened without the matching credit or reversal.' },
++    { key: 'complianceHolds', title: 'Held for compliance review', help: 'No funds have moved. Release or reject.' },
++    { key: 'recentFailures', title: 'Failed money requests (last hour)', help: 'Server-side failures during a swap, deposit or withdrawal.' },
++    { key: 'badCallbacks', title: 'Rejected or failed provider callbacks (last hour)', help: 'Forged, unsigned or unprocessable callbacks. A burst of these can mean someone is probing the deposit flow.' },
++];
++
++const SUMMARY_FIELDS = ['action', 'event', 'status', 'outcome', 'direction', 'resultStatus', 'asset', 'amount', 'fromAsset', 'toAsset'];
++const WHO_FIELDS = ['actorEmail', 'actorId', 'userId', 'user_id', 'senderEmail', 'recipientEmail'];
++
++const timeOf = (e: any) => e.createdAt || e.created_at || e.receivedAt || e.timestamp || e.at || '';
++const fmtTime = (iso: string) => {
++    if (!iso) return '—';
++    const d = new Date(iso);
++    return isNaN(d.getTime()) ? String(iso) : d.toLocaleString();
++};
++
++function EventRow({ e }: { e: any }) {
++    const [open, setOpen] = useState(false);
++    const summary = SUMMARY_FIELDS.filter(f => e[f] !== undefined && e[f] !== null && e[f] !== '').map(f => `${f}: ${typeof e[f] === 'object' ? JSON.stringify(e[f]) : e[f]}`);
++    const who = WHO_FIELDS.map(f => e[f]).filter(Boolean)[0];
++    return (
++        <>
++            <tr onClick={() => setOpen(o => !o)} className="cursor-pointer hover:bg-white/[0.03] border-b border-[#1e2533]/60">
++                <td className="py-2 pr-4 text-gray-500 font-mono text-xs whitespace-nowrap">{fmtTime(timeOf(e))}</td>
++                <td className="py-2 pr-4 text-gray-300 text-xs">{summary.join(' · ') || '—'}</td>
++                <td className="py-2 pr-4 text-gray-400 font-mono text-xs">{who || '—'}</td>
++                <td className="py-2 text-gray-600 font-mono text-[11px] whitespace-nowrap">{String(e._id || '').slice(-10)}</td>
++            </tr>
++            {open && (
++                <tr className="border-b border-[#1e2533]/60">
++                    <td colSpan={4} className="py-2">
++                        <pre className="text-[11px] text-gray-400 bg-black/30 rounded p-3 overflow-x-auto whitespace-pre-wrap break-all">{JSON.stringify(e, null, 2)}</pre>
++                    </td>
++                </tr>
++            )}
++        </>
++    );
++}
++
++function EventTable({ events }: { events: any[] }) {
++    if (!events.length) return <div className="py-8 text-center text-gray-500 text-sm">Nothing here.</div>;
++    return (
++        <div className="overflow-x-auto">
++            <table className="w-full text-left">
++                <thead>
++                    <tr className="text-[11px] uppercase tracking-wider text-gray-500 border-b border-[#1e2533]">
++                        <th className="py-2 pr-4 font-semibold">Time</th>
++                        <th className="py-2 pr-4 font-semibold">What happened</th>
++                        <th className="py-2 pr-4 font-semibold">Who</th>
++                        <th className="py-2 font-semibold">Ref</th>
++                    </tr>
++                </thead>
++                <tbody>{events.map((e, i) => <EventRow key={`${e._id}-${i}`} e={e} />)}</tbody>
++            </table>
++        </div>
++    );
++}
++
++export const AuditLogPage = () => {
++    const [tab, setTab] = useState('attention');
++    const [events, setEvents] = useState<any[]>([]);
++    const [total, setTotal] = useState(0);
++    const [stuck, setStuck] = useState<any | null>(null);
++    const [q, setQ] = useState('');
++    const [query, setQuery] = useState('');
++    const [skip, setSkip] = useState(0);
++    const [loading, setLoading] = useState(true);
++    const [error, setError] = useState('');
++    const limit = 50;
++
++    const load = useCallback(async () => {
++        setLoading(true); setError('');
++        try {
++            if (tab === 'attention') {
++                const res = await getAuditStuck();
++                setStuck(res.data);
++            } else {
++                const res = await getAuditEvents({ source: tab, q: query || undefined, limit, skip });
++                setEvents(res.data.events || []);
++                setTotal(res.data.total || 0);
++            }
++        } catch (err: any) {
++            setError(err?.response?.data?.detail || 'Could not load the audit data.');
++        } finally {
++            setLoading(false);
++        }
++    }, [tab, query, skip]);
++
++    useEffect(() => { load(); }, [load]);
++    // The attention queue is the one thing worth watching live.
++    useEffect(() => {
++        if (tab !== 'attention') return;
++        const id = setInterval(load, 30000);
++        return () => clearInterval(id);
++    }, [tab, load]);
++
++    const switchTab = (key: string) => { setTab(key); setSkip(0); setQ(''); setQuery(''); };
++    const attentionTotal = stuck ? Object.values(stuck.counts || {}).reduce((a: number, b: any) => a + Number(b), 0) : 0;
++
++    return (
++        <div className="p-6 text-white space-y-6">
++            <div className="flex items-start justify-between gap-4">
++                <div>
++                    <h1 className="text-xl font-bold flex items-center gap-2"><ShieldCheck size={20} className="text-emerald-400" /> Audit log &amp; alerts</h1>
++                    <p className="text-sm text-gray-500 mt-1">Every privileged admin action, money request, payout, on-chain signing event, compliance check and provider callback.</p>
++                </div>
++                <button onClick={load} className="flex items-center gap-2 text-xs font-bold text-gray-300 border border-[#1e2533] rounded-lg px-3 py-2 hover:bg-white/5">
++                    <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
++                </button>
++            </div>
++
++            <div className="flex flex-wrap gap-2">
++                {TABS.map(t => (
++                    <button key={t.key} onClick={() => switchTab(t.key)}
++                        className={`text-xs font-bold px-3 py-2 rounded-lg border ${tab === t.key ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300' : 'border-[#1e2533] text-gray-400 hover:bg-white/5'}`}>
++                        {t.label}
++                        {t.key === 'attention' && stuck && attentionTotal > 0 && <span className="ml-2 bg-red-500 text-white rounded-full px-1.5 py-0.5 text-[10px]">{attentionTotal}</span>}
++                    </button>
++                ))}
++            </div>
++
++            {error && <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg p-3">{error}</div>}
++
++            {tab === 'attention' ? (
++                <div className="space-y-6">
++                    {stuck && attentionTotal === 0 && !loading && (
++                        <div className="text-sm text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4">Nothing needs attention right now.</div>
++                    )}
++                    {stuck && ATTENTION_SECTIONS.map(s => {
++                        const items = stuck[s.key] || [];
++                        if (!items.length) return null;
++                        return (
++                            <section key={s.key} className="bg-[#0b0f17] border border-[#1e2533] rounded-xl p-4">
++                                <h2 className="text-sm font-bold flex items-center gap-2 text-amber-300"><AlertTriangle size={14} /> {s.title} <span className="text-gray-500 font-normal">({items.length})</span></h2>
++                                <p className="text-xs text-gray-500 mt-1 mb-3">{s.help}</p>
++                                <EventTable events={items} />
++                            </section>
++                        );
++                    })}
++                </div>
++            ) : (
++                <div className="bg-[#0b0f17] border border-[#1e2533] rounded-xl p-4 space-y-4">
++                    <form onSubmit={e => { e.preventDefault(); setSkip(0); setQuery(q); }} className="flex gap-2">
++                        <div className="relative flex-1">
++                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
++                            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search id, user, action, status, asset…"
++                                className="w-full bg-black/30 border border-[#1e2533] rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-emerald-500/50" />
++                        </div>
++                        <button className="text-xs font-bold px-4 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">Search</button>
++                    </form>
++                    <EventTable events={events} />
++                    <div className="flex items-center justify-between text-xs text-gray-500">
++                        <span>{total ? `${skip + 1}–${Math.min(skip + limit, total)} of ${total}` : '0 results'}</span>
++                        <div className="flex gap-2">
++                            <button disabled={skip === 0} onClick={() => setSkip(Math.max(0, skip - limit))} className="p-2 border border-[#1e2533] rounded-lg disabled:opacity-30 hover:bg-white/5"><ChevronLeft size={14} /></button>
++                            <button disabled={skip + limit >= total} onClick={() => setSkip(skip + limit)} className="p-2 border border-[#1e2533] rounded-lg disabled:opacity-30 hover:bg-white/5"><ChevronRight size={14} /></button>
++                        </div>
++                    </div>
++                </div>
++            )}
++        </div>
++    );
++};
++
++export default AuditLogPage;

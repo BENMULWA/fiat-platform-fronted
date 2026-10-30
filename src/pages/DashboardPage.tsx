@@ -90,7 +90,9 @@ export default function MarketMakerPage() {
       try {
         const [cardanoRes, mpesaRes, revRes] = await Promise.allSettled([
           getMasterWalletBalance(),
-          fetch('/api/treasury/mpesa/balances').then(res => res.json()),
+          // Was a bare fetch() with no Authorization header; the endpoint is now
+          // admin-only, so go through the authenticated axios client.
+          api.get('/api/treasury/mpesa/balances').then(res => res.data),
           api.get('/api/treasury/revenue') // 🟢 FETCH REVENUE
         ]);
 

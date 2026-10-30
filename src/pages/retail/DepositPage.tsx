@@ -25,6 +25,7 @@ import CrossBorderMomoGrid from '../../components/CrossBorderMomoGrid';
 import QRCode from 'react-qr-code';
 import useWebsocket from '../../hooks/useWebsocket';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useNavigate } from 'react-router-dom';
 
 const EXPLORER_URLS: Record<string, { address: string, tx: string, name: string }> = {
   stellar: { address: 'https://stellar.expert/explorer/public/account/', tx: 'https://stellar.expert/explorer/public/tx/', name: 'Stellar.expert' },
@@ -42,7 +43,7 @@ const CHANNELS = [
  // { id: 'Till/Paybill', name: 'Till / Paybill', subtitle: 'Business', description: 'Business collection channels', icon: Store, active: false, color: 'text-gray-500' },
   //{ id: 'Bulk Payments', name: 'Bulk Payments', subtitle: 'Enterprise', description: 'Mass deposit integrations', icon: Users, active: false, color: 'text-gray-500' },
   { id: 'Bank Transfer', name: 'Bank Transfer', subtitle: 'EFT/RTGS', description: 'Wire transfer from local banks', icon: Building2, active: false, color: 'text-gray-500' },
-  { id: 'Card', name: 'Debit / Credit Card', subtitle: 'Visa/MC', description: 'Fund via Visa/Mastercard', icon: CreditCard, active: false, color: 'text-gray-500' }
+  { id: 'Card', name: 'Virtual Card', subtitle: 'Mastercard', description: 'Get a virtual Mastercard and load it from your wallet', icon: CreditCard, active: true, color: 'text-emerald-400' }
 ];
 
 const ASSET_CONTRACTS: Record<string, Record<string, string>> = {
@@ -137,6 +138,7 @@ type DepositPhase = 'idle' | 'listening' | 'detected' | 'confirming' | 'credited
 
 export default function DepositPage() {
   const { theme } = useTheme();
+  const navigate = useNavigate();
   const isLight = theme === 'light';
   const [step, setStep] = useState<'select' | 'form'>('select');
   const [channel, setChannel] = useState('Mobile Money');
@@ -428,6 +430,8 @@ export default function DepositPage() {
   };
 
   const handleChannelSelect = (selectedChannelId: string) => {
+    // Virtual cards live on their own page (KYC, issue, load, details).
+    if (selectedChannelId === 'Card') { navigate('/cards'); return; }
     setChannel(selectedChannelId);
     setToastError(''); setSuccessMsg('');
     setAmount(''); setCounterparty('');

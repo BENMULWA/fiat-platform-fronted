@@ -1,4 +1,4 @@
-// Original Jasiri OTC artwork: stablecoins flow through the Jasiri desk and settle into African currencies.
+// Original Jasiri OTC Airtcraft design: stablecoins flow through the Jasiri desk and settle into African currencies.
 // Pure SVG (no stock image, no licence), resolution independent, animated with CSS only.
 
 const SOURCES: [string, number][] = [['USDT', 230], ['USDC', 450], ['cUSD', 670]];

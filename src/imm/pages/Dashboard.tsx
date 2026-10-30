@@ -1,8 +1,9 @@
 import { ageFromSeconds, ago, fx, pct } from '../format'
 import { useImm } from '../store'
-import { Card, DecisionPill, Empty, Flow, Loading, Meter, Pill, Unavailable } from '../ui'
+import { Card, DecisionPill, Empty, Loading, Meter, Pill, Unavailable } from '../ui'
 import { RunPanel } from '../run'
 import HoldingsPanel from '../holdings'
+import CorridorLoop from '../loop'
 
 export default function Dashboard() {
   const { baseRate, comet, health, views, liveRun, ledger, go, runs, canOperate, audience } = useImm()
@@ -54,7 +55,7 @@ export default function Dashboard() {
         <Card cls="lift" title="Best corridor right now"
           sub={`Ranked by projected return over 5 compounding cycles, from ${views.length} corridor${views.length === 1 ? '' : 's'}. The maths is calculated on the server.`}
           actions={<><DecisionPill d={best.decision} /><button className="btn primary" onClick={() => go('trade')}>Open in Trade</button></>}>
-          <Flow nodes={best.opp.nodes} big />
+          <CorridorLoop cycles={5} discount={best.opp.discount} multiplier={best.opp.multiplier} />
           <div className="decide" style={{ marginTop: 16 }}>
             <div><div className="l">Per cycle</div><div className="v">{best.opp.multiplier}</div></div>
             <div><div className="l">Over 5 cycles</div><div className="v pos">{best.opp.profitPct}</div></div>

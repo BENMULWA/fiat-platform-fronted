@@ -74,7 +74,7 @@ function Header() {
           <div className="stat"><div className="l">Stablecoins</div><div className="v">{stable != null ? pct(stable, 0) : '—'}</div></div>
           <div className="stat"><div className="l">Best, 5 cycles</div><div className={'v ' + (best ? 'pos' : 'muted')}>{best?.opp ? best.opp.profitPct : '—'}</div></div>
           <div className="stat"><div className="l">Run</div><div className="v">{liveRun ? `${liveRun.currentCycle}/${Number(liveRun.config?.cycles) || 5}` : '—'}{liveRun && <small className="muted">cycle</small>}</div></div>
-          <div className="stat"><div className="l">Realised, completed runs</div><div className={'v ' + (canOperate ? tone(realised) : 'muted')}>{canOperate && runs.loaded ? sgnUsd(realised) : '—'}</div></div>
+          <div className="stat"><div className="l">Realised, completed runs</div><div className={'v ' + (canOperate ? tone(realised) : 'muted')}>{canOperate && runs.loaded ? sgnUsd(realised, Math.abs(realised) < 1 ? 4 : 2) : '—'}</div></div>
         </div>
         <nav className="tabs" aria-label="Sections">
           {TABS.map((id) => <button key={id} aria-current={tab === id ? 'page' : undefined} onClick={() => go(id)}>{LABEL[id]}</button>)}

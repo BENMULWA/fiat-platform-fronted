@@ -43,6 +43,7 @@ import AdministrationPage from './pages/SystemAdminRoles'
 // --- NEW OTC DASHBOARD PAGES ---
 import DashboardOverview from './pages/OTC Dashboard/DashboardOverview';
 import { RetailTransactionsPage } from './pages/OTC Dashboard/RetailTransactions';
+import { AuditLogPage } from './pages/OTC Dashboard/AuditLog';
 import PaymentsPage from './pages/OTC Dashboard/Payments';
 import { TreasuryPage } from './pages/OTC Dashboard/Treasury';
 import { TreasurySettlementsPage } from './pages/OTC Dashboard/TreasurySettlements';
@@ -63,6 +64,7 @@ import WalletsPage from './pages/retail/WalletsPage'
 import TradePage from './pages/retail/TradePage'
 import KYCpage from './pages/retail/KYCpage'
 import DepositPage from './pages/retail/DepositPage'
+import CardsPage from './pages/retail/CardsPage'
 import WithdrawPage from './pages/retail/WithdrawPage'
 import TransferPage from './pages/retail/TransferPage'
 import { RedeemAirtimePage } from './pages/retail/RedeemAirtimePage'
@@ -189,6 +191,7 @@ function AppRoutes() {
         <Route path="wallets" element={<KycProtectedRoute><WalletsPage /></KycProtectedRoute>} />
         <Route path="transactions" element={<KycProtectedRoute><TransactionsPage /></KycProtectedRoute>} />
         <Route path="deposit" element={<KycProtectedRoute><DepositPage /></KycProtectedRoute>} />
+        <Route path="cards" element={<KycProtectedRoute><CardsPage /></KycProtectedRoute>} />
         <Route path="withdraw" element={<KycProtectedRoute><WithdrawPage /></KycProtectedRoute>} />
         <Route path="transfer" element={<KycProtectedRoute><TransferPage /></KycProtectedRoute>} />
         <Route path="swap" element={<KycProtectedRoute><TradePage /></KycProtectedRoute>} />
@@ -209,6 +212,7 @@ function AppRoutes() {
         <Route path="admin/dashboard" element={<DashboardOverview />} />
         <Route path="admin/retail-transactions" element={<RetailTransactionsPage />} />
         <Route path="admin/retail-orders" element={<RetailTransactionsPage />} />
+        <Route path="admin/audit-log" element={<AuditLogPage />} />
         <Route path="admin/payments" element={<PaymentsPage />} />
         <Route path="admin/treasury" element={<TreasuryPage />} />
         <Route path="admin/positions" element={<TreasuryPage />} />

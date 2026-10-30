@@ -26,7 +26,7 @@ const retailNavActions = [
 ]
 
 const retailNavAccount = [
-  { to: '/transactions', label: 'Transactions', icon: FileText },
+  { to: '/transactions', label: 'Transatransferctions', icon: FileText },
   { to: '/profile', label: 'Profile', icon: User },
   { to: '/kyc', label: 'KYC Verification', icon: ShieldCheck },
 ]
@@ -59,7 +59,6 @@ const otcSections = [
     items: [
       { id: 'retail-orders', path: '/admin/retail-orders', label: 'Retail Orders', icon: ListOrdered },
       { id: 'institutional-rfqs', path: '/admin/institutional-rfqs', label: 'Institutional RFQs', icon: Building2 },
-      { id: 'otc-requests', path: '/admin/otc-requests', label: 'Merchant Requests', icon: Wallet },
       { id: 'otc-crypto', path: '/admin/otc-crypto', label: 'OTC Crypto', icon: Bitcoin, comingSoon: true },
       { id: 'quotes', path: '/admin/quotes', label: 'Quotes', icon: Quote },
       { id: 'trades', path: '/admin/trades', label: 'Trades', icon: TradeIcon, comingSoon: true },
@@ -70,7 +69,6 @@ const otcSections = [
     items: [
       { id: 'positions', path: '/admin/positions', label: 'Positions', icon: Landmark },
       { id: 'settlements', path: '/admin/settlements', label: 'Settlement Queue', icon: Receipt },
-      { id: 'otc-reconciliation', path: '/admin/otc-reconciliation', label: 'OTC Reconciliation', icon: ShieldCheck },
       { id: 'liquidity', path: '/admin/liquidity', label: 'Liquidity', icon: Droplet },
       { id: 'exposure', path: '/admin/exposure', label: 'Exposure', icon: Activity },
       { id: 'pnl', path: '/admin/pnl', label: 'P&L', icon: DollarSign }
@@ -128,8 +126,6 @@ interface SidebarProps {
 export default function Sidebar({ onClose }: SidebarProps) {
   const { user, logout, viewAsAdmin } = useAuth() // ← Removed toggleViewAsAdmin
   const { theme } = useTheme()
-  // Admin shares the global toggle; its hardcoded dark nav classes are
-  // remapped by `.admin-light` (see AppLayout.tsx / src/admin-light.css).
   const isLight = theme === 'light'
   const location = useLocation()
   const navigate = useNavigate()

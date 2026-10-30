@@ -1,0 +1,33 @@
+/* The full corridor loop: five stages, arrows between them, and the return arrow for the next cycle. */
+.imm .loop { display: grid; gap: 0; }
+.imm .loop-row { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; align-items: stretch; }
+.imm .loop-step { position: relative; display: grid; align-content: start; gap: 6px; padding: 14px 12px 12px; margin-right: 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); min-width: 0; }
+.imm .loop-step:last-child { margin-right: 0; }
+.imm .loop-step::after { content: '→'; position: absolute; right: -21px; top: 50%; transform: translateY(-50%); width: 20px; text-align: center; font-size: 18px; color: var(--muted); }
+.imm .loop-step:last-child::after { content: none; }
+.imm .loop-n { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 600 12px var(--mono); color: #fff; background: var(--muted); }
+.imm .loop-step b { font-size: 14.5px; line-height: 1.25; overflow-wrap: anywhere; }
+.imm .loop-step span.sub { font-size: 12.5px; color: var(--muted); line-height: 1.35; overflow-wrap: anywhere; }
+.imm .loop-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.imm .loop-chip { font-size: 11px; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); white-space: nowrap; }
+.imm .loop-chip.live { border-color: transparent; background: var(--pos-soft); color: var(--pos); }
+.imm .loop-chip.soon { border-style: dashed; color: var(--muted); }
+/* the return arrow: from the last stage back to the first */
+.imm .loop-back { position: relative; margin: 0 10%; height: 54px; border: 2px solid var(--line); border-top: 0; border-radius: 0 0 16px 16px; }
+.imm .loop-back::before { content: '▲'; position: absolute; left: -9px; top: -8px; font-size: 13px; color: var(--muted); line-height: 1; }
+.imm .loop-back > div { position: absolute; inset: auto 0 -1px 0; transform: translateY(50%); display: flex; justify-content: center; }
+.imm .loop-back > div span { background: var(--surface); padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px; font-size: 12.5px; color: var(--ink-2); max-width: 92%; text-align: center; }
+.imm .loop-note { margin: 34px 0 0; font-size: 13px; color: var(--ink-2); }
+.imm .loop-note b { color: var(--ink); }
+
+@media (max-width: 860px) {
+  .imm .loop-row { grid-template-columns: 1fr; gap: 22px; }
+  .imm .loop-step { margin-right: 0; grid-template-columns: 28px 1fr; column-gap: 12px; align-items: start; }
+  .imm .loop-step > .loop-body { display: grid; gap: 6px; min-width: 0; }
+  .imm .loop-step::after { content: '↓'; right: auto; left: 22px; top: auto; bottom: -22px; transform: none; }
+  .imm .loop-back { margin: 24px 0 0 14px; height: auto; border: 0; border-left: 2px solid var(--line); border-radius: 0; padding: 6px 0 6px 14px; }
+  .imm .loop-back::before { content: '↑'; left: -8px; top: -14px; }
+  .imm .loop-back > div { position: static; transform: none; justify-content: flex-start; }
+  .imm .loop-back > div span { text-align: left; border-radius: 10px; }
+  .imm .loop-note { margin-top: 14px; }
+}

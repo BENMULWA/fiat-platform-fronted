@@ -310,9 +310,16 @@ export default function TradePage() {
         setSubmitting(true); setToastError('')
 
         try {
+            // Slippage guard: refuse to execute if the server's price has moved
+            // more than 0.5% below the quote the customer is looking at. AIRT
+            // swaps are skipped because the server rounds them to whole tokens,
+            // so their executed amount legitimately differs from the displayed one.
+            const involvesAirt = from === 'AIRT' || to === 'AIRT'
+            const minReceive = !involvesAirt && receiveAmount > 0 ? Number((receiveAmount * 0.995).toFixed(6)) : undefined
             await executeRamp({
                 direction: 'swap', channel: 'Internal Ledger', from_asset: from, to_asset: to,
                 amount: parsedAmount, rate, fee: feeCaptured, counterparty: 'Internal Wallet',
+                ...(minReceive !== undefined ? { min_receive: minReceive } : {}),
             })
             setShowSuccessModal(true); setAmount(''); loadHistory(); loadWallet()
         } catch (error: any) {
