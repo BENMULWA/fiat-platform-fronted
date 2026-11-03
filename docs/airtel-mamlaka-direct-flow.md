@@ -74,9 +74,9 @@ Mamlaka must be able to reach this URL. ngrok is only a public tunnel; it is not
 Jasiri's backend environment should contain equivalent settings without exposing credentials in source control:
 
 ```env
-AIRTEL_API_BASE_URL=https://sandbox.payments.mamlakapsp.com/api/v1
-AIRTEL_API_USERNAME=meshex_sandbox
-AIRTEL_API_PASSWORD=<sandbox password>
+MAMLAKA_GATEWAY_API_BASE_URL=https://sandbox.payments.mamlakapsp.com/api/v1
+MAMLAKA_GATEWAY_API_USERNAME=meshex_sandbox
+MAMLAKA_GATEWAY_API_PASSWORD=<sandbox password>
 AIRTEL_CALLBACK_BASE_URL=https://hemathermal-ha-dextrously.ngrok-free.dev
 AIRTEL_USE_PORTAL_CALLBACK=false
 ```

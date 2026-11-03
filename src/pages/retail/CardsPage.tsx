@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  AlertTriangle, ArrowLeft, CheckCircle2, Clock, CreditCard, Eye, Loader2,
+  AlertTriangle, ArrowDownLeft, ArrowLeft, CheckCircle2, Clock, CreditCard, Eye, Loader2,
   Plus, RefreshCw, Snowflake, Upload, Wallet,
 } from 'lucide-react';
 import {
   fundCard, freezeCard, getCardBalance, getCardDetails, getCardQuote, getCardStatus, issueCard,
-  submitCardKyc, unfreezeCard,
+  submitCardKyc, unfreezeCard, withdrawFromCard,
 } from '../../api/client';
 import StepUpModal, { StepUpFields } from '../../components/cards/StepUpModal';
 import VirtualCard, { CardSecrets } from '../../components/cards/VirtualCard';
@@ -32,8 +32,8 @@ interface Status {
   kyc?: { status: string; approved: boolean; reason?: string | null };
   cards?: { cardNo: string; status: string; createdAt?: string }[];
   holderName?: string | null;
-  operations?: { id: string; kind: string; usd: string; chargedKes: string; status: string; cardNo?: string; reason?: string; createdAt: string }[];
-  limits?: { minUsd: string; maxUsd: string; marginPct: string };
+  operations?: { id: string; kind: string; usd: string; chargedKes?: string; payoutKes?: string; status: string; cardNo?: string; reason?: string; createdAt: string }[];
+  limits?: { minUsd: string; maxUsd: string; withdrawMinUsd?: string; marginPct: string };
 }
 
 const OPEN_STATES = ['PENDING_DEBIT', 'DEBITED', 'SUBMITTED'];
@@ -43,10 +43,13 @@ const OP_LABEL: Record<string, string> = {
 };
 // Wasabi's card statuses, as the card shows them
 const CARD_LABEL: Record<string, string> = { normal: 'ACTIVE', freeze: 'FROZEN', cancel: 'CANCELLED', blocked: 'BLOCKED' };
+const KIND_LABEL: Record<string, string> = { ISSUE: 'Card issued', FUND: 'Card loaded', WITHDRAW: 'Withdrawn to wallet' };
 
 // ---------------------------------------------------------------- page
 export default function CardsPage() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const openWithdraw = params.get('action') === 'withdraw';   // from Withdraw Funds -> Virtual Card
   const { theme } = useTheme();
   const isLight = theme === 'light';
   const panel = isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#111827] border-[#1E2533]';
@@ -109,7 +112,7 @@ export default function CardsPage() {
           <h2 className={`text-2xl font-bold tracking-tight flex items-center gap-2 ${strong}`}>
             <CreditCard className="w-6 h-6 text-emerald-500" /> Virtual Card
           </h2>
-          <p className={`text-xs mt-0.5 ${muted}`}>Get a Mastercard and load it from your KES wallet.</p>
+          <p className={`text-xs mt-0.5 ${muted}`}>Get a Mastercard, load it from your KES wallet, and withdraw back any time.</p>
         </div>
       </div>
 
@@ -149,7 +152,7 @@ export default function CardsPage() {
           {cards.map((c) => (
             <CardTile key={c.cardNo} card={c} limits={status.limits!} panel={panel} muted={muted} strong={strong} isLight={isLight}
               holderName={holderName} secrets={revealed?.cardNo === c.cardNo ? revealed : null}
-              askStepUp={setStepUp} onChanged={load} onHide={() => setRevealed(null)}
+              askStepUp={setStepUp} onChanged={load} onHide={() => setRevealed(null)} startWithdraw={openWithdraw}
               onReveal={(data: CardSecrets) => setRevealed({ cardNo: c.cardNo, data, expiresAt: Date.now() + 45000 })} />
           ))}
         </>
@@ -162,8 +165,10 @@ export default function CardsPage() {
             {status.operations!.map((o) => (
               <li key={o.id} className="py-2.5 flex items-center justify-between gap-3 text-sm">
                 <div>
-                  <span className={strong}>{o.kind === 'ISSUE' ? 'Card issued' : 'Card loaded'} · ${Number(o.usd).toFixed(2)}</span>
-                  <span className={`block text-xs ${muted}`}>KES {kes(o.chargedKes)} · {new Date(o.createdAt).toLocaleString()}</span>
+                  <span className={strong}>{KIND_LABEL[o.kind] || o.kind} · ${Number(o.usd).toFixed(2)}</span>
+                  <span className={`block text-xs ${muted}`}>
+                    {o.kind === 'WITHDRAW' ? `+ KES ${kes(o.payoutKes || 0)}` : `KES ${kes(o.chargedKes || 0)}`} · {new Date(o.createdAt).toLocaleString()}
+                  </span>
                   {o.reason && o.status !== 'SUCCESS' && <span className="block text-xs text-amber-400">{o.reason}</span>}
                 </div>
                 <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${
@@ -313,7 +318,7 @@ function KycForm({ panel, muted, strong, isLight, rejectedReason, onDone }: any)
 }
 
 // ---------------------------------------------------------------- amount + quote (shared by issue and load)
-function useQuote(kind: 'issue' | 'fund', usd: string) {
+function useQuote(kind: 'issue' | 'fund' | 'withdraw', usd: string) {
   const [quote, setQuote] = useState<any>(null);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -347,9 +352,12 @@ function AmountPicker({ kind, limits, value, onChange, muted, strong, isLight }:
       </label>
       {quote && (
         <div className={`p-3 rounded-xl border text-sm ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#0B0E14] border-[#1E2533]'}`}>
-          <div className="flex justify-between"><span className={muted}>You pay</span><b className={strong}>KES {kes(quote.chargeKes)}</b></div>
+          {kind === 'withdraw'
+            ? <div className="flex justify-between"><span className={muted}>You receive</span><b className={strong}>KES {kes(quote.payoutKes)}</b></div>
+            : <div className="flex justify-between"><span className={muted}>You pay</span><b className={strong}>KES {kes(quote.chargeKes)}</b></div>}
           {kind === 'issue' && quote.cardFeeUsd && <p className={`text-xs mt-1 ${muted}`}>Includes the ${Number(quote.cardFeeUsd).toFixed(2)} card fee. Taken from your KES wallet.</p>}
           {kind === 'fund' && <p className={`text-xs mt-1 ${muted}`}>Taken from your KES wallet.</p>}
+          {kind === 'withdraw' && <p className={`text-xs mt-1 ${muted}`}>Credited to your KES wallet once the card processor confirms.</p>}
         </div>
       )}
       {error && <p className="text-xs text-red-400">{error}</p>}
@@ -386,14 +394,15 @@ function IssuePanel({ limits, panel, muted, strong, isLight, askStepUp, onTopUp,
 }
 
 // ---------------------------------------------------------------- one card
-function CardTile({ card, limits, panel, muted, strong, isLight, holderName, secrets, askStepUp, onChanged, onReveal, onHide }: any) {
+function CardTile({ card, limits, panel, muted, strong, isLight, holderName, secrets, askStepUp, onChanged, onReveal, onHide, startWithdraw }: any) {
   const [balance, setBalance] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [loadOpen, setLoadOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState<null | 'load' | 'withdraw'>(startWithdraw ? 'withdraw' : null);
   const [usd, setUsd] = useState('10');
   const [error, setError] = useState('');
   const [revealing, setRevealing] = useState(false);
   const fundKey = useRef<string | null>(null);
+  const withdrawKey = useRef<string | null>(null);
   const frozen = /freeze|frozen/i.test(card.status || '');
   const label = frozen ? 'FROZEN' : (CARD_LABEL[(card.status || '').toLowerCase()] ?? (card.status || 'PENDING').toUpperCase());
 
@@ -423,10 +432,25 @@ function CardTile({ card, limits, panel, muted, strong, isLight, holderName, sec
     title: 'Load card', description: `Confirm to move $${usd} onto your card from your KES wallet.`, label: 'Pay and load',
     run: async (f: StepUpFields) => {
       const key = fundKey.current ?? (fundKey.current = newKey());
-      try { await fundCard(card.cardNo, { usd, ...f }, key); fundKey.current = null; setLoadOpen(false); await onChanged(); void refreshBalance(); }
+      try { await fundCard(card.cardNo, { usd, ...f }, key); fundKey.current = null; setPanelOpen(null); await onChanged(); void refreshBalance(); }
       catch (err: any) { if (err?.response?.status && err.response.status < 500) fundKey.current = null; throw new Error(errorText(err)); }
     },
   });
+
+  // Card -> KES wallet. Nothing leaves the wallet; the KES arrive once the card processor confirms.
+  const withdraw = () => askStepUp({
+    title: 'Withdraw to wallet', description: `Confirm to move $${usd} from your card to your KES wallet.`, label: 'Withdraw',
+    run: async (f: StepUpFields) => {
+      const key = withdrawKey.current ?? (withdrawKey.current = newKey());
+      try { await withdrawFromCard(card.cardNo, { usd, ...f }, key); withdrawKey.current = null; setPanelOpen(null); await onChanged(); void refreshBalance(); }
+      catch (err: any) { if (err?.response?.status && err.response.status < 500) withdrawKey.current = null; throw new Error(errorText(err)); }
+    },
+  });
+  const togglePanel = (which: 'load' | 'withdraw') => {
+    setPanelOpen((open) => (open === which ? null : which));
+    setUsd(which === 'withdraw' ? (limits.withdrawMinUsd || '1') : '10');
+  };
+  const btn = `py-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 ${isLight ? 'border-slate-200 text-slate-700' : 'border-[#2a3447] text-gray-200'}`;
 
   return (
     <div className={`p-6 rounded-2xl border space-y-5 ${panel}`}>
@@ -434,18 +458,28 @@ function CardTile({ card, limits, panel, muted, strong, isLight, holderName, sec
         secrets={secrets?.data ?? null} secretsExpireAt={secrets?.expiresAt ?? null} revealing={revealing}
         onReveal={reveal} onHide={onHide} />
 
-      <div className="grid grid-cols-3 gap-2 max-w-[380px] mx-auto">
-        <button type="button" onClick={() => setLoadOpen((v) => !v)} className={`py-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 ${isLight ? 'border-slate-200 text-slate-700' : 'border-[#2a3447] text-gray-200'}`}><Plus className="w-4 h-4" /> Load</button>
-        <button type="button" onClick={reveal} className={`py-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 ${isLight ? 'border-slate-200 text-slate-700' : 'border-[#2a3447] text-gray-200'}`}><Eye className="w-4 h-4" /> Details</button>
-        <button type="button" onClick={toggleFreeze} disabled={loading} className={`py-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50 ${isLight ? 'border-slate-200 text-slate-700' : 'border-[#2a3447] text-gray-200'}`}>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-w-[380px] mx-auto">
+        <button type="button" onClick={() => togglePanel('load')} className={btn}><Plus className="w-4 h-4" /> Load</button>
+        <button type="button" onClick={() => togglePanel('withdraw')} className={btn}><ArrowDownLeft className="w-4 h-4" /> Withdraw</button>
+        <button type="button" onClick={reveal} className={btn}><Eye className="w-4 h-4" /> Details</button>
+        <button type="button" onClick={toggleFreeze} disabled={loading} className={`${btn} disabled:opacity-50`}>
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Snowflake className="w-4 h-4" />} {frozen ? 'Unfreeze' : 'Freeze'}
         </button>
       </div>
 
-      {loadOpen && (
+      {panelOpen === 'load' && (
         <div className="space-y-3 pt-1">
           <AmountPicker kind="fund" limits={{ minUsd: '1', maxUsd: limits.maxUsd }} value={usd} onChange={setUsd} muted={muted} strong={strong} isLight={isLight} />
           <button type="button" onClick={load} className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-sm flex items-center justify-center gap-2"><Wallet className="w-4 h-4" /> Load from wallet</button>
+        </div>
+      )}
+      {panelOpen === 'withdraw' && (
+        <div className="space-y-3 pt-1">
+          <AmountPicker kind="withdraw" limits={{ minUsd: limits.withdrawMinUsd || '1', maxUsd: balance && Number(balance) < Number(limits.maxUsd) ? String(Number(balance)) : limits.maxUsd }}
+            value={usd} onChange={setUsd} muted={muted} strong={strong} isLight={isLight} />
+          {balance != null && Number(usd) > Number(balance) && <p className="text-xs text-red-400">Your card holds ${balance}.</p>}
+          <button type="button" onClick={withdraw} disabled={balance != null && Number(usd) > Number(balance)}
+            className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black font-bold text-sm flex items-center justify-center gap-2"><ArrowDownLeft className="w-4 h-4" /> Withdraw to wallet</button>
         </div>
       )}
       {error && <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs">{error}</div>}

@@ -515,12 +515,14 @@ export const getSettlementEvidence = (id: string, evidenceId: string) =>
 const idem = (key: string) => ({ 'Idempotency-Key': key });
 
 export const getCardStatus = () => api.get('/api/cards/status');
-export const getCardQuote = (kind: 'issue' | 'fund', usd: string) => api.get('/api/cards/quote', { params: { kind, usd } });
+export const getCardQuote = (kind: 'issue' | 'fund' | 'withdraw', usd: string) => api.get('/api/cards/quote', { params: { kind, usd } });
 export const submitCardKyc = (form: FormData, key: string) =>
   api.post('/api/cards/kyc', form, { headers: { ...idem(key), 'Content-Type': 'multipart/form-data' } });
 export const issueCard = (data: any, key: string) => api.post('/api/cards/issue', data, { headers: idem(key) });
 export const fundCard = (cardNo: string, data: any, key: string) =>
   api.post(`/api/cards/${encodeURIComponent(cardNo)}/fund`, data, { headers: idem(key) });
+export const withdrawFromCard = (cardNo: string, data: any, key: string) =>
+  api.post(`/api/cards/${encodeURIComponent(cardNo)}/withdraw`, data, { headers: idem(key) });
 export const freezeCard = (cardNo: string, key: string) =>
   api.post(`/api/cards/${encodeURIComponent(cardNo)}/freeze`, {}, { headers: idem(key) });
 export const unfreezeCard = (cardNo: string, key: string) =>

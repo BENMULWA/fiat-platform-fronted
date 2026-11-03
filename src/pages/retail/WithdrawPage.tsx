@@ -161,7 +161,7 @@ const CHANNELS = [
     { id: 'Till/Paybill', name: 'Till / Paybill', subtitle: 'Business', description: 'Pay merchants or utility bills', icon: Store, active: false, color: 'text-gray-500' },
     { id: 'Bulk Payments', name: 'Bulk Payments', subtitle: 'Enterprise', description: 'Disburse salaries or mass payouts', icon: Users, active: false, color: 'text-gray-500' },
     { id: 'Bank Transfer', name: 'Bank Transfer', subtitle: 'EFT/RTGS', description: 'Wire transfer to local banks', icon: Building2, active: false, color: 'text-gray-500' },
-    { id: 'Card', name: 'Debit / Credit Card', subtitle: 'Visa/MC', description: 'Withdraw to linked cards', icon: CreditCard, active: false, color: 'text-gray-500' }
+    { id: 'Virtual Card', name: 'Virtual Card', subtitle: 'Mastercard', description: 'Move your card balance back to your KES wallet', icon: CreditCard, active: true, color: 'text-teal-400' }
 ];
 
 type NetworkOption = {
@@ -316,6 +316,10 @@ export default function WithdrawPage() {
     const feePercentage = parsedAmount > 0 ? ((currentFee / parsedAmount) * 100).toFixed(2) : '0.00';
 
     const handleChannelSelect = (selectedChannelId: string) => {
+        if (selectedChannelId === 'Virtual Card') {   // card -> wallet lives with the card itself
+            navigate('/cards?action=withdraw');
+            return;
+        }
         setChannel(selectedChannelId);
         setToastError(''); setSuccessMsg('');
         setAmount(''); setCounterparty(''); setMemo('');

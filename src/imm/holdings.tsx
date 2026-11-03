@@ -101,7 +101,7 @@ export default function HoldingsPanel() {
       {sandbox.length > 0 && (
         <div className="note warn" style={{ marginTop: 14 }}>
           <b>Not counted: the Mam-laka gateway is a sandbox.</b> Its balances are test figures, not real money: {sandbox.map((l) => `${fx(l.balance, 2)} ${l.unit}`).join(', ')}. They were included in the old total, which is why it read about $332.
-          <div className="xs" style={{ marginTop: 4 }}>Point <span className="mono">AIRTEL_API_BASE_URL</span> at the live gateway to count them.</div>
+          <div className="xs" style={{ marginTop: 4 }}>Point <span className="mono">MAMLAKA_GATEWAY_API_BASE_URL</span> at the live gateway to count them.</div>
         </div>
       )}
       {h.errors.length > 0 && (
