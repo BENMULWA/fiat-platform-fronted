@@ -36,3 +36,4 @@ dist/
 
 # local backups (contain .env)
 backend-backup-*/
+jasiricapital-backup/
