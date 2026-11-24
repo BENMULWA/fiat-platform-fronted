@@ -32,7 +32,8 @@ interface Status {
   kyc?: { status: string; approved: boolean; reason?: string | null };
   cards?: { cardNo: string; status: string; createdAt?: string }[];
   holderName?: string | null;
-  operations?: { id: string; kind: string; usd: string; chargedKes?: string; payoutKes?: string; status: string; cardNo?: string; reason?: string; createdAt: string }[];
+  operations?: { id: string; kind: string; usd: string; chargedKes?: string; payoutKes?: string; status: string; cardNo?: string; reason?: string; createdAt: string;
+    payout?: { provider: string; phone: string; amountKes: number; status: string; reason?: string } | null }[];
   limits?: { minUsd: string; maxUsd: string; withdrawMinUsd?: string; marginPct: string };
 }
 
@@ -44,6 +45,15 @@ const OP_LABEL: Record<string, string> = {
 // Wasabi's card statuses, as the card shows them
 const CARD_LABEL: Record<string, string> = { normal: 'ACTIVE', freeze: 'FROZEN', cancel: 'CANCELLED', blocked: 'BLOCKED' };
 const KIND_LABEL: Record<string, string> = { ISSUE: 'Card issued', FUND: 'Card loaded', WITHDRAW: 'Withdrawn to wallet' };
+// Where a card withdrawal goes: the KES wallet, or on to mobile money (whole shillings; the cents stay in the wallet).
+const DESTINATIONS = [
+  { id: 'wallet', label: 'Jasiri wallet' },
+  { id: 'mpesa', label: 'M-Pesa' },
+  { id: 'airtel', label: 'Airtel Money' },
+] as const;
+type Destination = typeof DESTINATIONS[number]['id'];
+const destinationLabel = (d: Destination) => DESTINATIONS.find((x) => x.id === d)!.label;
+const PAYOUT_LABEL: Record<string, string> = { WAITING: 'waiting for the card', SENDING: 'sending', SENT: 'sent', FAILED: 'not sent', REVIEW: 'being checked' };
 
 // ---------------------------------------------------------------- page
 export default function CardsPage() {
@@ -165,11 +175,13 @@ export default function CardsPage() {
             {status.operations!.map((o) => (
               <li key={o.id} className="py-2.5 flex items-center justify-between gap-3 text-sm">
                 <div>
-                  <span className={strong}>{KIND_LABEL[o.kind] || o.kind} · ${Number(o.usd).toFixed(2)}</span>
+                  <span className={strong}>{o.payout ? `Withdrawn to ${o.payout.provider}` : (KIND_LABEL[o.kind] || o.kind)} · ${Number(o.usd).toFixed(2)}</span>
                   <span className={`block text-xs ${muted}`}>
-                    {o.kind === 'WITHDRAW' ? `+ KES ${kes(o.payoutKes || 0)}` : `KES ${kes(o.chargedKes || 0)}`} · {new Date(o.createdAt).toLocaleString()}
+                    {o.payout ? `KES ${kes(o.payout.amountKes)} to ${o.payout.phone} (${PAYOUT_LABEL[o.payout.status] || o.payout.status})`
+                      : o.kind === 'WITHDRAW' ? `+ KES ${kes(o.payoutKes || 0)}` : `KES ${kes(o.chargedKes || 0)}`} · {new Date(o.createdAt).toLocaleString()}
                   </span>
                   {o.reason && o.status !== 'SUCCESS' && <span className="block text-xs text-amber-400">{o.reason}</span>}
+                  {o.payout?.reason && <span className="block text-xs text-amber-400">{o.payout.reason}</span>}
                 </div>
                 <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${
                   o.status === 'SUCCESS' ? 'text-emerald-500 border-emerald-500/30 bg-emerald-500/10'
@@ -334,7 +346,7 @@ function useQuote(kind: 'issue' | 'fund' | 'withdraw', usd: string) {
   return { quote, error };
 }
 
-function AmountPicker({ kind, limits, value, onChange, muted, strong, isLight }: any) {
+function AmountPicker({ kind, limits, value, onChange, muted, strong, isLight, destination = 'wallet' }: any) {
   const { quote, error } = useQuote(kind, value);
   const presets = useMemo(() => Array.from(new Set([limits.minUsd, '20', '50', limits.maxUsd])).filter((p) => Number(p) >= Number(limits.minUsd) && Number(p) <= Number(limits.maxUsd)), [limits]);
   return (
@@ -352,12 +364,20 @@ function AmountPicker({ kind, limits, value, onChange, muted, strong, isLight }:
       </label>
       {quote && (
         <div className={`p-3 rounded-xl border text-sm ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#0B0E14] border-[#1E2533]'}`}>
-          {kind === 'withdraw'
+          {kind === 'withdraw' && destination !== 'wallet'
+            ? <div className="flex justify-between"><span className={muted}>To your {destinationLabel(destination)}</span><b className={strong}>KES {kes(Math.floor(Number(quote.payoutKes)))}</b></div>
+            : kind === 'withdraw'
             ? <div className="flex justify-between"><span className={muted}>You receive</span><b className={strong}>KES {kes(quote.payoutKes)}</b></div>
             : <div className="flex justify-between"><span className={muted}>You pay</span><b className={strong}>KES {kes(quote.chargeKes)}</b></div>}
           {kind === 'issue' && quote.cardFeeUsd && <p className={`text-xs mt-1 ${muted}`}>Includes the ${Number(quote.cardFeeUsd).toFixed(2)} card fee. Taken from your KES wallet.</p>}
           {kind === 'fund' && <p className={`text-xs mt-1 ${muted}`}>Taken from your KES wallet.</p>}
-          {kind === 'withdraw' && <p className={`text-xs mt-1 ${muted}`}>Credited to your KES wallet once the card processor confirms.</p>}
+          {kind === 'withdraw' && destination === 'wallet' && <p className={`text-xs mt-1 ${muted}`}>Credited to your KES wallet once the card processor confirms.</p>}
+          {kind === 'withdraw' && destination !== 'wallet' && (
+            <p className={`text-xs mt-1 ${muted}`}>
+              Sent to your phone once the card processor confirms.
+              {Number(quote.payoutKes) % 1 > 0 && ` The KES ${kes(Number(quote.payoutKes) % 1)} left over stays in your wallet.`}
+            </p>
+          )}
         </div>
       )}
       {error && <p className="text-xs text-red-400">{error}</p>}
@@ -403,6 +423,10 @@ function CardTile({ card, limits, panel, muted, strong, isLight, holderName, sec
   const [revealing, setRevealing] = useState(false);
   const fundKey = useRef<string | null>(null);
   const withdrawKey = useRef<string | null>(null);
+  const [destination, setDestination] = useState<Destination>('wallet');
+  const [phone, setPhone] = useState('');
+  const toPhone = destination !== 'wallet';
+  const phoneOk = !toPhone || /^(\+?254|0)?[17]\d{8}$/.test(phone.replace(/[\s-]/g, ''));
   const frozen = /freeze|frozen/i.test(card.status || '');
   const label = frozen ? 'FROZEN' : (CARD_LABEL[(card.status || '').toLowerCase()] ?? (card.status || 'PENDING').toUpperCase());
 
@@ -437,12 +461,16 @@ function CardTile({ card, limits, panel, muted, strong, isLight, holderName, sec
     },
   });
 
-  // Card -> KES wallet. Nothing leaves the wallet; the KES arrive once the card processor confirms.
+  // Card -> KES wallet (or on to mobile money). Nothing leaves the wallet; the KES arrive once the card processor confirms.
   const withdraw = () => askStepUp({
-    title: 'Withdraw to wallet', description: `Confirm to move $${usd} from your card to your KES wallet.`, label: 'Withdraw',
+    title: `Withdraw to ${destinationLabel(destination)}`,
+    description: toPhone ? `Confirm to send $${usd} from your card to ${destinationLabel(destination)} ${phone}.`
+      : `Confirm to move $${usd} from your card to your KES wallet.`,
+    label: 'Withdraw',
     run: async (f: StepUpFields) => {
       const key = withdrawKey.current ?? (withdrawKey.current = newKey());
-      try { await withdrawFromCard(card.cardNo, { usd, ...f }, key); withdrawKey.current = null; setPanelOpen(null); await onChanged(); void refreshBalance(); }
+      const target = toPhone ? { payoutTo: destination, phone } : {};
+      try { await withdrawFromCard(card.cardNo, { usd, ...target, ...f }, key); withdrawKey.current = null; setPanelOpen(null); await onChanged(); void refreshBalance(); }
       catch (err: any) { if (err?.response?.status && err.response.status < 500) withdrawKey.current = null; throw new Error(errorText(err)); }
     },
   });
@@ -475,11 +503,26 @@ function CardTile({ card, limits, panel, muted, strong, isLight, holderName, sec
       )}
       {panelOpen === 'withdraw' && (
         <div className="space-y-3 pt-1">
+          <div>
+            <span className="block text-xs font-semibold mb-1">Send to</span>
+            <div className="grid grid-cols-3 gap-2">
+              {DESTINATIONS.map((d) => (
+                <button type="button" key={d.id} onClick={() => setDestination(d.id)}
+                  className={`py-2 rounded-xl border text-xs font-bold ${destination === d.id ? 'bg-emerald-500 border-emerald-500 text-black' : isLight ? 'border-slate-200 text-slate-700' : 'border-[#2a3447] text-gray-300'}`}>{d.label}</button>
+              ))}
+            </div>
+          </div>
+          {toPhone && (
+            <label className="block text-xs font-semibold">{destinationLabel(destination)} number
+              <input inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value.replace(/[^\d+\s-]/g, ''))} placeholder="07XXXXXXXX"
+                className={`mt-1 w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:border-emerald-500 ${isLight ? 'bg-slate-50 border-slate-200 text-slate-900' : 'bg-[#0B0E14] border-[#1E2533] text-white'}`} />
+            </label>
+          )}
           <AmountPicker kind="withdraw" limits={{ minUsd: limits.withdrawMinUsd || '1', maxUsd: balance && Number(balance) < Number(limits.maxUsd) ? String(Number(balance)) : limits.maxUsd }}
-            value={usd} onChange={setUsd} muted={muted} strong={strong} isLight={isLight} />
+            value={usd} onChange={setUsd} muted={muted} strong={strong} isLight={isLight} destination={destination} />
           {balance != null && Number(usd) > Number(balance) && <p className="text-xs text-red-400">Your card holds ${balance}.</p>}
-          <button type="button" onClick={withdraw} disabled={balance != null && Number(usd) > Number(balance)}
-            className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black font-bold text-sm flex items-center justify-center gap-2"><ArrowDownLeft className="w-4 h-4" /> Withdraw to wallet</button>
+          <button type="button" onClick={withdraw} disabled={(balance != null && Number(usd) > Number(balance)) || !phoneOk}
+            className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black font-bold text-sm flex items-center justify-center gap-2"><ArrowDownLeft className="w-4 h-4" /> Withdraw to {destinationLabel(destination)}</button>
         </div>
       )}
       {error && <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs">{error}</div>}
