@@ -33,3 +33,6 @@ backend/
 # repo had committed, blocking `git pull` until dist/ was manually
 # discarded or stashed. Untracked here via `git rm -r --cached dist`.
 dist/
+
+# local backups (contain .env)
+backend-backup-*/
